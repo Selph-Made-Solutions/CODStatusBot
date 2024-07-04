@@ -4,6 +4,8 @@ import (
 	"fmt"
 )
 
+// GenerateHeaders generates a map of headers for HTTP requests.
+// It includes the SSO cookie for authentication.
 func GenerateHeaders(ssoCookie string) map[string]string {
 	return map[string]string{
 		"accept":         "*/*",
@@ -12,6 +14,8 @@ func GenerateHeaders(ssoCookie string) map[string]string {
 	}
 }
 
+// GeneratePostHeaders generates a map of headers for HTTP POST requests.
+// It includes the SSO cookie, Content-Type and x-requested-with headers.
 func GeneratePostHeaders(ssoCookie string) map[string]string {
 	headers := GenerateHeaders(ssoCookie)
 	headers["Content-Type"] = "application/x-www-form-urlencoded"
