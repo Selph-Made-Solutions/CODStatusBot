@@ -15,12 +15,13 @@ import (
 )
 
 var (
-	checkInterval        float64
-	notificationInterval float64
-	cooldownDuration     float64
-	sleepDuration        int
+	checkInterval        float64 // Check interval for accounts (in minutes)
+	notificationInterval float64 // Notification interval for daily updates (in hours)
+	cooldownDuration     float64 // Cooldown duration for invalid cookie notifications (in hours)
+	sleepDuration        int     // Sleep duration for the account checking loop (in minutes)
 )
 
+// init loads environment variables and sets up configuration.
 func init() {
 	err := godotenv.Load()
 	if err != nil {
@@ -36,9 +37,11 @@ func init() {
 		checkInterval, notificationInterval, cooldownDuration, sleepDuration)
 }
 
+// sendDailyUpdate sends a daily update message to the user for a given account.
 func sendDailyUpdate(account models.Account, discord *discordgo.Session) {
 	logger.Log.Infof("Sending daily update for account %s", account.Title)
 
+	// Prepare the description for the embed message.
 	var description string
 	if account.IsExpiredCookie {
 		description = fmt.Sprintf("The SSO cookie for account %s has expired. Please update the cookie using the /updateaccount command or delete the account using the /removeaccount command.", account.Title)
@@ -46,6 +49,7 @@ func sendDailyUpdate(account models.Account, discord *discordgo.Session) {
 		description = fmt.Sprintf("The last status of account %s was %s.", account.Title, account.LastStatus)
 	}
 
+	// Create the embed message.
 	embed := &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%.2f Hour Update - %s", notificationInterval, account.Title),
 		Description: description,
@@ -53,6 +57,7 @@ func sendDailyUpdate(account models.Account, discord *discordgo.Session) {
 		Timestamp:   time.Now().Format(time.RFC3339),
 	}
 
+	// Determine the channel to send the message to (DM or specified channel).
 	var channelID string
 	if account.NotificationType == "dm" {
 		channel, err := discord.UserChannelCreate(account.UserID)
@@ -65,6 +70,7 @@ func sendDailyUpdate(account models.Account, discord *discordgo.Session) {
 		channelID = account.ChannelID
 	}
 
+	// Send the embed message.
 	_, err := discord.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
 		Embed: embed,
 	})
@@ -73,6 +79,7 @@ func sendDailyUpdate(account models.Account, discord *discordgo.Session) {
 
 	}
 
+	// Update the account's last check and notification timestamps.
 	account.LastCheck = time.Now().Unix()
 	account.LastNotification = time.Now().Unix()
 	if err := database.DB.Save(&account).Error; err != nil {
@@ -81,6 +88,7 @@ func sendDailyUpdate(account models.Account, discord *discordgo.Session) {
 	}
 }
 
+// CheckAccounts periodically checks all accounts for status changes.
 func CheckAccounts(s *discordgo.Session) {
 	for {
 		logger.Log.Info("Starting periodic account check")
@@ -90,6 +98,7 @@ func CheckAccounts(s *discordgo.Session) {
 			continue
 		}
 
+		// Iterate through each account and perform checks.
 		for _, account := range accounts {
 			var lastCheck time.Time
 			if account.LastCheck != 0 {
@@ -100,6 +109,7 @@ func CheckAccounts(s *discordgo.Session) {
 				lastNotification = time.Unix(account.LastNotification, 0)
 			}
 
+			// Handle accounts with expired cookies.
 			if account.IsExpiredCookie {
 				logger.Log.WithField(" account ", account.Title).Info(" Skipping account with expired cookie ")
 				if time.Since(lastNotification).Hours() > notificationInterval {
@@ -110,11 +120,13 @@ func CheckAccounts(s *discordgo.Session) {
 				}
 				continue
 			}
+			// Check account status if enough time has passed since the last check.
 			if time.Since(lastCheck).Minutes() > checkInterval {
 				go CheckSingleAccount(account, s)
 			} else {
 				logger.Log.WithField("account ", account.Title).Info(" Account ", account.Title, " checked recently less than ", checkInterval, " Minutes ago, skipping ")
 			}
+			// Send daily update if enough time has passed since the last notification.
 			if time.Since(lastNotification).Hours() > notificationInterval {
 				go sendDailyUpdate(account, s)
 			} else {
@@ -122,10 +134,12 @@ func CheckAccounts(s *discordgo.Session) {
 
 			}
 		}
+		// Sleep for the specified duration before the next check cycle.
 		time.Sleep(time.Duration(sleepDuration) * time.Minute)
 	}
 }
 
+// CheckSingleAccount checks the status of a single account and sends notifications if necessary.
 func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	result, err := CheckAccount(account.SSOCookie)
 	if err != nil {
@@ -133,16 +147,19 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 		return
 	}
 
+	// Handle invalid cookie scenarios.
 	if result == models.StatusInvalidCookie {
 		lastNotification := time.Unix(account.LastCookieNotification, 0)
 		if time.Since(lastNotification) >= time.Duration(cooldownDuration)*time.Hour || account.LastCookieNotification == 0 {
 			logger.Log.Infof("Account %s has an invalid SSO cookie ", account.Title)
+			// Create an embed message for invalid cookie notification.
 			embed := &discordgo.MessageEmbed{
 				Title:       fmt.Sprintf("%s - Invalid SSO Cookie ", account.Title),
 				Description: fmt.Sprintf("The SSO cookie for account %s has expired. Please update the cookie using the /updateaccount command or delete the account using the /removeaccount command. ", account.Title),
 				Color:       0xff0000,
 				Timestamp:   time.Now().Format(time.RFC3339),
 			}
+			// Determine the channel to send the notification to (DM or specified channel).
 			var channelID string
 			if account.NotificationType == "dm" {
 				channel, err := discord.UserChannelCreate(account.UserID)
@@ -154,6 +171,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 			} else {
 				channelID = account.ChannelID
 			}
+			// Send the invalid cookie notification.
 			_, err = discord.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
 				Embed: embed,
 			})
@@ -161,6 +179,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 				logger.Log.WithError(err).Error(" Failed to send invalid cookie notification for account ", account.Title)
 			}
 
+			// Update account information regarding the expired cookie.
 			account.LastCookieNotification = time.Now().Unix()
 			account.IsExpiredCookie = true
 			if err := database.DB.Save(&account).Error; err != nil {
@@ -179,6 +198,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 		logger.Log.WithError(err).Error("Failed to save account changes for account", account.Title)
 		return
 	}
+	// Handle status changes and send notifications.
 	if result != lastStatus {
 		account.LastStatus = result
 		if err := database.DB.Save(&account).Error; err != nil {
@@ -186,6 +206,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 			return
 		}
 		logger.Log.Infof("Account %s status changed to %s", account.Title, result)
+		// Create a new ban record for the account.
 		ban := models.Ban{
 			Account:   account,
 			Status:    result,
@@ -194,6 +215,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 		if err := database.DB.Create(&ban).Error; err != nil {
 			logger.Log.WithError(err).Error("Failed to create new ban record for account", account.Title)
 		}
+		// Create an embed message for the status change notification.
 		embed := &discordgo.MessageEmbed{
 			Title:       fmt.Sprintf("%s - %s", account.Title, EmbedTitleFromStatus(result)),
 			Description: fmt.Sprintf("The status of account %s has changed to %s <@%s> ", account.Title, result, account.UserID),
@@ -201,6 +223,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 			Timestamp:   time.Now().Format(time.RFC3339),
 		}
 
+		// Determine the channel to send the notification to (DM or specified channel).
 		var channelID string
 		if account.NotificationType == "dm" {
 			channel, err := discord.UserChannelCreate(account.UserID)
@@ -213,6 +236,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 			channelID = account.ChannelID
 		}
 
+		// Send the status change notification.
 		_, err = discord.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
 			Embed:   embed,
 			Content: fmt.Sprintf("<@%s>", account.UserID),
@@ -223,20 +247,22 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	}
 }
 
+// GetColorForStatus returns the appropriate color for an embed message based on the account status.
 func GetColorForStatus(status models.Status, isExpiredCookie bool) int {
 	if isExpiredCookie {
-		return 0xff0000
+		return 0xff9900 // Orange for expired cookie
 	}
 	switch status {
 	case models.StatusPermaban:
-		return 0xff0000
+		return 0xff0000 // Red for permanent ban
 	case models.StatusShadowban:
-		return 0xffff00
+		return 0xffff00 // Yellow for shadowban
 	default:
-		return 0x00ff00
+		return 0x00ff00 // Green for no ban
 	}
 }
 
+// EmbedTitleFromStatus returns the appropriate title for an embed message based on the account status.
 func EmbedTitleFromStatus(status models.Status) string {
 	switch status {
 	case models.StatusPermaban:
