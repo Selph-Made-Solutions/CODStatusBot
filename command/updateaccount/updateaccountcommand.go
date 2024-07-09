@@ -5,6 +5,7 @@ import (
 	"codstatusbot2.0/logger"
 	"codstatusbot2.0/models"
 	"codstatusbot2.0/services"
+	"fmt"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -123,9 +124,10 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		return
 	}
 
+	logger.Log.Infof("Verifying new SSO cookie for account %s ", account.Title)
 	if !services.VerifySSOCookie(newSSOCookie) {
 		tx.Rollback()
-
+		logger.Log.Warn("Invalid new SSO cookie provided")
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
@@ -135,19 +137,41 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		})
 		return
 	}
+	logger.Log.Info("New SSO cookie verified successfully")
 
 	account.SSOCookie = newSSOCookie
-	account.LastStatus = models.StatusUnknown
 	account.IsExpiredCookie = false
 	account.LastCookieNotification = 0
 
-	tx.Save(&account)
+	// Update the account status
+	newStatus, err := services.CheckAccount(newSSOCookie)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error checking account status with new SSO cookie")
+		newStatus = models.StatusUnknown
+	}
+	account.LastStatus = newStatus
+	logger.Log.Infof("Updated account status to %s", newStatus)
+
+	if err := tx.Save(&account).Error; err != nil {
+		tx.Rollback()
+		logger.Log.WithError(err).Error("Error saving updated account")
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "Error updating account. Please try again.",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+		return
+	}
+
+	// tx.Save(&account)
 	tx.Commit()
 
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			Content: "Account SSO cookie updated",
+			Content: fmt.Sprintf("Account SSO cookie updated. New status: %s ", newStatus),
 			Flags:   discordgo.MessageFlagsEphemeral,
 		},
 	})
