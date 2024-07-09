@@ -97,6 +97,18 @@ func UnregisterCommand(s *discordgo.Session, guildID string) {
 }
 
 func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// Defer the response immediately
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Flags: discordgo.MessageFlagsEphemeral,
+		},
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to defer interaction response")
+		return
+	}
+
 	userID := i.Member.User.ID
 	guildID := i.GuildID
 	accountId := i.ApplicationCommandData().Options[0].IntValue()
@@ -114,13 +126,16 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 	if result.Error != nil {
 		tx.Rollback()
 		logger.Log.WithError(result.Error).Error("Error retrieving account")
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "Account does not exist",
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
+		sendFollowUpMessage(s, i, "Account does not exist") //testing remove for below if failed
+		/*
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "Account does not exist",
+					Flags:   discordgo.MessageFlagsEphemeral,
+				},
+			})
+		*/
 		return
 	}
 
@@ -128,13 +143,16 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 	if !services.VerifySSOCookie(newSSOCookie) {
 		tx.Rollback()
 		logger.Log.Warn("Invalid new SSO cookie provided")
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "Invalid new SSO cookie",
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
+		sendFollowUpMessage(s, i, "Invalid new SSO cookie") // testing remove for below if failed
+		/*
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "Invalid new SSO cookie",
+					Flags:   discordgo.MessageFlagsEphemeral,
+				},
+			})
+		*/
 		return
 	}
 	logger.Log.Info("New SSO cookie verified successfully")
@@ -155,19 +173,25 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 	if err := tx.Save(&account).Error; err != nil {
 		tx.Rollback()
 		logger.Log.WithError(err).Error("Error saving updated account")
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: "Error updating account. Please try again.",
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
+		sendFollowUpMessage(s, i, "Error updating account. Please try again.") // testing remove for below if failed
+		/*
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "Error updating account. Please try again.",
+					Flags:   discordgo.MessageFlagsEphemeral,
+				},
+			})
+		*/
 		return
 	}
 
 	// tx.Save(&account)
 	tx.Commit()
 
+	sendFollowUpMessage(s, i, fmt.Sprintf("Account SSO cookie updated. New status: %s", newStatus)) // testing remove for below if failed
+} // testing remove for below if failed
+/*
 	s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
@@ -175,4 +199,15 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 			Flags:   discordgo.MessageFlagsEphemeral,
 		},
 	})
+*/
+
+// Helper function to send a follow-up message
+func sendFollowUpMessage(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
+	_, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+		Content: content,
+		Flags:   discordgo.MessageFlagsEphemeral,
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to send follow-up message")
+	}
 }
