@@ -18,6 +18,7 @@ type Account struct {
 	Created                string // The timestamp of when the account was created on Activision.
 	IsExpiredCookie        bool   `gorm:"default:false"`   // A flag indicating if the SSO cookie has expired.
 	NotificationType       string `gorm:"default:channel"` // User preference for location of notifications either channel or dm
+	IsPermabanned          bool   `gorm:"default:false"`   // A flag indicating if the account is permanently banned
 }
 
 type Ban struct {
