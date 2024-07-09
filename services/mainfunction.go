@@ -15,10 +15,11 @@ import (
 )
 
 var (
-	checkInterval        float64 // Check interval for accounts (in minutes)
-	notificationInterval float64 // Notification interval for daily updates (in hours)
-	cooldownDuration     float64 // Cooldown duration for invalid cookie notifications (in hours)
-	sleepDuration        int     // Sleep duration for the account checking loop (in minutes)
+	checkInterval               float64 // Check interval for accounts (in minutes)
+	notificationInterval        float64 // Notification interval for daily updates (in hours)
+	cooldownDuration            float64 // Cooldown duration for invalid cookie notifications (in hours)
+	sleepDuration               int     // Sleep duration for the account checking loop (in minutes)
+	cookieCheckIntervalPermaban float64 // Check interval for permabanned accounts (in minutes)
 )
 
 // init loads environment variables and sets up configuration.
@@ -32,9 +33,10 @@ func init() {
 	notificationInterval, _ = strconv.ParseFloat(os.Getenv("NOTIFICATION_INTERVAL"), 64)
 	cooldownDuration, _ = strconv.ParseFloat(os.Getenv("COOLDOWN_DURATION"), 64)
 	sleepDuration, _ = strconv.Atoi(os.Getenv("SLEEP_DURATION"))
+	cookieCheckIntervalPermaban, _ = strconv.ParseFloat(os.Getenv("COOKIE_CHECK_INTERVAL_PERMABAN"), 64)
 
-	logger.Log.Infof("Loaded config: CHECK_INTERVAL=%.2f, NOTIFICATION_INTERVAL=%.2f, COOLDOWN_DURATION=%.2f, SLEEP_DURATION=%d",
-		checkInterval, notificationInterval, cooldownDuration, sleepDuration)
+	logger.Log.Infof("Loaded config: CHECK_INTERVAL=%.2f, NOTIFICATION_INTERVAL=%.2f, COOLDOWN_DURATION=%.2f, SLEEP_DURATION=%d, COOKIE_CHECK_INTERVAL_PERMABAN=%.2f",
+		checkInterval, notificationInterval, cooldownDuration, sleepDuration, cookieCheckIntervalPermaban)
 }
 
 // sendDailyUpdate sends a daily update message to the user for a given account.
@@ -108,6 +110,21 @@ func CheckAccounts(s *discordgo.Session) {
 			}
 
 			if account.IsPermabanned {
+				lastCookieCheck := time.Unix(account.LastCookieCheck, 0)
+				if time.Since(lastCookieCheck).Hours() > cookieCheckIntervalPermaban {
+					isValid := VerifySSOCookie(account.SSOCookie)
+					if !isValid {
+						account.IsExpiredCookie = true
+						if err := database.DB.Save(&account).Error; err != nil {
+							logger.Log.WithError(err).Errorf("Failed to save account changes for account %s: %v ", account.Title, err)
+						}
+						go sendDailyUpdate(account, s)
+					}
+					account.LastCookieCheck = time.Now().Unix()
+					if err := database.DB.Save(&account).Error; err != nil {
+						logger.Log.WithError(err).Errorf("Failed to save account changes for account %s: %v ", account.Title, err)
+					}
+				}
 				logger.Log.WithField("account", account.Title).Info("Skipping permanently banned account")
 				continue
 			}
