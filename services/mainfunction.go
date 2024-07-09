@@ -140,6 +140,11 @@ func CheckAccounts(s *discordgo.Session) {
 }
 
 func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
+	// Skip checking if the account is already permanently banned.
+	if account.IsPermabanned {
+		logger.Log.WithField("account", account.Title).Info("Skipping permanently banned account")
+		return
+	}
 	result, err := CheckAccount(account.SSOCookie)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to check account %s: possible expired SSO Cookie", account.Title)
