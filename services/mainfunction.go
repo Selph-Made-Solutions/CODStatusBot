@@ -107,7 +107,11 @@ func CheckAccounts(s *discordgo.Session) {
 				lastNotification = time.Unix(account.LastNotification, 0)
 			}
 
-			// Handle accounts with expired cookies.
+			if account.IsPermabanned {
+				logger.Log.WithField("account", account.Title).Info("Skipping permanently banned account")
+				continue
+			}
+
 			if account.IsExpiredCookie {
 				logger.Log.WithField("account ", account.Title).Info("Skipping account with expired cookie")
 				if time.Since(lastNotification).Hours() > notificationInterval {
@@ -135,7 +139,6 @@ func CheckAccounts(s *discordgo.Session) {
 	}
 }
 
-// CheckSingleAccount checks the status of a single account and sends notifications if necessary.
 func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	result, err := CheckAccount(account.SSOCookie)
 	if err != nil {
@@ -143,12 +146,10 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 		return
 	}
 
-	// Handle invalid cookie scenarios.
 	if result == models.StatusInvalidCookie {
 		lastNotification := time.Unix(account.LastCookieNotification, 0)
 		if time.Since(lastNotification) >= time.Duration(cooldownDuration)*time.Hour || account.LastCookieNotification == 0 {
 			logger.Log.Infof("Account %s has an invalid SSO cookie", account.Title)
-			// Create an embed message for invalid cookie notification.
 			embed := &discordgo.MessageEmbed{
 				Title:       fmt.Sprintf("%s - Invalid SSO Cookie", account.Title),
 				Description: fmt.Sprintf("The SSO cookie for account %s has expired. Please update the cookie using the /updateaccount command or delete the account using the /removeaccount command.", account.Title),
@@ -167,7 +168,6 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 			} else {
 				channelID = account.ChannelID
 			}
-			// Send the invalid cookie notification.
 			_, err = discord.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
 				Embed: embed,
 			})
