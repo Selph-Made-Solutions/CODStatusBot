@@ -20,7 +20,7 @@ jobs:
           goarch: amd64
           goversion: 1.22.0
           project_path: .
-          binary_name: sbchecker
+          binary_name: CODStatusBot
           build_flags: -buildvcs=false
 
       - name: Package Directories and Files
