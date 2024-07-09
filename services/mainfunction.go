@@ -197,6 +197,11 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	// Handle status changes and send notifications.
 	if result != lastStatus {
 		account.LastStatus = result
+		if result == models.StatusPermaban {
+			account.IsPermabanned = true
+		} else {
+			account.IsPermabanned = false
+		}
 		if err := database.DB.Save(&account).Error; err != nil {
 			logger.Log.WithError(err).Errorf("Failed to save account changes for account %s: %v ", account.Title, err)
 			return
