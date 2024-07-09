@@ -5,6 +5,7 @@ import (
 	"codstatusbot2.0/models"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -55,124 +56,125 @@ func ClaimSingleReward(ssoCookie, code string) (string, error) {
 // VerifySSOCookie checks if the provided SSO cookie is valid.
 func VerifySSOCookie(ssoCookie string) bool {
 	logger.Log.Infof("Verifying SSO cookie: %s ", ssoCookie)
-	req, err := http.NewRequest("GET", url2, nil) // Create a GET request to the profile endpoint
+	req, err := http.NewRequest("GET", url2, nil)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error creating verification request")
 		return false
 	}
-	headers := GenerateHeaders(ssoCookie) // Generate headers with the SSO cookie
+	headers := GenerateHeaders(ssoCookie)
 	for k, v := range headers {
-		req.Header.Set(k, v) // Set headers for the request
+		req.Header.Set(k, v)
 	}
 	client := &http.Client{}
-	resp, err := client.Do(req) // Send the verification request
+	resp, err := client.Do(req)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error sending verification request")
 		return false
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK { // Check if the response status is OK
+	if resp.StatusCode != http.StatusOK {
 		logger.Log.Errorf("Invalid SSOCookie, status code: %d ", resp.StatusCode)
 		return false
 	}
-	body, err := io.ReadAll(resp.Body) // Read the response body
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error reading verification response body")
 		return false
 	}
+	// possible bug use either len or string not sure
 	if len(body) == 0 { // Check if the response body is empty
+		// if string(body) == "" { // Check if the response body is empty
 		logger.Log.Error("Invalid SSOCookie, response body is empty")
 		return false
 	}
-	return true // SSO cookie is valid
+	return true
 }
 
 // CheckAccount checks the account status associated with the provided SSO cookie.
 func CheckAccount(ssoCookie string) (models.Status, error) {
 	logger.Log.Info("Starting CheckAccount function")
-	req, err := http.NewRequest("GET", url1, nil) // Create a GET request to the ban appeal endpoint
+	req, err := http.NewRequest("GET", url1, nil)
 	if err != nil {
 		return models.StatusUnknown, errors.New("failed to create HTTP request to check account")
 	}
-	headers := GenerateHeaders(ssoCookie) // Generate headers with the SSO cookie
+	headers := GenerateHeaders(ssoCookie)
 	for k, v := range headers {
-		req.Header.Set(k, v) // Set headers for the request
+		req.Header.Set(k, v)
 	}
 	client := &http.Client{}
-	resp, err := client.Do(req) // Send the request to check account status
+	resp, err := client.Do(req)
 	if err != nil {
 		return models.StatusUnknown, errors.New("failed to send HTTP request to check account")
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body) // Read the response body
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return models.StatusUnknown, errors.New("failed to read response body from check account request")
 	}
-	// logger.Log.Info("Response Body: ", string(body))
 	var data struct {
-		Ban []struct {
-			Enforcement string `json:"enforcement"` // Type of ban (e.g., "PERMANENT", "UNDER_REVIEW")
-			Title       string `json:"title"`       // Title of the ban reason
-			CanAppeal   bool   `json:"canAppeal"`   // Whether the ban can be appealed
-		} `json:"bans"` // Array of bans associated with the account
+		Error     string `json:"error"`
+		Success   string `json:"success"`
+		CanAppeal bool   `json:"canAppeal"`
+		Bans      []struct {
+			Enforcement string `json:"enforcement"`
+			Title       string `json:"title"`
+			CanAppeal   bool   `json:"canAppeal"`
+		} `json:"bans"`
 	}
-	if string(body) == "" { // Check if the response body is empty (invalid cookie)
+	if string(body) == "" {
 		return models.StatusInvalidCookie, nil
 	}
-	err = json.NewDecoder(resp.Body).Decode(&data) // Decode the JSON response into the data struct
-	if err == nil {                                // Check if decoding failed (possible no response)
-		return models.StatusUnknown, errors.New("failed to decode JSON response possible no response was received")
+	err = json.Unmarshal(body, &data)
+	if err != nil {
+		return models.StatusUnknown, fmt.Errorf("failed to decode JSON response: %v ", err)
 	}
-	if len(data.Ban) == 0 { // No bans found, account is in good standing
+	if len(data.Bans) == 0 {
 		return models.StatusGood, nil
-	} else { // Iterate through the bans and determine the account status
-		for _, ban := range data.Ban {
-			if ban.Enforcement == "PERMANENT" {
-				return models.StatusPermaban, nil // Account is permanently banned
-			} else if ban.Enforcement == "UNDER_REVIEW" {
-				return models.StatusShadowban, nil // Account is shadowbanned
-			} else {
-				return models.StatusGood, nil // Account is not banned or shadowbanned
-			}
+	}
+	for _, ban := range data.Bans {
+		switch ban.Enforcement {
+		case "PERMANENT":
+			return models.StatusPermaban, nil
+		case "UNDER_REVIEW":
+			return models.StatusShadowban, nil
 		}
 	}
-	return models.StatusUnknown, nil // Unknown account status
+	return models.StatusUnknown, nil
 }
 
 // CheckAccountAge retrieves the age of the account associated with the provided SSO cookie.
 func CheckAccountAge(ssoCookie string) (int, int, int, error) {
 	logger.Log.Info("Starting CheckAccountAge function")
-	req, err := http.NewRequest("GET", url2, nil) // Create a GET request to the profile endpoint
+	req, err := http.NewRequest("GET", url2, nil)
 	if err != nil {
 		return 0, 0, 0, errors.New("failed to create HTTP request to check account age")
 	}
-	headers := GenerateHeaders(ssoCookie) // Generate headers with the SSO cookie
+	headers := GenerateHeaders(ssoCookie)
 	for k, v := range headers {
-		req.Header.Set(k, v) // Set headers for the request
+		req.Header.Set(k, v)
 	}
 	client := &http.Client{}
-	resp, err := client.Do(req) // Send the request to retrieve profile information
+	resp, err := client.Do(req)
 	if err != nil {
 		return 0, 0, 0, errors.New("failed to send HTTP request to check account age")
 	}
 	defer resp.Body.Close()
 	var data struct {
-		Created string `json:"created"` // Creation date of the account in RFC3339 format
+		Created string `json:"created"`
 	}
-	err = json.NewDecoder(resp.Body).Decode(&data) // Decode the JSON response into the data struct
+	err = json.NewDecoder(resp.Body).Decode(&data)
 	if err != nil {
 		return 0, 0, 0, errors.New("failed to decode JSON response from check account age request")
 	}
 
-	created, err := time.Parse(time.RFC3339, data.Created) // Parse the creation date
+	created, err := time.Parse(time.RFC3339, data.Created)
 	if err != nil {
 		return 0, 0, 0, errors.New("failed to parse created date in check account age request")
 	}
 
-	duration := time.Since(created)             // Calculate the duration since account creation
-	years := int(duration.Hours() / 24 / 365)   // Calculate years
-	months := int(duration.Hours()/24/30) % 12  // Calculate months (remainder after years)
-	days := int(duration.Hours()/24) % 365 % 30 // Calculate days (remainder after years and months)
-
-	return years, months, days, nil // Return the account age in years, months, and days
+	duration := time.Since(created)
+	years := int(duration.Hours() / 24 / 365)
+	months := int(duration.Hours()/24/30) % 12
+	days := int(duration.Hours()/24) % 365 % 30
+	return years, months, days, nil
 }
