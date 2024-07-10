@@ -106,6 +106,26 @@ The bot uses an internal flag system to track the status of your accounts and tr
 These logs are based on the bot's checks
 and might not reflect real-time status compared to Activision.
 
+
+### /checknow
+
+This command allows you to immediately check the status of a specific account.
+
+**Usage:**
+```
+/checknow <account>
+```
+- `<account>`: The title of the account you want to check immediately.
+
+**Example:**
+
+```
+/checknow MyAccount
+```
+
+**Note:** This command performs an immediate check on the specified account, regardless of when the last check was performed. Use this command when you need to know the current status of an account without waiting for the regular check interval.
+
+
 ### /updateaccount
 
 This command allows you to update the SSO cookie for an existing account.
