@@ -8,6 +8,7 @@
   - /addaccount 
   - /removeaccount
   - /accountlogs
+  - /checknow
   - /updateaccount
   - /accountage
   - /setpreference
