@@ -1,3 +1,4 @@
+[![Stable Build](https://github.com/bradselph/CODStatusBot/actions/workflows/main.yml/badge.svg?event=status)](https://github.com/bradselph/CODStatusBot/actions/workflows/main.yml)
 # COD Status Bot User Guide
 
 **Table of Contents**
