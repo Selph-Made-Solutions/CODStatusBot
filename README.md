@@ -1,4 +1,4 @@
-#Warning Work in Progress this i by no means working yet!
+# **Warning Work in Progress this i by no means working yet!**
 
 
 # COD Status Bot User Guide - Telegram Edition
