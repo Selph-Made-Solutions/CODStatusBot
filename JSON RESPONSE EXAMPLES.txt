@@ -1,4 +1,0 @@
-No ban Example:           {"error":"","success":"true","canAppeal":false,"bans":[]}
-Shadowban Example:        {"error":"","success":"true","canAppeal":false,"bans":[{"enforcement":"UNDER_REVIEW","canAppeal":false,"title":"COD:MW3"},{"enforcement":"UNDER_REVIEW","canAppeal":false,"title":"COD:MW II"}]}
-Permaban Example:         {"error":"","success":"true","canAppeal":true,"bans":[{"enforcement":"PERMANENT","canAppeal":true,"title":"COD:MW3"},{"enforcement":"PERMANENT","canAppeal":true,"title":"COD:MW II"}]}
-Permaban/Appeal Example:  {"error":"","success":"true","canAppeal":false,"bans":[{"enforcement":"PERMANENT","canAppeal":false,"bar":{"CaseNumber":"","Status":"Open"},"title":"COD:MW3"},{"enforcement":"PERMANENT","canAppeal":false,"bar":{"CaseNumber":"","Status":"Open"},"title":"COD:MW II"}]}
