@@ -1,10 +1,10 @@
 package checknow
 
 import (
-	"codstatusbot2.0/database"
-	"codstatusbot2.0/logger"
-	"codstatusbot2.0/models"
-	"codstatusbot2.0/services"
+	"CODStatusBot/database"
+	"CODStatusBot/logger"
+	"CODStatusBot/models"
+	"CODStatusBot/services"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"time"
@@ -124,6 +124,16 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	sendFollowUpMessage(s, i, "", embed)
 }
 
+func sendFollowUpMessage(s *discordgo.Session, i *discordgo.InteractionCreate, content string, embed ...*discordgo.MessageEmbed) {
+	_, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+		Content: content,
+		Embeds:  embed,
+		Flags:   discordgo.MessageFlagsEphemeral,
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to send follow-up message")
+	}
+}
 func getAllChoices(guildID string) []*discordgo.ApplicationCommandOptionChoice {
 	logger.Log.Info("Getting all choices for account select dropdown")
 	var accounts []models.Account
@@ -136,15 +146,4 @@ func getAllChoices(guildID string) []*discordgo.ApplicationCommandOptionChoice {
 		}
 	}
 	return choices
-}
-
-func sendFollowUpMessage(s *discordgo.Session, i *discordgo.InteractionCreate, content string, embed ...*discordgo.MessageEmbed) {
-	_, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
-		Content: content,
-		Embeds:  embed,
-		Flags:   discordgo.MessageFlagsEphemeral,
-	})
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to send follow-up message")
-	}
 }
