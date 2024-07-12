@@ -7,7 +7,7 @@ on:
 jobs:
   build-linux-amd64:
     name: Build Linux/AMD64
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4.1.1
@@ -18,7 +18,7 @@ jobs:
           github_token: ${{ secrets.TOKEN_GITHUB }}
           goos: linux
           goarch: amd64
-          goversion: 1.22.0
+          goversion: 1.22
           project_path: .
           binary_name: CODStatusBot
           build_flags: -buildvcs=false
