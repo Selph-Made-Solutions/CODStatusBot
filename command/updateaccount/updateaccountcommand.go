@@ -1,10 +1,10 @@
 package updateaccount
 
 import (
-	"codstatusbot2.0/database"
-	"codstatusbot2.0/logger"
-	"codstatusbot2.0/models"
-	"codstatusbot2.0/services"
+	"CODStatusBot/database"
+	"CODStatusBot/logger"
+	"CODStatusBot/models"
+	"CODStatusBot/services"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 )
