@@ -1,12 +1,12 @@
 package database
 
 import (
-	"codstatusbot2.0/models"
+	"CODStatusBot/models"
 	"errors"
 	"fmt"
 	"os"
 
-	"codstatusbot2.0/logger"
+	"CODStatusBot/logger"
 
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
