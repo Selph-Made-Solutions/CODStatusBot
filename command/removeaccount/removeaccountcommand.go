@@ -1,9 +1,9 @@
 package removeaccount
 
 import (
-	"codstatusbot2.0/database"
-	"codstatusbot2.0/logger"
-	"codstatusbot2.0/models"
+	"CODStatusBot/database"
+	"CODStatusBot/logger"
+	"CODStatusBot/models"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -136,6 +136,7 @@ func getAllChoices(guildID string) []*discordgo.ApplicationCommandOptionChoice {
 	}
 	return choices
 }
+
 func UpdateAccountChoices(s *discordgo.Session, guildID string) {
 	commands, err := s.ApplicationCommands(s.State.User.ID, guildID)
 	if err != nil {
@@ -145,7 +146,7 @@ func UpdateAccountChoices(s *discordgo.Session, guildID string) {
 	logger.Log.Info("Updating account choices for commands")
 	newChoices := getAllChoices(guildID)
 	for _, command := range commands {
-		if command.Name == "removeaccount" || command.Name == "accountlogs" || command.Name == "updateaccount" || command.Name == "accountage" {
+		if command.Name == "removeaccount" || command.Name == "accountlogs" || command.Name == "updateaccount" || command.Name == "checknow" || command.Name == "accountage" {
 			newCommand := &discordgo.ApplicationCommand{
 				Name:        command.Name,
 				Description: command.Description,
