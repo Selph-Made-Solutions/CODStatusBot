@@ -1,14 +1,15 @@
 package command
 
 import (
-	"codstatusbot2.0/command/accountage"
-	"codstatusbot2.0/command/accountlogs"
-	"codstatusbot2.0/command/addaccount"
-	"codstatusbot2.0/command/checknow"
-	"codstatusbot2.0/command/help"
-	"codstatusbot2.0/command/removeaccount"
-	"codstatusbot2.0/command/updateaccount"
-	"codstatusbot2.0/logger"
+	"CODStatusBot/command/accountage"
+	"CODStatusBot/command/accountlogs"
+	"CODStatusBot/command/addaccount"
+	"CODStatusBot/command/checknow"
+	"CODStatusBot/command/feedback"
+	"CODStatusBot/command/help"
+	"CODStatusBot/command/removeaccount"
+	"CODStatusBot/command/updateaccount"
+	"CODStatusBot/logger"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -57,6 +58,12 @@ func RegisterCommands(s *discordgo.Session, guildID string) {
 	help.RegisterCommand(s, guildID)
 	Handlers["help"] = help.CommandHelp
 	logger.Log.Info("Registering help command")
+
+	// Register global feedback command
+	feedback.RegisterCommand(s)
+	Handlers["feedback"] = feedback.CommandFeedback
+	logger.Log.Info("Registering global feedback command")
+
 }
 
 func UnregisterCommands(s *discordgo.Session, guildID string) {
@@ -92,5 +99,10 @@ func UnregisterCommands(s *discordgo.Session, guildID string) {
 
 	help.UnregisterCommand(s, guildID)
 	logger.Log.Info("Unregistering help command")
+
+	// Unregister global feedback command
+
+	feedback.UnregisterCommand(s)
+	logger.Log.Info("Unregistering global feedback command")
 
 }
