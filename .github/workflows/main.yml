@@ -1,46 +1,38 @@
-name: Build
-
+name: Build and Release
 on:
   release:
     types: [created]
+  workflow_dispatch:
 
 jobs:
-  build-linux-amd64:
-    name: Build Linux/AMD64
-    runs-on: ubuntu-20.04
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4.1.1
+        uses: actions/checkout@v4
 
-      - name: Build Binaries
-        uses: lmangani/go-release-action@v1.37-ubuntu
+      - name: Setup Go
+        uses: actions/setup-go@v4
         with:
-          github_token: ${{ secrets.TOKEN_GITHUB }}
-          goos: linux
-          goarch: amd64
-          goversion: 1.22.0
-          project_path: .
-          binary_name: CODStatusBot
-          build_flags: -buildvcs=false
+          go-version: '1.22'
 
-      - name: Package Directories and Files
-        uses: actions/upload-artifact@v4.3.1
+      - name: Build Binary
+        run: go build -o CODStatusBot .
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: extra-directories-files
-          path: |
-            internal
-            models
-            cmd
-            logs
-            main.go
-            .env
-            start.sh
-          if-no-files-found: error
+          name: CODStatusBot
+          path: ./CODStatusBot
 
-      - name: Push Release
-        uses: actions/upload-artifact@v4.3.1
+      - name: Upload Release Asset
+        if: github.event_name == 'release'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: Release
-          path: .  
-          exclude: .git* .idea* Readme.md go.sum go.mod
-
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./CODStatusBot
+          asset_name: CODStatusBot
+          asset_content_type: application/octet-stream

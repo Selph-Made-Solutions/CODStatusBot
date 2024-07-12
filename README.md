@@ -1,4 +1,4 @@
-[![Build](https://github.com/bradselph/CODStatusBot/actions/workflows/main.yml/badge.svg)](https://github.com/bradselph/CODStatusBot/actions/workflows/main.yml)
+[![Go](https://github.com/bradselph/CODStatusBot/actions/workflows/go.yml/badge.svg)](https://github.com/bradselph/CODStatusBot/actions/workflows/go.yml)
 # COD Status Bot User Guide
 
 **Table of Contents**
