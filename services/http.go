@@ -1,8 +1,8 @@
 package services
 
 import (
-	"codstatusbot2.0/logger"
-	"codstatusbot2.0/models"
+	"CODStatusBot/logger"
+	"CODStatusBot/models"
 	"encoding/json"
 	"errors"
 	"fmt"
