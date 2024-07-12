@@ -1,9 +1,9 @@
 package setpreference
 
 import (
-	"codstatusbot2.0/database"
-	"codstatusbot2.0/logger"
-	"codstatusbot2.0/models"
+	"CODStatusBot/database"
+	"CODStatusBot/logger"
+	"CODStatusBot/models"
 	"github.com/bwmarrin/discordgo"
 )
 
