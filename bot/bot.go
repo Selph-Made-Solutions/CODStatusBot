@@ -1,13 +1,12 @@
 package bot
 
 import (
-	"codstatusbot2.0/command"
-	"codstatusbot2.0/services"
+	"CODStatusBot/command"
+	"CODStatusBot/logger"
+	"CODStatusBot/services"
 	"errors"
-	"os"
-
-	"codstatusbot2.0/logger"
 	"github.com/bwmarrin/discordgo"
+	"os"
 )
 
 var discord *discordgo.Session
