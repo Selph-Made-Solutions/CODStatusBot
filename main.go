@@ -1,9 +1,9 @@
 package main
 
 import (
-	"codstatusbot2.0/bot"
-	"codstatusbot2.0/database"
-	"codstatusbot2.0/logger"
+	"CODStatusBot/bot"
+	"CODStatusBot/database"
+	"CODStatusBot/logger"
 	"os"
 	"os/signal"
 	"syscall"
