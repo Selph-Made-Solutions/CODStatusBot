@@ -1,11 +1,11 @@
 package addaccount
 
 import (
-	"codstatusbot2.0/command/removeaccount"
-	"codstatusbot2.0/database"
-	"codstatusbot2.0/logger"
-	"codstatusbot2.0/models"
-	"codstatusbot2.0/services"
+	"CODStatusBot/command/removeaccount"
+	"CODStatusBot/database"
+	"CODStatusBot/logger"
+	"CODStatusBot/models"
+	"CODStatusBot/services"
 	"github.com/bwmarrin/discordgo"
 )
 
