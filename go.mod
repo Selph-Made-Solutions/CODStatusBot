@@ -1,4 +1,4 @@
-module codstatusbot2.0
+module CODStatusBot
 
 go 1.22.4
 
