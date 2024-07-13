@@ -42,8 +42,4 @@ jobs:
         asset_path: ./CODStatusBot
         asset_name: CODStatusBot
         asset_content_type: application/octet-stream
-             
-              
-              - name: Coveralls GitHub Action
-                uses: coverallsapp/github-action@v2.3.0
-            
+        
