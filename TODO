@@ -1,26 +1,33 @@
+TODO list for the bot. and ideas for the future.
 
-TODO fix disabled functions
-        claimrewards function
-           TODO fix the claim rewards commands as once its called it crashes entire bot
-                preferences function
-           TODO work on the DM vs channel command its disabled for now
-                TODO ensure new DM vs channel interactions configuration is functioning properly
-                 currently a user has to set it for each account, but it should be a global setting
+1. Security and encryption:
+    Implement some type of encryption for possibly sensitive data in the database
+    Salting of data stored in the database, etc.
+    add safeguards against SQL injections. via ssocookie fields
 
+2. Metrics and monitoring:
+    Bot uptimes, Checks last 24 hours, errors per hour,average response time, average response time of activison, time passed since join new guild.
 
-TODO implement some type of encryption for possibly sensitive data in the database
+3. Contextual logging:
+    improve logging importance errors and skipping warnings
+
+4. Improve error handling:
+    Add error handling to all the commands to catch any errors and send them to the user.
+
+6. Rate limiting:
+   Implement better rate limiting to prevent abuse of the bot.
+
+7. Graceful restart/shutdown:
+   Consider implementing a graceful shutdown mechanism to ensure all ongoing operations are completed before the bot stops.
+
+8. Handling network issues:
+   Implement retry logic for network operations to handle temporary connection issues.
+
 
 TODO create some form of maintenance routine for purging old database entries with expired cookies without user activity.
 
+TODO finish disabled claimrewards function
+    TODO fix the claim rewards commands as once its called it crashes entire bot
+
 TODO create end user documentation for the bot
-
 TODO create privacy policy for the bot
-
-TODO possibly need to run this sql script to add preferences functionality to the database
-
-    ```
-    ALTER TABLE accounts
-    DROP FOREIGN KEY fk_users_accounts,
-    ADD CONSTRAINT fk_users_accounts
-    FOREIGN KEY (user_id) REFERENCES users(user_id);
-    ```
