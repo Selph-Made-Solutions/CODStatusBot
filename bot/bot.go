@@ -2,6 +2,7 @@ package bot
 
 import (
 	"CODStatusBot/command"
+	"CODStatusBot/command/addaccountnew"
 	"CODStatusBot/logger"
 	"CODStatusBot/services"
 	"errors"
@@ -48,12 +49,20 @@ func StartBot() error {
 	}
 
 	discord.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		handler, ok := command.Handlers[i.ApplicationCommandData().Name]
-		if ok {
-			logger.Log.WithField("command", i.ApplicationCommandData().Name).Info("Handling command")
-			handler(s, i)
-		} else {
-			logger.Log.WithField("command", i.ApplicationCommandData().Name).Error("Command handler not found")
+		switch i.Type {
+		case discordgo.InteractionApplicationCommand:
+			if h, ok := command.Handlers[i.ApplicationCommandData().Name]; ok {
+				logger.Log.WithField("command", i.ApplicationCommandData().Name).Info("Handling command")
+
+				h(s, i)
+			} else {
+				logger.Log.WithField("command", i.ApplicationCommandData().Name).Error("Command handler not found")
+			}
+		case discordgo.InteractionModalSubmit:
+			if i.ModalSubmitData().CustomID == "add_account_modal" {
+				logger.Log.Info("Handling add account modal submission")
+				addaccountnew.HandleModalSubmit(s, i)
+			}
 		}
 	})
 	discord.AddHandler(OnGuildCreate)
@@ -73,40 +82,3 @@ func OnGuildDelete(s *discordgo.Session, event *discordgo.GuildDelete) {
 	logger.Log.WithField("guild", guildID).Info("Bot left guild")
 	command.UnregisterCommands(s, guildID)
 }
-
-// Possibly unnecessary; not sure yet. Commenting it out for now.
-/*	func StopBot() error {
-	logger.Log.Info("Bot is shutting down")
-	guilds, err := discord.UserGuilds(100, "", "", false)
-	if err != nil {
-		logger.Log.WithError(err).WithField("Bot Shutdown", "Disconnecting Guilds").Error()
-		return err
-	}
-	for _, guild := range guilds {
-		logger.Log.WithField("guild", guild.Name).Info("Disconnected from Guild")
-	}
-	err = discord.Close()
-	if err != nil {
-		logger.Log.WithError(err).WithField("Bot Shutdown", "Closing Session").Error()
-		return err
-	}
-	return nil
-}
-
-func RestartBot() error {
-	logger.Log.Info("Restarting bot")
-	err := StopBot()
-	if err != nil {
-		logger.Log.WithError(err).Error("Error stopping bot")
-		return err
-	}
-
-	err = StartBot()
-	if err != nil {
-		logger.Log.WithError(err).Error("Error starting bot")
-		return err
-	}
-	logger.Log.Info("Bot restarted successfully")
-	return nil
-}
-*/
