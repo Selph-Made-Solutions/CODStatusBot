@@ -14,6 +14,7 @@ import (
 	"CODStatusBot/command/listaccounts"
 	"CODStatusBot/command/removeaccount"
 	"CODStatusBot/command/removeaccountnew"
+	"CODStatusBot/command/setpreference"
 	"CODStatusBot/command/updateaccount"
 	"CODStatusBot/command/updateaccountnew"
 	"CODStatusBot/logger"
@@ -38,11 +39,9 @@ func RegisterCommands(s *discordgo.Session, guildID string) {
 	Handlers["updateaccount"] = updateaccount.CommandUpdateAccount
 	logger.Log.Info("Registering updateaccount command")
 
-	/*
-		setpreference.RegisterCommand(s, guildID)
-		Handlers["setpreference"] = setpreference.CommandSetPreference
-		logger.Log.Info("Registering setpreference command")
-	*/
+	setpreference.RegisterCommand(s, guildID)
+	Handlers["setpreference"] = setpreference.CommandSetPreference
+	logger.Log.Info("Registering setpreference command")
 
 	accountage.RegisterCommand(s, guildID)
 	Handlers["accountage"] = accountage.CommandAccountAge
@@ -106,7 +105,7 @@ func UnregisterCommands(s *discordgo.Session, guildID string) {
 	addaccount.UnregisterCommand(s, guildID)
 	logger.Log.Info("Unregistering addaccount command")
 
-	addaccount.UnregisterCommand(s, guildID)
+	addaccountnew.UnregisterCommand(s, guildID)
 	logger.Log.Info("Unregistering addaccountnew command")
 
 	removeaccount.UnregisterCommand(s, guildID)
@@ -115,10 +114,8 @@ func UnregisterCommands(s *discordgo.Session, guildID string) {
 	accountlogs.UnregisterCommand(s, guildID)
 	logger.Log.Info("Unregistering accountlogs command")
 
-	/*
-		setpreference.UnregisterCommand(s, guildID)
-		logger.Log.Info("Unregistering setpreference command")
-	*/
+	setpreference.UnregisterCommand(s, guildID)
+	logger.Log.Info("Unregistering setpreference command")
 
 	updateaccount.UnregisterCommand(s, guildID)
 	logger.Log.Info("Unregistering updateaccount command")
