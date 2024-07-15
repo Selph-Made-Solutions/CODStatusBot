@@ -14,6 +14,9 @@ import (
 var url1 = "https://support.activision.com/api/bans/appeal?locale=en" // Endpoint for checking account bans
 var url2 = "https://support.activision.com/api/profile?accts=false"   // Endpoint for retrieving profile information
 // var url3 = "https://profile.callofduty.com/promotions/redeemCode/" // Endpoint for claiming rewards (currently unused)
+// var url4 = "https://profile.callofduty.com/api/papi-client/crm/cod/v2/accounts" // Endpoint for retrieving linked platforms and their associated IDs (currently unused)
+// var url5 = "https://www.callofduty.com/api/papi-client/crm/cod/v2/identities/" // Endpoint for retrieving (currently unused)
+// var url6 = "https://s.activision.com/activision/userInfo/{SSO_COOKIE}" // Endpoint for retrieving extremely detailed account information (currently unused)
 
 /*
 func ClaimSingleReward(ssoCookie, code string) (string, error) {
