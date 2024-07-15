@@ -3,6 +3,7 @@ package command
 import (
 	"CODStatusBot/command/accountage"
 	"CODStatusBot/command/accountlogs"
+	"CODStatusBot/command/accountlogsnew"
 	"CODStatusBot/command/addaccount"
 	"CODStatusBot/command/addaccountnew"
 	"CODStatusBot/command/checknow"
@@ -68,6 +69,10 @@ func RegisterCommands(s *discordgo.Session, guildID string) {
 	Handlers["help"] = help.CommandHelp
 	logger.Log.Info("Registering help command")
 
+	accountlogsnew.RegisterCommand(s, guildID)
+	Handlers["accountlogsnew"] = accountlogsnew.CommandAccountLogsNew
+	logger.Log.Info("Registering accountlogsnew command")
+
 	checknownew.RegisterCommand(s, guildID)
 	Handlers["checknownew"] = checknownew.CommandCheckNowNew
 	logger.Log.Info("Registering checknownew command")
@@ -120,6 +125,9 @@ func UnregisterCommands(s *discordgo.Session, guildID string) {
 		claimrewards.UnregisterCommand(s, guildID)
 		logger.Log.Info("Unregistering claimavailablerewards command")
 	*/
+
+	accountlogsnew.UnregisterCommand(s, guildID)
+	logger.Log.Info("Unregistering accountlogsnew command")
 
 	checknow.UnregisterCommand(s, guildID)
 	logger.Log.Info("Unregistering checknow command")
