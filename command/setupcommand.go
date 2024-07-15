@@ -4,6 +4,7 @@ import (
 	"CODStatusBot/command/accountage"
 	"CODStatusBot/command/accountlogs"
 	"CODStatusBot/command/addaccount"
+	"CODStatusBot/command/addaccountnew"
 	"CODStatusBot/command/checknow"
 	"CODStatusBot/command/feedback"
 	"CODStatusBot/command/help"
@@ -45,6 +46,10 @@ func RegisterCommands(s *discordgo.Session, guildID string) {
 	Handlers["addaccount"] = addaccount.CommandAddAccount
 	logger.Log.Info("Registering addaccount command")
 
+	addaccountnew.RegisterCommand(s, guildID)
+	Handlers["addaccountnew"] = addaccountnew.CommandAddAccountNew
+	logger.Log.Info("Registering addaccountnew command")
+
 	/*
 		claimrewards.RegisterCommand(s, guildID)
 		Handlers["claimavailablerewards"] = claimrewards.CommandClaimRewards
@@ -71,6 +76,9 @@ func UnregisterCommands(s *discordgo.Session, guildID string) {
 
 	addaccount.UnregisterCommand(s, guildID)
 	logger.Log.Info("Unregistering addaccount command")
+
+	addaccount.UnregisterCommand(s, guildID)
+	logger.Log.Info("Unregistering addaccountnew command")
 
 	removeaccount.UnregisterCommand(s, guildID)
 	logger.Log.Info("Unregistering removeaccount command")
