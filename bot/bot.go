@@ -4,6 +4,7 @@ import (
 	"CODStatusBot/command"
 	"CODStatusBot/command/addaccountnew"
 	"CODStatusBot/command/removeaccountnew" // Add this new import
+	"CODStatusBot/command/updateaccountnew"
 	"CODStatusBot/logger"
 	"CODStatusBot/services"
 	"errors"
@@ -60,12 +61,19 @@ func StartBot() error {
 				logger.Log.WithField("command", i.ApplicationCommandData().Name).Error("Command handler not found")
 			}
 		case discordgo.InteractionModalSubmit:
-			if i.ModalSubmitData().CustomID == "add_account_modal" {
+			customID := i.ModalSubmitData().CustomID
+			switch customID {
+			case "add_account_modal":
 				logger.Log.Info("Handling add account modal submission")
 				addaccountnew.HandleModalSubmit(s, i)
-			} else if i.ModalSubmitData().CustomID == "remove_account_modal" {
+			case "remove_account_modal":
 				logger.Log.Info("Handling remove account modal submission")
 				removeaccountnew.HandleModalSubmit(s, i)
+			case "update_account_modal":
+				logger.Log.Info("Handling update account modal submission")
+				updateaccountnew.HandleModalSubmit(s, i)
+			default:
+				logger.Log.WithField("customID", customID).Error("Unknown modal submission")
 			}
 		}
 	})
