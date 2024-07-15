@@ -8,6 +8,7 @@ import (
 	"CODStatusBot/command/checknow"
 	"CODStatusBot/command/feedback"
 	"CODStatusBot/command/help"
+	"CODStatusBot/command/listaccounts"
 	"CODStatusBot/command/removeaccount"
 	"CODStatusBot/command/updateaccount"
 	"CODStatusBot/logger"
@@ -64,7 +65,10 @@ func RegisterCommands(s *discordgo.Session, guildID string) {
 	Handlers["help"] = help.CommandHelp
 	logger.Log.Info("Registering help command")
 
-	// Register global feedback command
+	listaccounts.RegisterCommand(s, guildID)
+	Handlers["listaccounts"] = listaccounts.CommandListAccounts
+	logger.Log.Info("Registering listaccounts command")
+
 	feedback.RegisterCommand(s)
 	Handlers["feedback"] = feedback.CommandFeedback
 	logger.Log.Info("Registering global feedback command")
@@ -108,7 +112,8 @@ func UnregisterCommands(s *discordgo.Session, guildID string) {
 	help.UnregisterCommand(s, guildID)
 	logger.Log.Info("Unregistering help command")
 
-	// Unregister global feedback command
+	listaccounts.UnregisterCommand(s, guildID)
+	logger.Log.Info("Unregistering listaccounts command")
 
 	feedback.UnregisterCommand(s)
 	logger.Log.Info("Unregistering global feedback command")
