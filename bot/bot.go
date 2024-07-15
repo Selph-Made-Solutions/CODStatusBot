@@ -2,6 +2,7 @@ package bot
 
 import (
 	"CODStatusBot/command"
+	"CODStatusBot/command/accountlogsnew"
 	"CODStatusBot/command/addaccountnew"
 	"CODStatusBot/command/removeaccountnew" // Add this new import
 	"CODStatusBot/command/updateaccountnew"
@@ -74,6 +75,15 @@ func StartBot() error {
 				updateaccountnew.HandleModalSubmit(s, i)
 			default:
 				logger.Log.WithField("customID", customID).Error("Unknown modal submission")
+			}
+		case discordgo.InteractionMessageComponent:
+			customID := i.MessageComponentData().CustomID
+			switch customID {
+			case "account_logs_select":
+				logger.Log.Info("Handling account logs selection")
+				accountlogsnew.HandleAccountSelection(s, i)
+			default:
+				logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 			}
 		}
 	})
