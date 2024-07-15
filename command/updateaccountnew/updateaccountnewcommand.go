@@ -7,6 +7,7 @@ import (
 	"CODStatusBot/services"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
+	"strconv"
 	"strings"
 )
 
@@ -57,30 +58,59 @@ func CommandUpdateAccountNew(s *discordgo.Session, i *discordgo.InteractionCreat
 		return
 	}
 
-	accountList := "Your accounts:\n"
-	for _, account := range accounts {
-		accountList += fmt.Sprintf("• %s (Status: %s)\n", account.Title, account.LastStatus)
+	options := make([]discordgo.SelectMenuOption, len(accounts))
+	for index, account := range accounts {
+		options[index] = discordgo.SelectMenuOption{
+			Label:       account.Title,
+			Value:       strconv.Itoa(int(account.ID)),
+			Description: fmt.Sprintf("Status: %s", account.LastStatus),
+		}
 	}
 
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseModal,
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			CustomID: "update_account_modal",
-			Title:    "Update Account",
+			Content: "Select an account to update:",
+			Flags:   discordgo.MessageFlagsEphemeral,
 			Components: []discordgo.MessageComponent{
 				discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
-						discordgo.TextInput{
-							CustomID:    "account_title",
-							Label:       "Enter the title of the account to update",
-							Style:       discordgo.TextInputShort,
-							Placeholder: "Enter the account title",
-							Required:    true,
-							MinLength:   1,
-							MaxLength:   100,
+						discordgo.SelectMenu{
+							CustomID:    "update_account_select",
+							Placeholder: "Choose an account",
+							Options:     options,
 						},
 					},
 				},
+			},
+		},
+	})
+
+	if err != nil {
+		logger.Log.WithError(err).Error("Error responding with account selection")
+	}
+}
+
+func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	data := i.MessageComponentData()
+	if len(data.Values) == 0 {
+		respondToInteraction(s, i, "No account selected. Please try again.")
+		return
+	}
+
+	accountID, err := strconv.Atoi(data.Values[0])
+	if err != nil {
+		logger.Log.WithError(err).Error("Error converting account ID")
+		respondToInteraction(s, i, "Error processing your selection. Please try again.")
+		return
+	}
+
+	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseModal,
+		Data: &discordgo.InteractionResponseData{
+			CustomID: fmt.Sprintf("update_account_modal_%d", accountID),
+			Title:    "Update Account",
+			Components: []discordgo.MessageComponent{
 				discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
 						discordgo.TextInput{
@@ -100,40 +130,36 @@ func CommandUpdateAccountNew(s *discordgo.Session, i *discordgo.InteractionCreat
 
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding with modal")
-		return
-	}
-
-	// Send the account list as a follow-up message
-	_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
-		Content: accountList,
-		Flags:   discordgo.MessageFlagsEphemeral,
-	})
-	if err != nil {
-		logger.Log.WithError(err).Error("Error sending follow-up message with account list")
 	}
 }
 
 func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
 
-	var accountTitle, newSSOCookie string
+	accountIDStr := strings.TrimPrefix(data.CustomID, "update_account_modal_")
+	accountID, err := strconv.Atoi(accountIDStr)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error converting account ID from modal custom ID")
+		respondToInteraction(s, i, "Error processing your update. Please try again.")
+		return
+	}
+
+	var newSSOCookie string
 	for _, comp := range data.Components {
 		if row, ok := comp.(*discordgo.ActionsRow); ok {
 			for _, rowComp := range row.Components {
 				if textInput, ok := rowComp.(*discordgo.TextInput); ok {
-					switch textInput.CustomID {
-					case "account_title":
-						accountTitle = strings.TrimSpace(textInput.Value)
-					case "new_sso_cookie":
+					if textInput.CustomID == "new_sso_cookie" {
 						newSSOCookie = strings.TrimSpace(textInput.Value)
+						break
 					}
 				}
 			}
 		}
 	}
 
-	if accountTitle == "" || newSSOCookie == "" {
-		respondToInteraction(s, i, "Error: Both account title and new SSO cookie must be provided.")
+	if newSSOCookie == "" {
+		respondToInteraction(s, i, "Error: New SSO cookie must be provided.")
 		return
 	}
 
@@ -144,10 +170,17 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	var account models.Account
-	result := database.DB.Where("title = ? AND user_id = ? AND guild_id = ?", accountTitle, i.Member.User.ID, i.GuildID).First(&account)
+	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
 		respondToInteraction(s, i, "Error: Account not found or you don't have permission to update it.")
+		return
+	}
+
+	// Verify that the user owns this account
+	if account.UserID != i.Member.User.ID || account.GuildID != i.GuildID {
+		logger.Log.Error("User attempted to update an account they don't own")
+		respondToInteraction(s, i, "Error: You don't have permission to update this account.")
 		return
 	}
 
