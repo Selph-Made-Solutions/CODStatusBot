@@ -2,9 +2,10 @@ package bot
 
 import (
 	"CODStatusBot/command"
+	"CODStatusBot/command/accountagenew"
 	"CODStatusBot/command/accountlogsnew"
 	"CODStatusBot/command/addaccountnew"
-	"CODStatusBot/command/removeaccountnew" // Add this new import
+	"CODStatusBot/command/removeaccountnew"
 	"CODStatusBot/command/updateaccountnew"
 	"CODStatusBot/logger"
 	"CODStatusBot/services"
@@ -82,6 +83,12 @@ func StartBot() error {
 			case "account_logs_select":
 				logger.Log.Info("Handling account logs selection")
 				accountlogsnew.HandleAccountSelection(s, i)
+			case "update_account_select":
+				logger.Log.Info("Handling update account selection")
+				updateaccountnew.HandleAccountSelection(s, i)
+			case "account_age_select":
+				logger.Log.Info("Handling account age selection")
+				accountagenew.HandleAccountSelection(s, i)
 			default:
 				logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 			}
