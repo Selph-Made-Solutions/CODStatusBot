@@ -60,22 +60,27 @@ func CommandSetPreference(s *discordgo.Session, i *discordgo.InteractionCreate) 
 	userID := i.Member.User.ID
 	guildID := i.GuildID
 
-	var accounts []models.Account
-	result := database.DB.Where("user_id = ? AND guild_id = ?", userID, guildID).Find(&accounts)
+	// Validate preference type
+	if preferenceType != "channel" && preferenceType != "dm" {
+		respondToInteraction(s, i, "Invalid preference type. Please choose either 'channel' or 'dm'.")
+		return
+	}
+
+	// Update all existing accounts for this user in this guild
+	result := database.DB.Model(&models.Account{}).
+		Where("user_id = ? AND guild_id = ?", userID, guildID).
+		Update("notification_type", preferenceType)
+
 	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
+		logger.Log.WithError(result.Error).Error("Error updating user accounts")
 		respondToInteraction(s, i, "Error setting preference. Please try again.")
 		return
 	}
 
-	for _, account := range accounts {
-		account.NotificationType = preferenceType
-		if err := database.DB.Save(&account).Error; err != nil {
-			logger.Log.WithError(err).Errorf("Error updating preference for account %s", account.Title)
-		}
-	}
+	// Log the number of accounts updated
+	logger.Log.Infof("Updated %d accounts for user %s in guild %s", result.RowsAffected, userID, guildID)
 
-	message := "Your notification preference has been updated. "
+	message := "Your notification preference has been updated for all your accounts. "
 	if preferenceType == "channel" {
 		message += "You will now receive notifications in the channel."
 	} else {
