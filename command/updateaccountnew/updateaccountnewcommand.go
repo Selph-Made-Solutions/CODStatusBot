@@ -184,7 +184,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Update the account
+	// Update the account, preserving the existing NotificationType
 	account.SSOCookie = newSSOCookie
 	account.IsExpiredCookie = false // Reset the expired cookie flag
 
