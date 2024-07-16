@@ -7,6 +7,7 @@ import (
 	"CODStatusBot/services"
 
 	"github.com/bwmarrin/discordgo"
+	"strings"
 )
 
 func RegisterCommand(s *discordgo.Session, guildID string) {
@@ -84,8 +85,8 @@ func CommandAddAccountNew(s *discordgo.Session, i *discordgo.InteractionCreate) 
 func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
 
-	title := data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
-	ssoCookie := data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
+	title := strings.TrimSpace(data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
+	ssoCookie := strings.TrimSpace(data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
 
 	// Verify SSO Cookie
 	if !services.VerifySSOCookie(ssoCookie) {
@@ -93,18 +94,31 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
+	userID := i.Member.User.ID
+
+	// Get the user's current notification preference
+	var existingAccount models.Account
+	result := database.DB.Where("user_id = ? AND guild_id = ?", userID, i.GuildID).First(&existingAccount)
+
+	notificationType := "channel" // Default to channel if no existing preference
+	if result.Error == nil {
+		notificationType = existingAccount.NotificationType
+	}
+
+	// logger.Log.Infof("Using notification preference '%s' for new account of user %s in guild %s", notificationType, userID, i.GuildID)
+
 	// Create new account
 	account := models.Account{
-		UserID:           i.Member.User.ID,
+		UserID:           userID,
 		Title:            title,
 		SSOCookie:        ssoCookie,
 		GuildID:          i.GuildID,
 		ChannelID:        i.ChannelID,
-		NotificationType: "channel",
+		NotificationType: notificationType,
 	}
 
 	// Save to database
-	result := database.DB.Create(&account)
+	result = database.DB.Create(&account)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error creating account")
 		respondToInteraction(s, i, "Error creating account. Please try again.")
