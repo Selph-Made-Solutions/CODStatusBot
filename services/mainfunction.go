@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"github.com/joho/godotenv"
 	"os"
 	"strconv"
 	"sync"
@@ -12,7 +13,6 @@ import (
 	"CODStatusBot/models"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/joho/godotenv"
 )
 
 var (
@@ -25,6 +25,7 @@ var (
 	globalNotificationCooldown  float64 // Global cooldown for notifications per user (in hours)
 	userNotificationTimestamps  = make(map[string]time.Time)
 	userNotificationMutex       sync.Mutex
+	DBMutex                     sync.Mutex
 )
 
 func init() {
@@ -220,11 +221,13 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 			}
 
 			// Update account information regarding the expired cookie
+			DBMutex.Lock()
 			account.LastCookieNotification = time.Now().Unix()
 			account.IsExpiredCookie = true
 			if err := database.DB.Save(&account).Error; err != nil {
 				logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
 			}
+			DBMutex.Unlock()
 		} else {
 			logger.Log.Infof("Skipping expired cookie notification for account %s (cooldown)", account.Title)
 		}
@@ -232,13 +235,16 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	}
 
 	// Update account information
+	DBMutex.Lock()
 	lastStatus := account.LastStatus
 	account.LastCheck = time.Now().Unix()
 	account.IsExpiredCookie = false
 	if err := database.DB.Save(&account).Error; err != nil {
 		logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
+		DBMutex.Unlock()
 		return
 	}
+	DBMutex.Unlock()
 
 	// Handle status changes and send notifications
 	if result != lastStatus {
@@ -248,6 +254,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 			return
 		}
 
+		DBMutex.Lock()
 		account.LastStatus = result
 		account.LastStatusChange = time.Now().Unix()
 		if result == models.StatusPermaban {
@@ -257,6 +264,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 		}
 		if err := database.DB.Save(&account).Error; err != nil {
 			logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
+			DBMutex.Unlock()
 			return
 		}
 		logger.Log.Infof("Account %s status changed to %s", account.Title, result)
@@ -271,6 +279,9 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 			logger.Log.WithError(err).Errorf("Failed to create new ban record for account %s", account.Title)
 		}
 		// Create an embed message for the status change notification
+		DBMutex.Unlock()
+		logger.Log.Infof("Account %s status changed to %s", account.Title, result)
+
 		embed := &discordgo.MessageEmbed{
 			Title:       fmt.Sprintf("%s - %s", account.Title, EmbedTitleFromStatus(result)),
 			Description: fmt.Sprintf("The status of account %s has changed to %s", account.Title, result),
