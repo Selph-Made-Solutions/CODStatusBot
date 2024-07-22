@@ -79,7 +79,17 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	userID := i.Member.User.ID
+	var userID string
+	if i.Member != nil {
+		userID = i.Member.User.ID
+	} else if i.User != nil {
+		userID = i.User.ID
+	} else {
+		logger.Log.Error("Interaction doesn't have Member or User")
+		sendFollowUpMessage(s, i, "An error occurred while processing your request.")
+		return
+	}
+
 	if !checkRateLimit(userID) {
 		sendFollowUpMessage(s, i, fmt.Sprintf("You're using this command too frequently. Please wait %v before trying again.", rateLimit))
 		return
@@ -91,7 +101,7 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	var accounts []models.Account
-	query := database.DB.Where("user_id = ? AND guild_id = ?", userID, i.GuildID)
+	query := database.DB.Where("user_id = ?", userID)
 	if accountTitle != "" {
 		query = query.Where("title = ?", accountTitle)
 	}
