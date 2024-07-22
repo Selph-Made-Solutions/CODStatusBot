@@ -1,16 +1,16 @@
 package command
 
 import (
-	"CODStatusBot/command/accountagenew"
-	"CODStatusBot/command/accountlogsnew"
-	"CODStatusBot/command/addaccountnew"
-	"CODStatusBot/command/checknownew"
+	"CODStatusBot/command/accountage"
+	"CODStatusBot/command/accountlogs"
+	"CODStatusBot/command/addaccount"
+	"CODStatusBot/command/checknow"
 	"CODStatusBot/command/feedback"
 	"CODStatusBot/command/help"
 	"CODStatusBot/command/listaccounts"
-	"CODStatusBot/command/removeaccountnew"
+	"CODStatusBot/command/removeaccount"
 	"CODStatusBot/command/setpreference"
-	"CODStatusBot/command/updateaccountnew"
+	"CODStatusBot/command/updateaccount"
 	"CODStatusBot/logger"
 
 	"github.com/bwmarrin/discordgo"
@@ -39,7 +39,7 @@ func RegisterCommands(s *discordgo.Session) {
 			},
 		},
 		{
-			Name:        "addaccountnew",
+			Name:        "addaccount",
 			Description: "Add a new account to monitor using a modal",
 		},
 		{
@@ -47,15 +47,15 @@ func RegisterCommands(s *discordgo.Session) {
 			Description: "Simple guide to getting your SSOCookie",
 		},
 		{
-			Name:        "accountagenew",
+			Name:        "accountage",
 			Description: "Check the age of an account",
 		},
 		{
-			Name:        "accountlogsnew",
+			Name:        "accountlogs",
 			Description: "View the logs for an account",
 		},
 		{
-			Name:        "checknownew",
+			Name:        "checknow",
 			Description: "Immediately check the status of all your accounts or a specific account",
 			Options: []*discordgo.ApplicationCommandOption{
 				{
@@ -71,11 +71,11 @@ func RegisterCommands(s *discordgo.Session) {
 			Description: "List all your monitored accounts",
 		},
 		{
-			Name:        "removeaccountnew",
+			Name:        "removeaccount",
 			Description: "Remove a monitored account",
 		},
 		{
-			Name:        "updateaccountnew",
+			Name:        "updateaccount",
 			Description: "Update a monitored account's information",
 		},
 		{
@@ -100,14 +100,14 @@ func RegisterCommands(s *discordgo.Session) {
 
 	// Set up command handlers
 	Handlers["setpreference"] = setpreference.CommandSetPreference
-	Handlers["addaccountnew"] = addaccountnew.CommandAddAccountNew
+	Handlers["addaccount"] = addaccount.CommandAddAccount
 	Handlers["help"] = help.CommandHelp
-	Handlers["accountagenew"] = accountagenew.CommandAccountAgeNew
-	Handlers["accountlogsnew"] = accountlogsnew.CommandAccountLogsNew
-	Handlers["checknownew"] = checknownew.CommandCheckNowNew
+	Handlers["accountage"] = accountage.CommandAccountAge
+	Handlers["accountlogs"] = accountlogs.CommandAccountLogs
+	Handlers["checknow"] = checknow.CommandCheckNow
 	Handlers["listaccounts"] = listaccounts.CommandListAccounts
-	Handlers["removeaccountnew"] = removeaccountnew.CommandRemoveAccountNew
-	Handlers["updateaccountnew"] = updateaccountnew.CommandUpdateAccountNew
+	Handlers["removeaccount"] = removeaccount.CommandRemoveAccount
+	Handlers["updateaccount"] = updateaccount.CommandUpdateAccount
 	Handlers["feedback"] = feedback.CommandFeedback
 
 	logger.Log.Info("Global commands registered and handlers set up")
