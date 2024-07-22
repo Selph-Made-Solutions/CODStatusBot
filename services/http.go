@@ -11,6 +11,7 @@ import (
 	"time"
 )
 
+// var url1 = "https://support.activision.com/api/bans/v2/appeal?locale=en" // Replacement Endpoint for checking account bans
 var url1 = "https://support.activision.com/api/bans/appeal?locale=en" // Endpoint for checking account bans
 var url2 = "https://support.activision.com/api/profile?accts=false"   // Endpoint for retrieving profile information
 // var url3 = "https://profile.callofduty.com/promotions/redeemCode/" // Endpoint for claiming rewards (currently unused)
