@@ -41,8 +41,19 @@ func UnregisterCommand(s *discordgo.Session, guildID string) {
 }
 
 func CommandAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	var userID string
+	if i.Member != nil {
+		userID = i.Member.User.ID
+	} else if i.User != nil {
+		userID = i.User.ID
+	} else {
+		logger.Log.Error("Interaction doesn't have Member or User")
+		respondToInteraction(s, i, "An error occurred while processing your request.")
+		return
+	}
+
 	var accounts []models.Account
-	result := database.DB.Where("user_id = ? AND guild_id = ?", i.Member.User.ID, i.GuildID).Find(&accounts)
+	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
 		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
@@ -59,7 +70,7 @@ func CommandAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		options[index] = discordgo.SelectMenuOption{
 			Label:       account.Title,
 			Value:       strconv.Itoa(int(account.ID)),
-			Description: fmt.Sprintf("Last status: %s", account.LastStatus),
+			Description: fmt.Sprintf("Last status: %s, Guild: %s", account.LastStatus, account.GuildID),
 		}
 	}
 
