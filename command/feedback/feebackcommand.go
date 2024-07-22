@@ -62,7 +62,16 @@ func CommandFeedback(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	_, err = s.ChannelMessageSend(channel.ID, fmt.Sprintf("New anonymous feedback:\n\n%s", feedbackMessage))
+	var userInfo string
+	if i.Member != nil {
+		userInfo = fmt.Sprintf("User: %s (ID: %s) in Guild: %s", i.Member.User.Username, i.Member.User.ID, i.GuildID)
+	} else if i.User != nil {
+		userInfo = fmt.Sprintf("User: %s (ID: %s) via DM", i.User.Username, i.User.ID)
+	} else {
+		userInfo = "Unknown user"
+	}
+
+	_, err = s.ChannelMessageSend(channel.ID, fmt.Sprintf("New feedback:\n\nFrom: %s\n\nMessage:\n%s", userInfo, feedbackMessage))
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to send feedback to developer")
 		sendResponse(s, i, "There was an error sending your feedback. Please try again later.", true)
@@ -70,7 +79,7 @@ func CommandFeedback(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	// Respond to user
-	sendResponse(s, i, "Your feedback has been sent anonymously to the developer. Thank you for your input!", true)
+	sendResponse(s, i, "Your feedback has been sent to the developer. Thank you for your input!", true)
 }
 
 func sendResponse(s *discordgo.Session, i *discordgo.InteractionCreate, content string, ephemeral bool) {
