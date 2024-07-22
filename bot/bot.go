@@ -2,12 +2,14 @@ package bot
 
 import (
 	"CODStatusBot/command"
-	"CODStatusBot/command/accountagenew"
-	"CODStatusBot/command/accountlogsnew"
-	"CODStatusBot/command/addaccountnew"
-	"CODStatusBot/command/removeaccountnew"
-	"CODStatusBot/command/updateaccountnew"
+	"CODStatusBot/command/accountage"
+	"CODStatusBot/command/accountlogs"
+	"CODStatusBot/command/addaccount"
+	"CODStatusBot/command/removeaccount"
+	"CODStatusBot/command/updateaccount"
 	"CODStatusBot/logger"
+	"CODStatusBot/services"
+
 	// "CODStatusBot/services"
 	"errors"
 	"github.com/bwmarrin/discordgo"
@@ -59,13 +61,13 @@ func StartBot() error {
 			switch customID {
 			case "add_account_modal":
 				logger.Log.Info("Handling add account modal submission")
-				addaccountnew.HandleModalSubmit(s, i)
+				addaccount.HandleModalSubmit(s, i)
 			case "remove_account_modal":
 				logger.Log.Info("Handling remove account modal submission")
-				removeaccountnew.HandleModalSubmit(s, i)
+				removeaccount.HandleModalSubmit(s, i)
 			case "update_account_modal":
 				logger.Log.Info("Handling update account modal submission")
-				updateaccountnew.HandleModalSubmit(s, i)
+				updateaccount.HandleModalSubmit(s, i)
 			default:
 				logger.Log.WithField("customID", customID).Error("Unknown modal submission")
 			}
@@ -74,19 +76,19 @@ func StartBot() error {
 			switch customID {
 			case "account_logs_select":
 				logger.Log.Info("Handling account logs selection")
-				accountlogsnew.HandleAccountSelection(s, i)
+				accountlogs.HandleAccountSelection(s, i)
 			case "update_account_select":
 				logger.Log.Info("Handling update account selection")
-				updateaccountnew.HandleAccountSelection(s, i)
+				updateaccount.HandleAccountSelection(s, i)
 			case "account_age_select":
 				logger.Log.Info("Handling account age selection")
-				accountagenew.HandleAccountSelection(s, i)
+				accountage.HandleAccountSelection(s, i)
 			default:
 				logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 			}
 		}
 	})
 
-	// go services.CheckAccounts(discord)
+	go services.CheckAccounts(discord)
 	return nil
 }
