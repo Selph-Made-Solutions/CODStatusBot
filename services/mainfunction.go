@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"CODStatusBot/database"
@@ -19,7 +20,11 @@ var (
 	notificationInterval        float64 // Notification interval for daily updates (in hours)
 	cooldownDuration            float64 // Cooldown duration for invalid cookie notifications (in hours)
 	sleepDuration               int     // Sleep duration for the account checking loop (in minutes)
-	cookieCheckIntervalPermaban float64 // Check interval for permabanned accounts (in minutes)
+	cookieCheckIntervalPermaban float64 // Check interval for permabanned accounts (in hours)
+	statusChangeCooldown        float64 // Cooldown duration for status change notifications (in hours)
+	globalNotificationCooldown  float64 // Global cooldown for notifications per user (in hours)
+	userNotificationTimestamps  = make(map[string]time.Time)
+	userNotificationMutex       sync.Mutex
 )
 
 func init() {
@@ -33,13 +38,32 @@ func init() {
 	cooldownDuration, _ = strconv.ParseFloat(os.Getenv("COOLDOWN_DURATION"), 64)
 	sleepDuration, _ = strconv.Atoi(os.Getenv("SLEEP_DURATION"))
 	cookieCheckIntervalPermaban, _ = strconv.ParseFloat(os.Getenv("COOKIE_CHECK_INTERVAL_PERMABAN"), 64)
+	statusChangeCooldown, _ = strconv.ParseFloat(os.Getenv("STATUS_CHANGE_COOLDOWN"), 64)
+	globalNotificationCooldown, _ = strconv.ParseFloat(os.Getenv("GLOBAL_NOTIFICATION_COOLDOWN"), 64)
 
-	logger.Log.Infof("Loaded config: CHECK_INTERVAL=%.2f, NOTIFICATION_INTERVAL=%.2f, COOLDOWN_DURATION=%.2f, SLEEP_DURATION=%d, COOKIE_CHECK_INTERVAL_PERMABAN=%.2f",
-		checkInterval, notificationInterval, cooldownDuration, sleepDuration, cookieCheckIntervalPermaban)
+	logger.Log.Infof("Loaded config: CHECK_INTERVAL=%.2f minutes, NOTIFICATION_INTERVAL=%.2f hours, COOLDOWN_DURATION=%.2f hours, SLEEP_DURATION=%d minutes, COOKIE_CHECK_INTERVAL_PERMABAN=%.2f hours, STATUS_CHANGE_COOLDOWN=%.2f hours, GLOBAL_NOTIFICATION_COOLDOWN=%.2f hours",
+		checkInterval, notificationInterval, cooldownDuration, sleepDuration, cookieCheckIntervalPermaban, statusChangeCooldown, globalNotificationCooldown)
+}
+
+func canSendNotification(userID string) bool {
+	userNotificationMutex.Lock()
+	defer userNotificationMutex.Unlock()
+
+	lastNotification, exists := userNotificationTimestamps[userID]
+	if !exists || time.Since(lastNotification).Hours() >= globalNotificationCooldown {
+		userNotificationTimestamps[userID] = time.Now()
+		return true
+	}
+	return false
 }
 
 // sendNotification function: sends notifications based on user preference
 func sendNotification(discord *discordgo.Session, account models.Account, embed *discordgo.MessageEmbed, content string) error {
+	if !canSendNotification(account.UserID) {
+		logger.Log.Infof("Skipping notification for user %s (global cooldown)", account.UserID)
+		return nil
+	}
+
 	var channelID string
 	if account.NotificationType == "dm" {
 		channel, err := discord.UserChannelCreate(account.UserID)
@@ -181,7 +205,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	// Handle invalid cookie status
 	if result == models.StatusInvalidCookie {
 		lastNotification := time.Unix(account.LastCookieNotification, 0)
-		if time.Since(lastNotification) >= time.Duration(cooldownDuration)*time.Hour || account.LastCookieNotification == 0 {
+		if time.Since(lastNotification).Hours() >= cooldownDuration || account.LastCookieNotification == 0 {
 			logger.Log.Infof("Account %s has an invalid SSO cookie", account.Title)
 			embed := &discordgo.MessageEmbed{
 				Title:       fmt.Sprintf("%s - Invalid SSO Cookie", account.Title),
@@ -218,7 +242,14 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 
 	// Handle status changes and send notifications
 	if result != lastStatus {
+		lastStatusChange := time.Unix(account.LastStatusChange, 0)
+		if time.Since(lastStatusChange).Hours() < statusChangeCooldown {
+			logger.Log.Infof("Skipping status change notification for account %s (cooldown)", account.Title)
+			return
+		}
+
 		account.LastStatus = result
+		account.LastStatusChange = time.Now().Unix()
 		if result == models.StatusPermaban {
 			account.IsPermabanned = true
 		} else {
