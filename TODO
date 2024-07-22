@@ -23,6 +23,10 @@ TODO list for the bot. and ideas for the future.
 8. Handling network issues:
    Implement retry logic for network operations to handle temporary connection issues.
 
+9. User feedback: Consider adding more detailed feedback to users when errors occur, without exposing sensitive information.
+
+12. Localization: If you plan to support multiple languages, consider implementing a localization system for bot responses and commands.
+
 
 TODO create some form of maintenance routine for purging old database entries with expired cookies without user activity.
 
