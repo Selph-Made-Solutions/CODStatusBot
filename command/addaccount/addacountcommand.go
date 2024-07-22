@@ -8,7 +8,17 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"strings"
+	"unicode"
 )
+
+func sanitizeInput(input string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsNumber(r) || r == ' ' || r == '-' || r == '_' {
+			return r
+		}
+		return -1
+	}, input)
+}
 
 func RegisterCommand(s *discordgo.Session, guildID string) {
 	command := &discordgo.ApplicationCommand{
@@ -85,7 +95,7 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
 
-	title := strings.TrimSpace(data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
+	title := sanitizeInput(strings.TrimSpace(data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value))
 	ssoCookie := strings.TrimSpace(data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
 
 	// Verify SSO Cookie
@@ -94,11 +104,22 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	userID := i.Member.User.ID
+	var userID, guildID string
+	if i.Member != nil {
+		userID = i.Member.User.ID
+		guildID = i.GuildID
+	} else if i.User != nil {
+		userID = i.User.ID
+		// In DMs, we don't have a guildID, so we'll leave it empty
+	} else {
+		logger.Log.Error("Interaction doesn't have Member or User")
+		respondToInteraction(s, i, "An error occurred while processing your request.")
+		return
+	}
 
 	// Get the user's current notification preference
 	var existingAccount models.Account
-	result := database.DB.Where("user_id = ? AND guild_id = ?", userID, i.GuildID).First(&existingAccount)
+	result := database.DB.Where("user_id = ?", userID).First(&existingAccount)
 
 	notificationType := "channel" // Default to channel if no existing preference
 	if result.Error == nil {
@@ -112,7 +133,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		UserID:           userID,
 		Title:            title,
 		SSOCookie:        ssoCookie,
-		GuildID:          i.GuildID,
+		GuildID:          guildID,
 		ChannelID:        i.ChannelID,
 		NotificationType: notificationType,
 	}
