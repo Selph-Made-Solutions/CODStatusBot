@@ -7,7 +7,17 @@ import (
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"strings"
+	"unicode"
 )
+
+func sanitizeInput(input string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsNumber(r) || r == ' ' || r == '-' || r == '_' {
+			return r
+		}
+		return -1
+	}, input)
+}
 
 func RegisterCommand(s *discordgo.Session, guildID string) {
 	command := &discordgo.ApplicationCommand{
@@ -40,11 +50,19 @@ func UnregisterCommand(s *discordgo.Session, guildID string) {
 }
 
 func CommandRemoveAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	userID := i.Member.User.ID
-	guildID := i.GuildID
+	var userID string
+	if i.Member != nil {
+		userID = i.Member.User.ID
+	} else if i.User != nil {
+		userID = i.User.ID
+	} else {
+		logger.Log.Error("Interaction doesn't have Member or User")
+		respondToInteraction(s, i, "An error occurred while processing your request.")
+		return
+	}
 
 	var accounts []models.Account
-	result := database.DB.Where("user_id = ? AND guild_id = ?", userID, guildID).Find(&accounts)
+	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
 		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
@@ -58,7 +76,7 @@ func CommandRemoveAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 
 	accountList := "Your accounts:\n"
 	for _, account := range accounts {
-		accountList += fmt.Sprintf("• %s (Status: %s)\n", account.Title, account.LastStatus)
+		accountList += fmt.Sprintf("• %s (Status: %s, Guild: %s)\n", account.Title, account.LastStatus, account.GuildID)
 	}
 
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -122,7 +140,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 				if textInput, ok := rowComp.(*discordgo.TextInput); ok {
 					switch textInput.CustomID {
 					case "account_title":
-						accountTitle = strings.TrimSpace(textInput.Value)
+						accountTitle = sanitizeInput(strings.TrimSpace(textInput.Value))
 					case "confirmation":
 						confirmation = strings.TrimSpace(textInput.Value)
 					}
@@ -141,8 +159,19 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
+	var userID string
+	if i.Member != nil {
+		userID = i.Member.User.ID
+	} else if i.User != nil {
+		userID = i.User.ID
+	} else {
+		logger.Log.Error("Interaction doesn't have Member or User")
+		respondToInteraction(s, i, "An error occurred while processing your request.")
+		return
+	}
+
 	var account models.Account
-	result := database.DB.Where("title = ? AND user_id = ? AND guild_id = ?", accountTitle, i.Member.User.ID, i.GuildID).First(&account)
+	result := database.DB.Where("title = ? AND user_id = ?", accountTitle, userID).First(&account)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
 		respondToInteraction(s, i, "Error: Account not found or you don't have permission to remove it.")
