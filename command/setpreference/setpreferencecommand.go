@@ -57,8 +57,17 @@ func UnregisterCommand(s *discordgo.Session, guildID string) {
 
 func CommandSetPreference(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	preferenceType := i.ApplicationCommandData().Options[0].StringValue()
-	userID := i.Member.User.ID
-	guildID := i.GuildID
+
+	var userID string
+	if i.Member != nil {
+		userID = i.Member.User.ID
+	} else if i.User != nil {
+		userID = i.User.ID
+	} else {
+		logger.Log.Error("Interaction doesn't have Member or User")
+		respondToInteraction(s, i, "An error occurred while processing your request.")
+		return
+	}
 
 	// Validate preference type
 	if preferenceType != "channel" && preferenceType != "dm" {
@@ -66,9 +75,9 @@ func CommandSetPreference(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		return
 	}
 
-	// Update all existing accounts for this user in this guild
+	// Update all existing accounts for this user
 	result := database.DB.Model(&models.Account{}).
-		Where("user_id = ? AND guild_id = ?", userID, guildID).
+		Where("user_id = ?", userID).
 		Update("notification_type", preferenceType)
 
 	if result.Error != nil {
@@ -78,7 +87,7 @@ func CommandSetPreference(s *discordgo.Session, i *discordgo.InteractionCreate) 
 	}
 
 	// Log the number of accounts updated
-	logger.Log.Infof("Updated %d accounts for user %s in guild %s", result.RowsAffected, userID, guildID)
+	logger.Log.Infof("Updated %d accounts for user %s", result.RowsAffected, userID)
 
 	message := "Your notification preference has been updated for all your accounts. "
 	if preferenceType == "channel" {
