@@ -1,21 +1,15 @@
 package command
 
 import (
-	"CODStatusBot/command/accountage"
 	"CODStatusBot/command/accountagenew"
-	"CODStatusBot/command/accountlogs"
 	"CODStatusBot/command/accountlogsnew"
-	"CODStatusBot/command/addaccount"
 	"CODStatusBot/command/addaccountnew"
-	"CODStatusBot/command/checknow"
 	"CODStatusBot/command/checknownew"
 	"CODStatusBot/command/feedback"
 	"CODStatusBot/command/help"
 	"CODStatusBot/command/listaccounts"
-	"CODStatusBot/command/removeaccount"
 	"CODStatusBot/command/removeaccountnew"
 	"CODStatusBot/command/setpreference"
-	"CODStatusBot/command/updateaccount"
 	"CODStatusBot/command/updateaccountnew"
 	"CODStatusBot/logger"
 
@@ -24,135 +18,97 @@ import (
 
 var Handlers = map[string]func(*discordgo.Session, *discordgo.InteractionCreate){}
 
-func RegisterCommands(s *discordgo.Session, guildID string) {
-	logger.Log.Info("Registering commands by command handler")
+func RegisterCommands(s *discordgo.Session) {
+	logger.Log.Info("Registering global commands")
 
-	removeaccount.RegisterCommand(s, guildID)
-	Handlers["removeaccount"] = removeaccount.CommandRemoveAccount
-	logger.Log.Info("Registering removeaccount command")
+	commands := []*discordgo.ApplicationCommand{
+		{
+			Name:        "setpreference",
+			Description: "Set your preference for where you want to receive status notifications",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "type",
+					Description: "Where do you want to receive Status Notifications?",
+					Required:    true,
+					Choices: []*discordgo.ApplicationCommandOptionChoice{
+						{Name: "Channel", Value: "channel"},
+						{Name: "Direct Message", Value: "dm"},
+					},
+				},
+			},
+		},
+		{
+			Name:        "addaccountnew",
+			Description: "Add a new account to monitor using a modal",
+		},
+		{
+			Name:        "help",
+			Description: "Simple guide to getting your SSOCookie",
+		},
+		{
+			Name:        "accountagenew",
+			Description: "Check the age of an account",
+		},
+		{
+			Name:        "accountlogsnew",
+			Description: "View the logs for an account",
+		},
+		{
+			Name:        "checknownew",
+			Description: "Immediately check the status of all your accounts or a specific account",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "account_title",
+					Description: "The title of the account to check (leave empty to check all accounts)",
+					Required:    false,
+				},
+			},
+		},
+		{
+			Name:        "listaccounts",
+			Description: "List all your monitored accounts",
+		},
+		{
+			Name:        "removeaccountnew",
+			Description: "Remove a monitored account",
+		},
+		{
+			Name:        "updateaccountnew",
+			Description: "Update a monitored account's information",
+		},
+		{
+			Name:        "feedback",
+			Description: "Send anonymous feedback or suggestions to the bot developer",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "message",
+					Description: "Your feedback or suggestion",
+					Required:    true,
+				},
+			},
+		},
+	}
 
-	accountlogs.RegisterCommand(s, guildID)
-	Handlers["accountlogs"] = accountlogs.CommandAccountLogs
-	logger.Log.Info("Registering accountlogs command")
+	_, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, "", commands)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error registering global commands")
+		return
+	}
 
-	updateaccount.RegisterCommand(s, guildID)
-	Handlers["updateaccount"] = updateaccount.CommandUpdateAccount
-	logger.Log.Info("Registering updateaccount command")
-
-	setpreference.RegisterCommand(s, guildID)
+	// Set up command handlers
 	Handlers["setpreference"] = setpreference.CommandSetPreference
-	logger.Log.Info("Registering setpreference command")
-
-	accountage.RegisterCommand(s, guildID)
-	Handlers["accountage"] = accountage.CommandAccountAge
-	logger.Log.Info("Registering accountage command")
-
-	addaccount.RegisterCommand(s, guildID)
-	Handlers["addaccount"] = addaccount.CommandAddAccount
-	logger.Log.Info("Registering addaccount command")
-
-	addaccountnew.RegisterCommand(s, guildID)
 	Handlers["addaccountnew"] = addaccountnew.CommandAddAccountNew
-	logger.Log.Info("Registering addaccountnew command")
-
-	/*
-		claimrewards.RegisterCommand(s, guildID)
-		Handlers["claimavailablerewards"] = claimrewards.CommandClaimRewards
-		logger.Log.Info("Registering claimavailablerewards command")
-	*/
-
-	checknow.RegisterCommand(s, guildID)
-	Handlers["checknow"] = checknow.CommandCheckNow
-	logger.Log.Info("Registering checknow command")
-
-	help.RegisterCommand(s, guildID)
 	Handlers["help"] = help.CommandHelp
-	logger.Log.Info("Registering help command")
-
-	accountagenew.RegisterCommand(s, guildID)
 	Handlers["accountagenew"] = accountagenew.CommandAccountAgeNew
-	logger.Log.Info("Registering accountagenew command")
-
-	accountlogsnew.RegisterCommand(s, guildID)
 	Handlers["accountlogsnew"] = accountlogsnew.CommandAccountLogsNew
-	logger.Log.Info("Registering accountlogsnew command")
-
-	checknownew.RegisterCommand(s, guildID)
 	Handlers["checknownew"] = checknownew.CommandCheckNowNew
-	logger.Log.Info("Registering checknownew command")
-
-	listaccounts.RegisterCommand(s, guildID)
 	Handlers["listaccounts"] = listaccounts.CommandListAccounts
-	logger.Log.Info("Registering listaccounts command")
-
-	removeaccountnew.RegisterCommand(s, guildID)
 	Handlers["removeaccountnew"] = removeaccountnew.CommandRemoveAccountNew
-	logger.Log.Info("Registering removeaccountnew command")
-
-	updateaccountnew.RegisterCommand(s, guildID)
 	Handlers["updateaccountnew"] = updateaccountnew.CommandUpdateAccountNew
-	logger.Log.Info("Registering updateaccountnew command")
-
-	feedback.RegisterCommand(s)
 	Handlers["feedback"] = feedback.CommandFeedback
-	logger.Log.Info("Registering global feedback command")
 
-}
-
-func UnregisterCommands(s *discordgo.Session, guildID string) {
-	logger.Log.Info("Unregistering commands by command handler")
-
-	addaccount.UnregisterCommand(s, guildID)
-	logger.Log.Info("Unregistering addaccount command")
-
-	addaccountnew.UnregisterCommand(s, guildID)
-	logger.Log.Info("Unregistering addaccountnew command")
-
-	removeaccount.UnregisterCommand(s, guildID)
-	logger.Log.Info("Unregistering removeaccount command")
-
-	accountlogs.UnregisterCommand(s, guildID)
-	logger.Log.Info("Unregistering accountlogs command")
-
-	setpreference.UnregisterCommand(s, guildID)
-	logger.Log.Info("Unregistering setpreference command")
-
-	updateaccount.UnregisterCommand(s, guildID)
-	logger.Log.Info("Unregistering updateaccount command")
-
-	accountage.UnregisterCommand(s, guildID)
-	logger.Log.Info("Unregistering accountage command")
-
-	/*
-		claimrewards.UnregisterCommand(s, guildID)
-		logger.Log.Info("Unregistering claimavailablerewards command")
-	*/
-
-	accountagenew.UnregisterCommand(s, guildID)
-	logger.Log.Info("Unregistering accountagenew command")
-
-	accountlogsnew.UnregisterCommand(s, guildID)
-	logger.Log.Info("Unregistering accountlogsnew command")
-
-	checknow.UnregisterCommand(s, guildID)
-	logger.Log.Info("Unregistering checknow command")
-
-	help.UnregisterCommand(s, guildID)
-	logger.Log.Info("Unregistering help command")
-
-	checknownew.UnregisterCommand(s, guildID)
-	logger.Log.Info("Unregistering checknownew command")
-
-	listaccounts.UnregisterCommand(s, guildID)
-	logger.Log.Info("Unregistering listaccounts command")
-
-	feedback.UnregisterCommand(s)
-	logger.Log.Info("Unregistering global feedback command")
-
-	updateaccountnew.UnregisterCommand(s, guildID)
-	logger.Log.Info("Unregistering updateaccountnew command")
-
-	removeaccountnew.UnregisterCommand(s, guildID)
-	logger.Log.Info("Unregistering removeaccountnew command")
-
+	logger.Log.Info("Global commands registered and handlers set up")
 }
