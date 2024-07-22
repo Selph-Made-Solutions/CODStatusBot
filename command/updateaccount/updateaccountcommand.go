@@ -9,7 +9,17 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"strconv"
 	"strings"
+	"unicode"
 )
+
+func sanitizeInput(input string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsNumber(r) || r == ' ' || r == '-' || r == '_' {
+			return r
+		}
+		return -1
+	}, input)
+}
 
 func RegisterCommand(s *discordgo.Session, guildID string) {
 	command := &discordgo.ApplicationCommand{
@@ -42,11 +52,19 @@ func UnregisterCommand(s *discordgo.Session, guildID string) {
 }
 
 func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	userID := i.Member.User.ID
-	guildID := i.GuildID
+	var userID string
+	if i.Member != nil {
+		userID = i.Member.User.ID
+	} else if i.User != nil {
+		userID = i.User.ID
+	} else {
+		logger.Log.Error("Interaction doesn't have Member or User")
+		respondToInteraction(s, i, "An error occurred while processing your request.")
+		return
+	}
 
 	var accounts []models.Account
-	result := database.DB.Where("user_id = ? AND guild_id = ?", userID, guildID).Find(&accounts)
+	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
 		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
@@ -63,7 +81,7 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		options[index] = discordgo.SelectMenuOption{
 			Label:       account.Title,
 			Value:       strconv.Itoa(int(account.ID)),
-			Description: fmt.Sprintf("Status: %s", account.LastStatus),
+			Description: fmt.Sprintf("Status: %s, Guild: %s", account.LastStatus, account.GuildID),
 		}
 	}
 
@@ -178,7 +196,18 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	// Verify that the user owns this account
-	if account.UserID != i.Member.User.ID || account.GuildID != i.GuildID {
+	var userID string
+	if i.Member != nil {
+		userID = i.Member.User.ID
+	} else if i.User != nil {
+		userID = i.User.ID
+	} else {
+		logger.Log.Error("Interaction doesn't have Member or User")
+		respondToInteraction(s, i, "An error occurred while processing your request.")
+		return
+	}
+
+	if account.UserID != userID {
 		logger.Log.Error("User attempted to update an account they don't own")
 		respondToInteraction(s, i, "Error: You don't have permission to update this account.")
 		return
@@ -188,11 +217,14 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	account.SSOCookie = newSSOCookie
 	account.IsExpiredCookie = false // Reset the expired cookie flag
 
+	services.DBMutex.Lock()
 	if err := database.DB.Save(&account).Error; err != nil {
+		services.DBMutex.Unlock()
 		logger.Log.WithError(err).Error("Error updating account")
 		respondToInteraction(s, i, "Error updating account. Please try again.")
 		return
 	}
+	services.DBMutex.Unlock()
 
 	respondToInteraction(s, i, fmt.Sprintf("Account '%s' has been successfully updated with the new SSO cookie.", account.Title))
 }
