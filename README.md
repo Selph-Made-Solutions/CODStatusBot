@@ -39,7 +39,7 @@ Remove an account from being monitored by the bot.
 
 Usage: `/removeaccount`
 
-This command will display a list of your monitored accounts and prompt you to confirm the removal of the selected account.
+This command will display a list of your monitored accounts and prompt you to confirm the removal of the selected account. All related data will be permanently deleted from the bot.
 
 ### /updateaccount
 
@@ -128,9 +128,8 @@ If you encounter any issues or have questions, please contact the bot developer 
 
 ## Note on Data Privacy
 
-The bot stores minimal data necessary for its operation, including account titles, SSO cookies, and status logs. This data is used solely for the purpose of monitoring account status and providing notifications. The bot does not share this data with any third parties.
+The bot stores minimal data necessary for its operation, including account titles, SSO cookies, and status logs. This data is used solely for the purpose of monitoring account status and providing notifications. The bot does not share this data with any third parties. Users can use the provided commands to delete their data from the bot at any time, ensuring that no data is left afterwards.
 
 ## Disclaimer
 
 This bot is not affiliated with or endorsed by Activision. Use it at your own risk. The developers are not responsible for any consequences resulting from the use of this bot.
-
