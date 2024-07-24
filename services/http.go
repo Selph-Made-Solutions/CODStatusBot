@@ -11,9 +11,9 @@ import (
 	"time"
 )
 
-// var url1 = "https://support.activision.com/api/bans/v2/appeal?locale=en" // Replacement Endpoint for checking account bans
-var url1 = "https://support.activision.com/api/bans/appeal?locale=en" // Endpoint for checking account bans
-var url2 = "https://support.activision.com/api/profile?accts=false"   // Endpoint for retrieving profile information
+var url1 = "https://support.activision.com/api/bans/v2/appeal?locale=en" // Replacement Endpoint for checking account bans
+// var url1 = "https://support.activision.com/api/bans/appeal?locale=en" // Endpoint for checking account bans
+var url2 = "https://support.activision.com/api/profile?accts=false" // Endpoint for retrieving profile information
 // var url3 = "https://profile.callofduty.com/promotions/redeemCode/" // Endpoint for claiming rewards (currently unused)
 // var url4 = "https://profile.callofduty.com/api/papi-client/crm/cod/v2/accounts" // Endpoint for retrieving linked platforms and their associated IDs (currently unused)
 // var url5 = "https://www.callofduty.com/api/papi-client/crm/cod/v2/identities/" // Endpoint for retrieving (currently unused)
@@ -97,24 +97,75 @@ func VerifySSOCookie(ssoCookie string) bool {
 // CheckAccount checks the account status associated with the provided SSO cookie.
 func CheckAccount(ssoCookie string) (models.Status, error) {
 	logger.Log.Info("Starting CheckAccount function")
-	req, err := http.NewRequest("GET", url1, nil)
+
+	// Solve reCAPTCHA using 2captcha
+	// Solve reCAPTCHA using EZ-Captcha
+	//logger.Log.Info("Attempting to solve reCAPTCHA using 2captcha")
+	logger.Log.Info("Attempting to solve reCAPTCHA using EZ-Captcha")
+	gRecaptchaResponse, err := SolveReCaptchaV2()
 	if err != nil {
+		logger.Log.WithError(err).Error("Failed to solve reCAPTCHA")
+		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %v", err)
+	}
+	logger.Log.Info("Successfully solved reCAPTCHA")
+
+	// Construct the ban appeal URL with the reCAPTCHA response
+	banAppealUrl := url1 + "&g-cc=" + gRecaptchaResponse
+	logger.Log.WithField("url", banAppealUrl).Info("Constructed ban appeal URL")
+
+	req, err := http.NewRequest("GET", banAppealUrl, nil)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to create HTTP request")
 		return models.StatusUnknown, errors.New("failed to create HTTP request to check account")
 	}
+
 	headers := GenerateHeaders(ssoCookie)
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
+	logger.Log.WithField("headers", headers).Info("Set request headers")
+
 	client := &http.Client{}
+	logger.Log.Info("Sending HTTP request to check account")
 	resp, err := client.Do(req)
 	if err != nil {
+		logger.Log.WithError(err).Error("Failed to send HTTP request")
 		return models.StatusUnknown, errors.New("failed to send HTTP request to check account")
 	}
 	defer resp.Body.Close()
+
+	logger.Log.WithField("status", resp.Status).Info("Received response")
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		logger.Log.WithError(err).Error("Failed to read response body")
 		return models.StatusUnknown, errors.New("failed to read response body from check account request")
 	}
+	logger.Log.WithField("body", string(body)).Info("Read response body")
+
+	// Check for specific error responses
+	var errorResponse struct {
+		Timestamp string `json:"timestamp"`
+		Path      string `json:"path"`
+		Status    int    `json:"status"`
+		Error     string `json:"error"`
+		RequestId string `json:"requestId"`
+		Exception string `json:"exception"`
+	}
+
+	if err := json.Unmarshal(body, &errorResponse); err == nil {
+		logger.Log.WithField("errorResponse", errorResponse).Info("Parsed error response")
+		switch {
+		case errorResponse.Status == 404 && errorResponse.Path == "/api/bans/appeal":
+			logger.Log.Error("Old endpoint no longer available")
+			return models.StatusUnknown, errors.New("old endpoint no longer available")
+		case errorResponse.Status == 400 && errorResponse.Path == "/api/bans/v2/appeal":
+			logger.Log.Error("Invalid request to new endpoint, possibly missing or invalid reCAPTCHA")
+			return models.StatusUnknown, errors.New("invalid request to new endpoint, possibly missing or invalid reCAPTCHA")
+		}
+	}
+
+	// If not an error response, proceed with parsing the actual ban data
 	var data struct {
 		Error     string `json:"error"`
 		Success   string `json:"success"`
@@ -125,24 +176,37 @@ func CheckAccount(ssoCookie string) (models.Status, error) {
 			CanAppeal   bool   `json:"canAppeal"`
 		} `json:"bans"`
 	}
+
 	if string(body) == "" {
+		logger.Log.Info("Empty response body, treating as invalid cookie")
 		return models.StatusInvalidCookie, nil
 	}
+
 	err = json.Unmarshal(body, &data)
 	if err != nil {
-		return models.StatusUnknown, fmt.Errorf("failed to decode JSON response: %v ", err)
+		logger.Log.WithError(err).Error("Failed to decode JSON response")
+		return models.StatusUnknown, fmt.Errorf("failed to decode JSON response: %v", err)
 	}
+	logger.Log.WithField("data", data).Info("Parsed ban data")
+
 	if len(data.Bans) == 0 {
+		logger.Log.Info("No bans found, account status is good")
 		return models.StatusGood, nil
 	}
+
 	for _, ban := range data.Bans {
+		logger.Log.WithField("ban", ban).Info("Processing ban")
 		switch ban.Enforcement {
 		case "PERMANENT":
+			logger.Log.Info("Permanent ban detected")
 			return models.StatusPermaban, nil
 		case "UNDER_REVIEW":
+			logger.Log.Info("Shadowban detected")
 			return models.StatusShadowban, nil
 		}
 	}
+
+	logger.Log.Info("Unknown account status")
 	return models.StatusUnknown, nil
 }
 
