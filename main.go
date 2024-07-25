@@ -4,11 +4,12 @@ import (
 	"CODStatusBot/bot"
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
+	"CODStatusBot/services"
+	"fmt"
+	"github.com/joho/godotenv"
 	"os"
 	"os/signal"
 	"syscall"
-
-	"github.com/joho/godotenv"
 )
 
 func main() {
@@ -19,21 +20,28 @@ func main() {
 		os.Exit(1)
 	}
 
+	err = services.LoadEnvironmentVariables() // Initialize EZ-Captcha service
+	if err != nil {
+		logger.Log.WithError(err).WithField("Bot Startup", "EZ-Captcha Initialization").Error()
+		os.Exit(1)
+	}
+
 	err = database.Databaselogin() // Connect to the database.
 	if err != nil {
 		logger.Log.WithError(err).WithField("Bot Startup", "Database login").Error()
 		os.Exit(1)
 	}
+
 	err = bot.StartBot() // Start the Discord bot.
 	if err != nil {
 		logger.Log.WithError(err).WithField("Bot Startup", "Discord login").Error()
 		os.Exit(1)
 	}
+
 	logger.Log.Info("Bot is running")                                // Log that the bot is running.
 	sc := make(chan os.Signal, 1)                                    // Set up a channel to receive system signals.
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt) // Notify the channel when a SIGINT, SIGTERM, or Interrupt signal is received.
 	<-sc                                                             // Block until a signal is received.
-
 }
 
 // loadEnvironmentVariables loads environment variables from a .env file.
@@ -42,7 +50,24 @@ func loadEnvironmentVariables() error {
 	err := godotenv.Load()                              // Load environment variables from .env file.
 	if err != nil {
 		logger.Log.WithError(err).Error("Error loading .env file")
-		return err
+		return fmt.Errorf("error loading .env file: %w", err)
 	}
+
+	requiredEnvVars := []string{
+		"DISCORD_TOKEN",
+		// "TWOCAPTCHA_API_KEY",
+		"EZCAPTCHA_CLIENT_KEY",
+		"RECAPTCHA_SITE_KEY",
+		"RECAPTCHA_URL",
+		// Add any other required environment variables here
+	}
+
+	for _, envVar := range requiredEnvVars {
+		if os.Getenv(envVar) == "" {
+			logger.Log.Errorf("%s is not set in the environment", envVar)
+			return fmt.Errorf("%s is not set in the environment", envVar)
+		}
+	}
+
 	return nil
 }
