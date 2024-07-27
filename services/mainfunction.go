@@ -1,16 +1,15 @@
 package services
 
 import (
+	"CODStatusBot/database"
+	"CODStatusBot/logger"
+	"CODStatusBot/models"
 	"fmt"
 	"github.com/joho/godotenv"
 	"os"
 	"strconv"
 	"sync"
 	"time"
-
-	"CODStatusBot/database"
-	"CODStatusBot/logger"
-	"CODStatusBot/models"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -197,7 +196,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	}
 
 	// Check the account status
-	result, err := CheckAccount(account.SSOCookie)
+	result, err := CheckAccount(account.SSOCookie, account.CaptchaService, account.CaptchaAPIKey)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to check account %s: possible expired SSO Cookie", account.Title)
 		return
