@@ -9,6 +9,7 @@ import (
 	"CODStatusBot/command/help"
 	"CODStatusBot/command/listaccounts"
 	"CODStatusBot/command/removeaccount"
+	"CODStatusBot/command/setcaptchaservice"
 	"CODStatusBot/command/setpreference"
 	"CODStatusBot/command/updateaccount"
 	"CODStatusBot/logger"
@@ -22,6 +23,28 @@ func RegisterCommands(s *discordgo.Session) {
 	logger.Log.Info("Registering global commands")
 
 	commands := []*discordgo.ApplicationCommand{
+		{
+			Name:        "setcaptchaservice",
+			Description: "Set your preferred captcha service and API key",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "service",
+					Description: "The captcha service to use (ezcaptcha or 2captcha)",
+					Required:    true,
+					Choices: []*discordgo.ApplicationCommandOptionChoice{
+						{Name: "EZ-Captcha", Value: "ezcaptcha"},
+						{Name: "2captcha", Value: "2captcha"},
+					},
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "api_key",
+					Description: "Your API key for the selected service (leave empty to use bot's default key)",
+					Required:    false,
+				},
+			},
+		},
 		{
 			Name:        "setpreference",
 			Description: "Set your preference for where you want to receive status notifications",
@@ -99,6 +122,7 @@ func RegisterCommands(s *discordgo.Session) {
 	}
 
 	// Set up command handlers
+	Handlers["setcaptchaservice"] = setcaptchaservice.CommandSetCaptchaService
 	Handlers["setpreference"] = setpreference.CommandSetPreference
 	Handlers["addaccount"] = addaccount.CommandAddAccount
 	Handlers["help"] = help.CommandHelp
