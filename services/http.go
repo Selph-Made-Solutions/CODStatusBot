@@ -12,8 +12,7 @@ import (
 )
 
 var url1 = "https://support.activision.com/api/bans/v2/appeal?locale=en" // Replacement Endpoint for checking account bans
-// var url1 = "https://support.activision.com/api/bans/appeal?locale=en" // Endpoint for checking account bans
-var url2 = "https://support.activision.com/api/profile?accts=false" // Endpoint for retrieving profile information
+var url2 = "https://support.activision.com/api/profile?accts=false"      // Endpoint for retrieving profile information
 // var url3 = "https://profile.callofduty.com/promotions/redeemCode/" // Endpoint for claiming rewards (currently unused)
 // var url4 = "https://profile.callofduty.com/api/papi-client/crm/cod/v2/accounts" // Endpoint for retrieving linked platforms and their associated IDs (currently unused)
 // var url5 = "https://www.callofduty.com/api/papi-client/crm/cod/v2/identities/" // Endpoint for retrieving (currently unused)
@@ -85,9 +84,7 @@ func VerifySSOCookie(ssoCookie string) bool {
 		logger.Log.WithError(err).Error("Error reading verification response body")
 		return false
 	}
-	// possible bug use either len or string not sure
 	if len(body) == 0 { // Check if the response body is empty
-		// if string(body) == "" { // Check if the response body is empty
 		logger.Log.Error("Invalid SSOCookie, response body is empty")
 		return false
 	}
@@ -95,18 +92,36 @@ func VerifySSOCookie(ssoCookie string) bool {
 }
 
 // CheckAccount checks the account status associated with the provided SSO cookie.
-func CheckAccount(ssoCookie string) (models.Status, error) {
+func CheckAccount(ssoCookie string, captchaService string, captchaAPIKey string) (models.Status, error) {
 	logger.Log.Info("Starting CheckAccount function")
 
-	// Solve reCAPTCHA using 2captcha
-	// Solve reCAPTCHA using EZ-Captcha
-	//logger.Log.Info("Attempting to solve reCAPTCHA using 2captcha")
-	logger.Log.Info("Attempting to solve reCAPTCHA using EZ-Captcha")
-	gRecaptchaResponse, err := SolveReCaptchaV2()
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to solve reCAPTCHA")
-		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %v", err)
+	var gRecaptchaResponse string
+	var err error
+
+	switch captchaService {
+	case "ezcaptcha":
+		if captchaAPIKey != "" {
+			// Use user's API key
+			gRecaptchaResponse, err = SolveReCaptchaV2WithKey(captchaAPIKey)
+		} else {
+			gRecaptchaResponse, err = SolveReCaptchaV2()
+		}
+	case "2captcha":
+		if captchaAPIKey != "" {
+			// Use user's API key
+			gRecaptchaResponse, err = SolveTwoCaptchaReCaptchaV2WithKey(captchaAPIKey)
+		} else {
+			gRecaptchaResponse, err = SolveTwoCaptchaReCaptchaV2()
+		}
+	default:
+		return models.StatusUnknown, fmt.Errorf("invalid captcha service: %s", captchaService)
 	}
+
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to solve reCAPTCHA using %s", captchaService)
+		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA using %s: %v", captchaService, err)
+	}
+
 	logger.Log.Info("Successfully solved reCAPTCHA")
 
 	// Construct the ban appeal URL with the reCAPTCHA response
