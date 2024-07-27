@@ -142,6 +142,29 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 						},
 					},
 				},
+				discordgo.ActionsRow{
+					Components: []discordgo.MessageComponent{
+						discordgo.SelectMenu{
+							CustomID:    "captcha_service",
+							Placeholder: "Select CAPTCHA service",
+							Options: []discordgo.SelectMenuOption{
+								{Label: "EZ-Captcha", Value: "ezcaptcha"},
+								{Label: "2captcha", Value: "2captcha"},
+							},
+						},
+					},
+				},
+				discordgo.ActionsRow{
+					Components: []discordgo.MessageComponent{
+						discordgo.TextInput{
+							CustomID:    "captcha_api_key",
+							Label:       "CAPTCHA API Key (optional)",
+							Style:       discordgo.TextInputShort,
+							Placeholder: "Enter your own API key (leave blank to use default)",
+							Required:    false,
+						},
+					},
+				},
 			},
 		},
 	})
@@ -163,13 +186,22 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	var newSSOCookie string
+	var captchaService string
+	var captchaAPIKey string
+
 	for _, comp := range data.Components {
 		if row, ok := comp.(*discordgo.ActionsRow); ok {
 			for _, rowComp := range row.Components {
-				if textInput, ok := rowComp.(*discordgo.TextInput); ok {
-					if textInput.CustomID == "new_sso_cookie" {
-						newSSOCookie = strings.TrimSpace(textInput.Value)
-						break
+				switch v := rowComp.(type) {
+				case *discordgo.TextInput:
+					if v.CustomID == "new_sso_cookie" {
+						newSSOCookie = strings.TrimSpace(v.Value)
+					} else if v.CustomID == "captcha_api_key" {
+						captchaAPIKey = strings.TrimSpace(v.Value)
+					}
+				case *discordgo.SelectMenu:
+					if v.CustomID == "captcha_service" && len(v.Options) > 0 {
+						captchaService = v.Options[0].Value
 					}
 				}
 			}
@@ -216,6 +248,12 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Update the account, preserving the existing NotificationType
 	account.SSOCookie = newSSOCookie
 	account.IsExpiredCookie = false // Reset the expired cookie flag
+	if captchaService != "" {
+		account.CaptchaService = captchaService
+	}
+	if captchaAPIKey != "" {
+		account.CaptchaAPIKey = captchaAPIKey
+	}
 
 	services.DBMutex.Lock()
 	if err := database.DB.Save(&account).Error; err != nil {
@@ -226,7 +264,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 	services.DBMutex.Unlock()
 
-	respondToInteraction(s, i, fmt.Sprintf("Account '%s' has been successfully updated with the new SSO cookie.", account.Title))
+	respondToInteraction(s, i, fmt.Sprintf("Account '%s' has been successfully updated with the new SSO cookie and CAPTCHA settings.", account.Title))
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
