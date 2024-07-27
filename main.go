@@ -26,6 +26,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	err = services.LoadTwoCaptchaEnvironmentVariables() // Add this line
+	if err != nil {
+		logger.Log.WithError(err).WithField("Bot Startup", "2Captcha Initialization").Error()
+		os.Exit(1)
+	}
+
 	err = database.Databaselogin() // Connect to the database.
 	if err != nil {
 		logger.Log.WithError(err).WithField("Bot Startup", "Database login").Error()
@@ -55,11 +61,11 @@ func loadEnvironmentVariables() error {
 
 	requiredEnvVars := []string{
 		"DISCORD_TOKEN",
-		// "TWOCAPTCHA_API_KEY",
 		"EZCAPTCHA_CLIENT_KEY",
 		"RECAPTCHA_SITE_KEY",
 		"RECAPTCHA_URL",
-		// Add any other required environment variables here
+		// "TWOCAPAPPID",
+		"TWOCAPTCHA_API_KEY",
 	}
 
 	for _, envVar := range requiredEnvVars {
