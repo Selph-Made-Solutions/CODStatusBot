@@ -126,7 +126,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Handle captcha service selection
 	if len(data.Components) > 2 {
 		if selectMenu, ok := data.Components[2].(*discordgo.ActionsRow).Components[0].(*discordgo.SelectMenu); ok {
-			if len(selectMenu.Options) > 0 && len(selectMenu.Options[0].Value) > 0 {
+			if len(selectMenu.Options) > 0 && selectMenu.Options[0].Value != "" {
 				captchaService = selectMenu.Options[0].Value
 			}
 		}
@@ -166,8 +166,6 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if result.Error == nil {
 		notificationType = existingAccount.NotificationType
 	}
-
-	// logger.Log.Infof("Using notification preference '%s' for new account of user %s in guild %s", notificationType, userID, i.GuildID)
 
 	// Create new account
 	account := models.Account{

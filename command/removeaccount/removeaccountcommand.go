@@ -6,6 +6,7 @@ import (
 	"CODStatusBot/models"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -74,30 +75,68 @@ func CommandRemoveAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		return
 	}
 
-	accountList := "Your accounts:\n"
-	for _, account := range accounts {
-		accountList += fmt.Sprintf("• %s (Status: %s, Guild: %s)\n", account.Title, account.LastStatus, account.GuildID)
+	options := make([]discordgo.SelectMenuOption, len(accounts))
+	for index, account := range accounts {
+		options[index] = discordgo.SelectMenuOption{
+			Label:       account.Title,
+			Value:       strconv.Itoa(int(account.ID)),
+			Description: fmt.Sprintf("Status: %s, Guild: %s", account.LastStatus, account.GuildID),
+		}
 	}
 
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseModal,
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			CustomID: "remove_account_modal",
-			Title:    "Remove Account",
+			Content: "Select an account to remove:",
+			Flags:   discordgo.MessageFlagsEphemeral,
 			Components: []discordgo.MessageComponent{
 				discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
-						discordgo.TextInput{
-							CustomID:    "account_title",
-							Label:       "Enter the title of the account to remove",
-							Style:       discordgo.TextInputShort,
-							Placeholder: "Enter the account title",
-							Required:    true,
-							MinLength:   1,
-							MaxLength:   100,
+						discordgo.SelectMenu{
+							CustomID:    "remove_account_select",
+							Placeholder: "Choose an account",
+							Options:     options,
 						},
 					},
 				},
+			},
+		},
+	})
+
+	if err != nil {
+		logger.Log.WithError(err).Error("Error responding with account selection")
+	}
+}
+
+func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	data := i.MessageComponentData()
+	if len(data.Values) == 0 {
+		respondToInteraction(s, i, "No account selected. Please try again.")
+		return
+	}
+
+	accountID, err := strconv.Atoi(data.Values[0])
+	if err != nil {
+		logger.Log.WithError(err).Error("Error converting account ID")
+		respondToInteraction(s, i, "Error processing your selection. Please try again.")
+		return
+	}
+
+	var account models.Account
+	result := database.DB.First(&account, accountID)
+	if result.Error != nil {
+		logger.Log.WithError(result.Error).Error("Error fetching account")
+		respondToInteraction(s, i, "Error: Account not found or you don't have permission to remove it.")
+		return
+	}
+
+	// Show confirmation modal
+	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseModal,
+		Data: &discordgo.InteractionResponseData{
+			CustomID: "remove_account_modal",
+			Title:    "Confirm Account Removal",
+			Components: []discordgo.MessageComponent{
 				discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
 						discordgo.TextInput{
@@ -116,32 +155,20 @@ func CommandRemoveAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 	})
 
 	if err != nil {
-		logger.Log.WithError(err).Error("Error responding with modal")
-		return
-	}
-
-	// Send the account list as a follow-up message
-	_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
-		Content: accountList,
-		Flags:   discordgo.MessageFlagsEphemeral,
-	})
-	if err != nil {
-		logger.Log.WithError(err).Error("Error sending follow-up message with account list")
+		logger.Log.WithError(err).Error("Error showing confirmation modal")
+		respondToInteraction(s, i, "An error occurred. Please try again.")
 	}
 }
 
 func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
 
-	var accountTitle, confirmation string
+	var confirmation string
 	for _, comp := range data.Components {
 		if row, ok := comp.(*discordgo.ActionsRow); ok {
 			for _, rowComp := range row.Components {
 				if textInput, ok := rowComp.(*discordgo.TextInput); ok {
-					switch textInput.CustomID {
-					case "account_title":
-						accountTitle = sanitizeInput(strings.TrimSpace(textInput.Value))
-					case "confirmation":
+					if textInput.CustomID == "confirmation" {
 						confirmation = strings.TrimSpace(textInput.Value)
 					}
 				}
@@ -149,29 +176,21 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		}
 	}
 
-	if accountTitle == "" {
-		respondToInteraction(s, i, "Error: No account title provided.")
-		return
-	}
-
 	if confirmation != "CONFIRM" {
 		respondToInteraction(s, i, "Account removal cancelled. The confirmation was not correct.")
 		return
 	}
 
-	var userID string
-	if i.Member != nil {
-		userID = i.Member.User.ID
-	} else if i.User != nil {
-		userID = i.User.ID
-	} else {
-		logger.Log.Error("Interaction doesn't have Member or User")
-		respondToInteraction(s, i, "An error occurred while processing your request.")
+	// Fetch the account ID from the interaction data
+	accountID, err := strconv.Atoi(i.Message.Interaction.ID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error retrieving account ID")
+		respondToInteraction(s, i, "An error occurred. Please try again.")
 		return
 	}
 
 	var account models.Account
-	result := database.DB.Where("title = ? AND user_id = ?", accountTitle, userID).First(&account)
+	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
 		respondToInteraction(s, i, "Error: Account not found or you don't have permission to remove it.")
@@ -204,7 +223,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	respondToInteraction(s, i, fmt.Sprintf("Account '%s' has been successfully removed from the database. This action cannot be undone.", account.Title))
+	respondToInteraction(s, i, fmt.Sprintf("Account '%s' has been successfully removed from the database.", account.Title))
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {

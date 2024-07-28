@@ -9,8 +9,6 @@ import (
 	"CODStatusBot/command/updateaccount"
 	"CODStatusBot/logger"
 	"CODStatusBot/services"
-
-	// "CODStatusBot/services"
 	"errors"
 	"github.com/bwmarrin/discordgo"
 	"os"
@@ -83,6 +81,9 @@ func StartBot() error {
 			case "account_age_select":
 				logger.Log.Info("Handling account age selection")
 				accountage.HandleAccountSelection(s, i)
+			case "remove_account_select":
+				logger.Log.Info("Handling remove account selection")
+				removeaccount.HandleAccountSelection(s, i)
 			default:
 				logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 			}
