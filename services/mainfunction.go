@@ -5,13 +5,10 @@ import (
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"fmt"
-	"github.com/joho/godotenv"
 	"os"
 	"strconv"
 	"sync"
 	"time"
-
-	"github.com/bwmarrin/discordgo"
 )
 
 var (
@@ -196,7 +193,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	}
 
 	// Check the account status
-	result, err := CheckAccount(account.SSOCookie, account.CaptchaService, account.CaptchaAPIKey)
+	result, err := CheckAccount(account.SSOCookie, account.CaptchaAPIKey)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to check account %s: possible expired SSO Cookie", account.Title)
 		return
