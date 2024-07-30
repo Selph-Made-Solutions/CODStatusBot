@@ -8,14 +8,14 @@ Result token can be queried within 5 minutes after each task is created
 
 ### Request Parameters
 
-| Parameters | Type   | Required | Description |
-|------------|--------|----------|-------------|
+| Parameters | Type   | Required | Description                                                   |
+|------------|--------|----------|---------------------------------------------------------------|
 | clientKey  | string | true     | Account client key, which can be found in the personal center |
-| taskId     | string | true     | The task ID created by the [createTask](https://ezcaptcha.atlassian.net/wiki/spaces/IS/pages/7045215/createTask+Create+Task) method |
+| taskId     | string | true     | The task ID created by the [createTask](createtask.md) method |
 
 ### Request Example
 
-```
+```http request
 POST https://api.ez-captcha.com/getTaskResult
 
 Content-Type: application/json
@@ -28,17 +28,17 @@ Content-Type: application/json
 
 ### Response Data
 
-| Parameters        | Type    | Description |
-|-------------------|---------|-------------|
-| errorId           | Integer | Error message: 0 - no error, 1 - error |
-| errorCode         | string  | Error Code |
-| errorDescription  | string  | Detailed error description |
-| status            | String  | **processing** - task is in progress <br> **ready** - task is complete, the result is found in the solution parameter |
-| solution          | Object  | Task results, different types of task results will be different. |
+| Parameters       | Type    | Description                                                                                                           |
+|------------------|---------|-----------------------------------------------------------------------------------------------------------------------|
+| errorId          | Integer | Error message: 0 - no error, 1 - error                                                                                |
+| errorCode        | string  | Error Code                                                                                                            |
+| errorDescription | string  | Detailed error description                                                                                            |
+| status           | String  | **processing** - task is in progress <br> **ready** - task is complete, the result is found in the solution parameter |
+| solution         | Object  | Task results, different types of task results will be different.                                                      |
 
 ### Response Example
 
-```
+```json lines
 {
 "errorId": 0,
 "errorCode": null,
