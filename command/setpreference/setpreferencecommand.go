@@ -7,54 +7,6 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-func RegisterCommand(s *discordgo.Session, guildID string) {
-	command := &discordgo.ApplicationCommand{
-		Name:        "setpreference",
-		Description: "Set your preference for where you want to receive status notifications",
-		Options: []*discordgo.ApplicationCommandOption{
-			{
-				Type:        discordgo.ApplicationCommandOptionString,
-				Name:        "type",
-				Description: "Where do you want to receive Status Notifications?",
-				Required:    true,
-				Choices: []*discordgo.ApplicationCommandOptionChoice{
-					{
-						Name:  "Channel",
-						Value: "channel",
-					},
-					{
-						Name:  "Direct Message",
-						Value: "dm",
-					},
-				},
-			},
-		},
-	}
-
-	_, err := s.ApplicationCommandCreate(s.State.User.ID, guildID, command)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error creating setpreference command")
-	}
-}
-
-func UnregisterCommand(s *discordgo.Session, guildID string) {
-	commands, err := s.ApplicationCommands(s.State.User.ID, guildID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error getting application commands")
-		return
-	}
-
-	for _, command := range commands {
-		if command.Name == "setpreference" {
-			err := s.ApplicationCommandDelete(s.State.User.ID, guildID, command.ID)
-			if err != nil {
-				logger.Log.WithError(err).Error("Error deleting setpreference command")
-			}
-			return
-		}
-	}
-}
-
 func CommandSetPreference(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	preferenceType := i.ApplicationCommandData().Options[0].StringValue()
 
