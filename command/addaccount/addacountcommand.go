@@ -85,21 +85,9 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 				},
 				discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
-						discordgo.SelectMenu{
-							CustomID:    "captcha_service",
-							Placeholder: "Select CAPTCHA service",
-							Options: []discordgo.SelectMenuOption{
-								{Label: "EZ-Captcha", Value: "ezcaptcha"},
-								{Label: "2captcha", Value: "2captcha"},
-							},
-						},
-					},
-				},
-				discordgo.ActionsRow{
-					Components: []discordgo.MessageComponent{
 						discordgo.TextInput{
 							CustomID:    "captcha_api_key",
-							Label:       "CAPTCHA API Key (optional)",
+							Label:       "EZ-Captcha API Key (optional)",
 							Style:       discordgo.TextInputShort,
 							Placeholder: "Enter your own API key (leave blank to use default)",
 							Required:    false,
@@ -120,21 +108,11 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	title := sanitizeInput(strings.TrimSpace(data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value))
 	ssoCookie := strings.TrimSpace(data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
-	captchaService := "ezcaptcha" // Default value
 	captchaAPIKey := ""
 
-	// Handle captcha service selection
-	if len(data.Components) > 2 {
-		if selectMenu, ok := data.Components[2].(*discordgo.ActionsRow).Components[0].(*discordgo.SelectMenu); ok {
-			if len(selectMenu.Options) > 0 && selectMenu.Options[0].Value != "" {
-				captchaService = selectMenu.Options[0].Value
-			}
-		}
-	}
-
 	// Handle captcha API key
-	if len(data.Components) > 3 {
-		if textInput, ok := data.Components[3].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput); ok {
+	if len(data.Components) > 2 {
+		if textInput, ok := data.Components[2].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput); ok {
 			captchaAPIKey = strings.TrimSpace(textInput.Value)
 		}
 	}
@@ -175,7 +153,6 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		GuildID:          guildID,
 		ChannelID:        i.ChannelID,
 		NotificationType: notificationType,
-		CaptchaService:   captchaService,
 		CaptchaAPIKey:    captchaAPIKey,
 	}
 
