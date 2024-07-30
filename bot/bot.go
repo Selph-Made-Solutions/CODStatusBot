@@ -74,6 +74,9 @@ func StartBot() error {
 			case customID == "account_logs_select":
 				logger.Log.Info("Handling account logs selection")
 				accountlogs.HandleAccountSelection(s, i)
+			case strings.HasPrefix(customID, "update_account_"):
+				logger.Log.Info("Handling update account selection")
+				updateaccount.HandleAccountSelection(s, i)
 			case customID == "update_account_select":
 				logger.Log.Info("Handling update account selection")
 				updateaccount.HandleAccountSelection(s, i)
