@@ -9,17 +9,35 @@ COD Status Bot is a Discord bot designed to help you monitor your Activision acc
 ## Features
 
 - Monitor multiple Activision accounts
-- Periodic automatic checks (approximately every 12 hours)
+- Periodic automatic checks (customizable interval with your own API key)
 - Manual status checks
 - Account age verification
 - Ban history logs
 - Customizable notification preferences
 - Anonymous feedback submission
+- EZ-Captcha integration for improved reliability
 
 ## Getting Started
 
 1. Invite the bot to your Discord server using the provided [Invite Link](https://discord.com/oauth2/authorize?client_id=1211857854324015124).
 2. Once the bot joins your server, it will automatically register the necessary commands.
+3. (Optional) Get your own EZ-Captcha API key for customized check intervals and improved service.
+
+## EZ-Captcha Integration
+
+The bot now uses EZ-Captcha for solving CAPTCHAs, which improves the reliability of account status checks. Users have two options:
+
+1. Use the bot's default API key (limited use, shared among all users)
+2. Get your own EZ-Captcha API key for unlimited use and customizable check intervals
+
+### Getting Your Own EZ-Captcha API Key
+
+1. Visit [EZ-Captcha Registration](https://dashboard.ez-captcha.com/#/register?inviteCode=uyNrRgWlEKy)
+2. Complete the registration process
+3. Once registered, you'll receive your API key
+4. Use the `/setcaptchaservice` command to set your API key in the bot
+
+By using your own API key, you can customize the check interval for your accounts and enjoy unlimited use of the service.
 
 ## Commands
 
@@ -32,6 +50,7 @@ Usage: `/addaccount`
 This command will open a modal where you can enter:
 - Account Title: A name to identify the account
 - SSO Cookie: The Single Sign-On cookie associated with your Activision account
+- EZ-Captcha API Key (optional): Your personal API key for unlimited use
 
 ### /removeaccount
 
@@ -43,11 +62,11 @@ This command will display a list of your monitored accounts and prompt you to co
 
 ### /updateaccount
 
-Update the SSO cookie for an existing account.
+Update the SSO cookie or EZ-Captcha API key for an existing account.
 
 Usage: `/updateaccount`
 
-This command will display a list of your monitored accounts and allow you to update the SSO cookie for the selected account.
+This command will display a list of your monitored accounts and allow you to update the SSO cookie or EZ-Captcha API key for the selected account.
 
 ### /listaccounts
 
@@ -86,6 +105,14 @@ Set your preference for where you want to receive status notifications.
 Usage: `/setpreference <type>`
 
 - `type`: Choose between "channel" (default) or "dm" for direct messages.
+
+### /setcaptchaservice
+
+Set your personal EZ-Captcha API key for unlimited use and customizable check intervals.
+
+Usage: `/setcaptchaservice <api_key>`
+
+- `api_key`: Your personal EZ-Captcha API key. Leave blank to use the bot's default key.
 
 ### /help
 
