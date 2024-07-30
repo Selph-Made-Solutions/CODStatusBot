@@ -92,34 +92,23 @@ func VerifySSOCookie(ssoCookie string) bool {
 }
 
 // CheckAccount checks the account status associated with the provided SSO cookie.
-func CheckAccount(ssoCookie string, captchaService string, captchaAPIKey string) (models.Status, error) {
+func CheckAccount(ssoCookie string, captchaAPIKey string) (models.Status, error) {
 	logger.Log.Info("Starting CheckAccount function")
 
 	var gRecaptchaResponse string
 	var err error
 
-	switch captchaService {
-	case "ezcaptcha":
-		if captchaAPIKey != "" {
-			// Use user's API key
-			gRecaptchaResponse, err = SolveReCaptchaV2WithKey(captchaAPIKey)
-		} else {
-			gRecaptchaResponse, err = SolveReCaptchaV2()
-		}
-	case "2captcha":
-		if captchaAPIKey != "" {
-			// Use user's API key
-			gRecaptchaResponse, err = SolveTwoCaptchaReCaptchaV2WithKey(captchaAPIKey)
-		} else {
-			gRecaptchaResponse, err = SolveTwoCaptchaReCaptchaV2()
-		}
-	default:
-		return models.StatusUnknown, fmt.Errorf("invalid captcha service: %s", captchaService)
+	if captchaAPIKey != "" {
+		// Use user's API key
+		gRecaptchaResponse, err = SolveReCaptchaV2WithKey(captchaAPIKey)
+	} else {
+		gRecaptchaResponse, err = SolveReCaptchaV2()
 	}
 
 	if err != nil {
-		logger.Log.WithError(err).Errorf("Failed to solve reCAPTCHA using %s", captchaService)
-		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA using %s: %v", captchaService, err)
+
+		logger.Log.WithError(err).Error("Failed to solve reCAPTCHA")
+		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %v", err)
 	}
 
 	logger.Log.Info("Successfully solved reCAPTCHA")
