@@ -11,36 +11,6 @@ import (
 	"time"
 )
 
-func RegisterCommand(s *discordgo.Session, guildID string) {
-	command := &discordgo.ApplicationCommand{
-		Name:        "accountage",
-		Description: "Check the age of an account",
-	}
-
-	_, err := s.ApplicationCommandCreate(s.State.User.ID, guildID, command)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error creating accountage command")
-	}
-}
-
-func UnregisterCommand(s *discordgo.Session, guildID string) {
-	commands, err := s.ApplicationCommands(s.State.User.ID, guildID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error getting application commands")
-		return
-	}
-
-	for _, command := range commands {
-		if command.Name == "accountage" {
-			err := s.ApplicationCommandDelete(s.State.User.ID, guildID, command.ID)
-			if err != nil {
-				logger.Log.WithError(err).Error("Error deleting accountage command")
-			}
-			return
-		}
-	}
-}
-
 func CommandAccountAge(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	var userID string
 	if i.Member != nil {
