@@ -5,7 +5,6 @@ import (
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
-
 	"github.com/bwmarrin/discordgo"
 	"strings"
 	"unicode"
