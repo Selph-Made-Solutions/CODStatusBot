@@ -10,22 +10,12 @@ import (
 func RegisterCommand(s *discordgo.Session, guildID string) {
 	command := &discordgo.ApplicationCommand{
 		Name:        "setcaptchaservice",
-		Description: "Set your preferred captcha service and API key",
+		Description: "Set your EZ-Captcha API key",
 		Options: []*discordgo.ApplicationCommandOption{
 			{
 				Type:        discordgo.ApplicationCommandOptionString,
-				Name:        "service",
-				Description: "The captcha service to use (ezcaptcha or 2captcha)",
-				Required:    true,
-				Choices: []*discordgo.ApplicationCommandOptionChoice{
-					{Name: "EZ-Captcha", Value: "ezcaptcha"},
-					{Name: "2captcha", Value: "2captcha"},
-				},
-			},
-			{
-				Type:        discordgo.ApplicationCommandOptionString,
 				Name:        "api_key",
-				Description: "Your API key for the selected service (leave empty to use bot's default key)",
+				Description: "Your EZ-Captcha API key (leave empty to use bot's default key)",
 				Required:    false,
 			},
 		},
@@ -57,11 +47,9 @@ func UnregisterCommand(s *discordgo.Session, guildID string) {
 
 func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	options := i.ApplicationCommandData().Options
-	captchaService := options[0].StringValue()
-
 	var apiKey string
-	if len(options) > 1 {
-		apiKey = options[1].StringValue()
+	if len(options) > 0 {
+		apiKey = options[0].StringValue()
 	}
 
 	var userID string
@@ -78,24 +66,21 @@ func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCrea
 	// Update all accounts for this user
 	result := database.DB.Model(&models.Account{}).
 		Where("user_id = ?", userID).
-		Updates(map[string]interface{}{
-			"captcha_service": captchaService,
-			"captcha_api_key": apiKey,
-		})
+		Update("captcha_api_key", apiKey)
 
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error updating user accounts")
-		respondToInteraction(s, i, "Error setting captcha service and API key. Please try again.")
+		respondToInteraction(s, i, "Error setting EZ-Captcha API key. Please try again.")
 		return
 	}
 
 	logger.Log.Infof("Updated %d accounts for user %s", result.RowsAffected, userID)
 
-	message := "Your captcha service preference has been updated to " + captchaService + " for all your accounts."
-	if apiKey != "" {
-		message += " Your custom API key has been set."
-	} else {
+	message := "Your EZ-Captcha API key has been updated for all your accounts."
+	if apiKey == "" {
 		message += " The bot's default API key will be used."
+	} else {
+		message += " Your custom API key has been set."
 	}
 
 	respondToInteraction(s, i, message)
