@@ -36,15 +36,17 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		return
 	}
 
-	options := make([]discordgo.SelectMenuOption, len(accounts))
-	for index, account := range accounts {
-		options[index] = discordgo.SelectMenuOption{
-			Label:       account.Title,
-			Value:       strconv.Itoa(int(account.ID)),
-			Description: fmt.Sprintf("Status: %s, Guild: %s", account.LastStatus, account.GuildID),
-		}
+	// Create buttons for each account
+	var components []discordgo.MessageComponent
+	for _, account := range accounts {
+		components = append(components, discordgo.Button{
+			Label:    account.Title,
+			Style:    discordgo.PrimaryButton,
+			CustomID: fmt.Sprintf("update_account_%d", account.ID),
+		})
 	}
 
+	// Send message with account buttons
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
@@ -52,13 +54,7 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 			Flags:   discordgo.MessageFlagsEphemeral,
 			Components: []discordgo.MessageComponent{
 				discordgo.ActionsRow{
-					Components: []discordgo.MessageComponent{
-						discordgo.SelectMenu{
-							CustomID:    "update_account_select",
-							Placeholder: "Choose an account",
-							Options:     options,
-						},
-					},
+					Components: components,
 				},
 			},
 		},
@@ -70,15 +66,10 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 }
 
 func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	data := i.MessageComponentData()
-	if len(data.Values) == 0 {
-		respondToInteraction(s, i, "No account selected. Please try again.")
-		return
-	}
-
-	accountID, err := strconv.Atoi(data.Values[0])
+	customID := i.MessageComponentData().CustomID
+	accountID, err := strconv.Atoi(strings.TrimPrefix(customID, "update_account_"))
 	if err != nil {
-		logger.Log.WithError(err).Error("Error converting account ID")
+		logger.Log.WithError(err).Error("Error parsing account ID")
 		respondToInteraction(s, i, "Error processing your selection. Please try again.")
 		return
 	}
@@ -188,7 +179,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Update the account, preserving the existing NotificationType
+	// Update the account
 	account.SSOCookie = newSSOCookie
 	account.IsExpiredCookie = false // Reset the expired cookie flag
 	if captchaAPIKey != "" {
@@ -208,13 +199,25 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: message,
-			Flags:   discordgo.MessageFlagsEphemeral,
-		},
-	})
+	var err error
+	if i.Type == discordgo.InteractionMessageComponent {
+		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseUpdateMessage,
+			Data: &discordgo.InteractionResponseData{
+				Content:    message,
+				Components: []discordgo.MessageComponent{},
+				Flags:      discordgo.MessageFlagsEphemeral,
+			},
+		})
+	} else {
+		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: message,
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+	}
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction")
 	}
