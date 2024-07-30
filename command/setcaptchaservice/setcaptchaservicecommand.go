@@ -7,44 +7,6 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-func RegisterCommand(s *discordgo.Session, guildID string) {
-	command := &discordgo.ApplicationCommand{
-		Name:        "setcaptchaservice",
-		Description: "Set your EZ-Captcha API key",
-		Options: []*discordgo.ApplicationCommandOption{
-			{
-				Type:        discordgo.ApplicationCommandOptionString,
-				Name:        "api_key",
-				Description: "Your EZ-Captcha API key (leave empty to use bot's default key)",
-				Required:    false,
-			},
-		},
-	}
-
-	_, err := s.ApplicationCommandCreate(s.State.User.ID, guildID, command)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error creating setcaptchaservice command")
-	}
-}
-
-func UnregisterCommand(s *discordgo.Session, guildID string) {
-	commands, err := s.ApplicationCommands(s.State.User.ID, guildID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error getting application commands")
-		return
-	}
-
-	for _, command := range commands {
-		if command.Name == "setcaptchaservice" {
-			err := s.ApplicationCommandDelete(s.State.User.ID, guildID, command.ID)
-			if err != nil {
-				logger.Log.WithError(err).Error("Error deleting setcaptchaservice command")
-			}
-			return
-		}
-	}
-}
-
 func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	options := i.ApplicationCommandData().Options
 	var apiKey string
