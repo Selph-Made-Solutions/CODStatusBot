@@ -1,8 +1,6 @@
 package models
 
-import (
-	"gorm.io/gorm"
-)
+import "gorm.io/gorm"
 
 type Account struct {
 	gorm.Model
@@ -16,14 +14,12 @@ type Account struct {
 	LastCookieNotification int64  // The timestamp of the last notification sent out on the account for an expired ssocookie.
 	SSOCookie              string // The SSO cookie associated with the account.
 	Created                string // The timestamp of when the account was created on Activision.
-	IsExpiredCookie        bool   `gorm:"default:false"`       // A flag indicating if the SSO cookie has expired.
-	NotificationType       string `gorm:"default:channel"`     // User preference for location of notifications either channel or dm
-	IsPermabanned          bool   `gorm:"default:false"`       // A flag indicating if the account is permanently banned
-	LastCookieCheck        int64  `gorm:"default:0"`           // The timestamp of the last cookie check for permanently banned accounts
-	LastStatusChange       int64  `gorm:"default:0"`           // The timestamp of the last status change
-	CaptchaService         string `gorm:"default:'ezcaptcha'"` // 'ezcaptcha' or '2captcha' captcha service to use for captcha verification
+	IsExpiredCookie        bool   `gorm:"default:false"`   // A flag indicating if the SSO cookie has expired.
+	NotificationType       string `gorm:"default:channel"` // User preference for location of notifications either channel or dm
+	IsPermabanned          bool   `gorm:"default:false"`   // A flag indicating if the account is permanently banned
+	LastCookieCheck        int64  `gorm:"default:0"`       // The timestamp of the last cookie check for permanently banned accounts
+	LastStatusChange       int64  `gorm:"default:0"`       // The timestamp of the last status change
 	CaptchaAPIKey          string // User's own API key, if provided
-
 }
 
 type Ban struct {
