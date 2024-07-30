@@ -79,7 +79,7 @@ func CommandRemoveAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 	for index, account := range accounts {
 		options[index] = discordgo.SelectMenuOption{
 			Label:       account.Title,
-			Value:       strconv.Itoa(int(account.ID)),
+			Value:       strconv.FormatUint(uint64(account.ID), 10),
 			Description: fmt.Sprintf("Status: %s, Guild: %s", account.LastStatus, account.GuildID),
 		}
 	}
@@ -115,7 +115,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		return
 	}
 
-	accountID, err := strconv.Atoi(data.Values[0])
+	accountID, err := strconv.ParseUint(data.Values[0], 10, 64)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error converting account ID")
 		respondToInteraction(s, i, "Error processing your selection. Please try again.")
@@ -134,7 +134,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseModal,
 		Data: &discordgo.InteractionResponseData{
-			CustomID: "remove_account_modal",
+			CustomID: fmt.Sprintf("remove_account_modal_%d", accountID),
 			Title:    "Confirm Account Removal",
 			Components: []discordgo.MessageComponent{
 				discordgo.ActionsRow{
@@ -181,10 +181,17 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Fetch the account ID from the interaction data
-	accountID, err := strconv.Atoi(i.Message.Interaction.ID)
+	// Extract the account ID from the modal's custom ID
+	parts := strings.Split(data.CustomID, "_")
+	if len(parts) != 3 {
+		logger.Log.Error("Invalid custom ID format")
+		respondToInteraction(s, i, "An error occurred. Please try again.")
+		return
+	}
+
+	accountID, err := strconv.ParseUint(parts[2], 10, 64)
 	if err != nil {
-		logger.Log.WithError(err).Error("Error retrieving account ID")
+		logger.Log.WithError(err).Error("Error parsing account ID")
 		respondToInteraction(s, i, "An error occurred. Please try again.")
 		return
 	}
