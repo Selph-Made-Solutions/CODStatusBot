@@ -12,6 +12,7 @@ import (
 	"errors"
 	"github.com/bwmarrin/discordgo"
 	"os"
+	"strings"
 )
 
 var discord *discordgo.Session
@@ -56,34 +57,35 @@ func StartBot() error {
 			}
 		case discordgo.InteractionModalSubmit:
 			customID := i.ModalSubmitData().CustomID
-			switch customID {
-			case "add_account_modal":
+			switch {
+			case customID == "add_account_modal":
 				logger.Log.Info("Handling add account modal submission")
 				addaccount.HandleModalSubmit(s, i)
-			case "remove_account_modal":
-				logger.Log.Info("Handling remove account modal submission")
-				removeaccount.HandleModalSubmit(s, i)
-			case "update_account_modal":
+			case strings.HasPrefix(customID, "update_account_modal_"):
 				logger.Log.Info("Handling update account modal submission")
 				updateaccount.HandleModalSubmit(s, i)
 			default:
 				logger.Log.WithField("customID", customID).Error("Unknown modal submission")
 			}
+
 		case discordgo.InteractionMessageComponent:
 			customID := i.MessageComponentData().CustomID
-			switch customID {
-			case "account_logs_select":
+			switch {
+			case customID == "account_logs_select":
 				logger.Log.Info("Handling account logs selection")
 				accountlogs.HandleAccountSelection(s, i)
-			case "update_account_select":
+			case customID == "update_account_select":
 				logger.Log.Info("Handling update account selection")
 				updateaccount.HandleAccountSelection(s, i)
-			case "account_age_select":
+			case customID == "account_age_select":
 				logger.Log.Info("Handling account age selection")
 				accountage.HandleAccountSelection(s, i)
-			case "remove_account_select":
+			case strings.HasPrefix(customID, "remove_account_"):
 				logger.Log.Info("Handling remove account selection")
 				removeaccount.HandleAccountSelection(s, i)
+			case customID == "cancel_remove" || strings.HasPrefix(customID, "confirm_remove_"):
+				logger.Log.Info("Handling remove account confirmation")
+				removeaccount.HandleConfirmation(s, i)
 			default:
 				logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 			}
