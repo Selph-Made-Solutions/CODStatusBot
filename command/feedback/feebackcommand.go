@@ -7,44 +7,6 @@ import (
 	"os"
 )
 
-func RegisterCommand(s *discordgo.Session) {
-	command := &discordgo.ApplicationCommand{
-		Name:        "feedback",
-		Description: "Send anonymous feedback or suggestions to the bot developer",
-		Options: []*discordgo.ApplicationCommandOption{
-			{
-				Type:        discordgo.ApplicationCommandOptionString,
-				Name:        "message",
-				Description: "Your feedback or suggestion",
-				Required:    true,
-			},
-		},
-	}
-
-	_, err := s.ApplicationCommandCreate(s.State.User.ID, "", command)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error creating feedback command")
-	}
-}
-
-func UnregisterCommand(s *discordgo.Session) {
-	commands, err := s.ApplicationCommands(s.State.User.ID, "")
-	if err != nil {
-		logger.Log.WithError(err).Error("Error getting global application commands")
-		return
-	}
-
-	for _, command := range commands {
-		if command.Name == "feedback" {
-			err := s.ApplicationCommandDelete(s.State.User.ID, "", command.ID)
-			if err != nil {
-				logger.Log.WithError(err).Error("Error deleting feedback command")
-			}
-			break
-		}
-	}
-}
-
 func CommandFeedback(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	feedbackMessage := i.ApplicationCommandData().Options[0].StringValue()
 	developerID := os.Getenv("DEVELOPER_ID")
