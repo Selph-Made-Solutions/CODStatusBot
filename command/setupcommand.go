@@ -25,22 +25,12 @@ func RegisterCommands(s *discordgo.Session) {
 	commands := []*discordgo.ApplicationCommand{
 		{
 			Name:        "setcaptchaservice",
-			Description: "Set your preferred captcha service and API key",
+			Description: "Set your EZ-Captcha API key",
 			Options: []*discordgo.ApplicationCommandOption{
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "service",
-					Description: "The captcha service to use (ezcaptcha or 2captcha)",
-					Required:    true,
-					Choices: []*discordgo.ApplicationCommandOptionChoice{
-						{Name: "EZ-Captcha", Value: "ezcaptcha"},
-						{Name: "2captcha", Value: "2captcha"},
-					},
-				},
-				{
-					Type:        discordgo.ApplicationCommandOptionString,
 					Name:        "api_key",
-					Description: "Your API key for the selected service (leave empty to use bot's default key)",
+					Description: "Your EZ-Captcha API key (leave empty to use bot's default key)",
 					Required:    false,
 				},
 			},
