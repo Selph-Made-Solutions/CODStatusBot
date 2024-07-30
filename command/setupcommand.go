@@ -117,6 +117,7 @@ func RegisterCommands(s *discordgo.Session) {
 	Handlers["addaccount"] = addaccount.CommandAddAccount
 	Handlers["add_account_modal"] = addaccount.HandleModalSubmit
 	Handlers["remove_account_select"] = removeaccount.HandleAccountSelection
+	Handlers["update_account_modal"] = updateaccount.HandleModalSubmit
 	Handlers["help"] = help.CommandHelp
 	Handlers["accountage"] = accountage.CommandAccountAge
 	Handlers["accountlogs"] = accountlogs.CommandAccountLogs
