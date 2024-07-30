@@ -10,36 +10,6 @@ import (
 	"time"
 )
 
-func RegisterCommand(s *discordgo.Session, guildID string) {
-	command := &discordgo.ApplicationCommand{
-		Name:        "accountlogs",
-		Description: "View the logs for an account",
-	}
-
-	_, err := s.ApplicationCommandCreate(s.State.User.ID, guildID, command)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error creating accountlogs command")
-	}
-}
-
-func UnregisterCommand(s *discordgo.Session, guildID string) {
-	commands, err := s.ApplicationCommands(s.State.User.ID, guildID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error getting application commands")
-		return
-	}
-
-	for _, command := range commands {
-		if command.Name == "accountlogs" {
-			err := s.ApplicationCommandDelete(s.State.User.ID, guildID, command.ID)
-			if err != nil {
-				logger.Log.WithError(err).Error("Error deleting accountlogs command")
-			}
-			return
-		}
-	}
-}
-
 func CommandAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	var userID string
 	if i.Member != nil {
