@@ -131,7 +131,7 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			continue
 		}
 
-		status, err := services.CheckAccount(account.SSOCookie, account.CaptchaService, account.CaptchaAPIKey)
+		status, err := services.CheckAccount(account.SSOCookie, account.CaptchaAPIKey)
 		if err != nil {
 			logger.Log.WithError(err).Errorf("Error checking account status for %s", account.Title)
 			embed := &discordgo.MessageEmbed{
