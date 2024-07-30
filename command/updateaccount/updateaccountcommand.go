@@ -9,47 +9,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"strconv"
 	"strings"
-	"unicode"
 )
-
-func sanitizeInput(input string) string {
-	return strings.Map(func(r rune) rune {
-		if unicode.IsLetter(r) || unicode.IsNumber(r) || r == ' ' || r == '-' || r == '_' {
-			return r
-		}
-		return -1
-	}, input)
-}
-
-func RegisterCommand(s *discordgo.Session, guildID string) {
-	command := &discordgo.ApplicationCommand{
-		Name:        "updateaccount",
-		Description: "Update a monitored account's information",
-	}
-
-	_, err := s.ApplicationCommandCreate(s.State.User.ID, guildID, command)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error creating updateaccount command")
-	}
-}
-
-func UnregisterCommand(s *discordgo.Session, guildID string) {
-	commands, err := s.ApplicationCommands(s.State.User.ID, guildID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error getting application commands")
-		return
-	}
-
-	for _, cmd := range commands {
-		if cmd.Name == "updateaccount" {
-			err := s.ApplicationCommandDelete(s.State.User.ID, guildID, cmd.ID)
-			if err != nil {
-				logger.Log.WithError(err).Error("Error deleting updateaccount command")
-			}
-			return
-		}
-	}
-}
 
 func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	var userID string
@@ -80,7 +40,7 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 	for index, account := range accounts {
 		options[index] = discordgo.SelectMenuOption{
 			Label:       account.Title,
-			Value:       strconv.FormatUint(uint64(account.ID), 10),
+			Value:       strconv.Itoa(int(account.ID)),
 			Description: fmt.Sprintf("Status: %s, Guild: %s", account.LastStatus, account.GuildID),
 		}
 	}
@@ -116,7 +76,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		return
 	}
 
-	accountID, err := strconv.ParseUint(data.Values[0], 10, 64)
+	accountID, err := strconv.Atoi(data.Values[0])
 	if err != nil {
 		logger.Log.WithError(err).Error("Error converting account ID")
 		respondToInteraction(s, i, "Error processing your selection. Please try again.")
@@ -150,7 +110,6 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 							Style:       discordgo.TextInputShort,
 							Placeholder: "Enter your own API key (leave blank to use default)",
 							Required:    false,
-							MaxLength:   100,
 						},
 					},
 				},
@@ -166,14 +125,8 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
 
-	parts := strings.Split(data.CustomID, "_")
-	if len(parts) != 3 {
-		logger.Log.Error("Invalid custom ID format")
-		respondToInteraction(s, i, "An error occurred. Please try again.")
-		return
-	}
-
-	accountID, err := strconv.ParseUint(parts[2], 10, 64)
+	accountIDStr := strings.TrimPrefix(data.CustomID, "update_account_modal_")
+	accountID, err := strconv.Atoi(accountIDStr)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error converting account ID from modal custom ID")
 		respondToInteraction(s, i, "Error processing your update. Please try again.")
