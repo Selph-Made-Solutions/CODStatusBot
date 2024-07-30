@@ -16,7 +16,7 @@ func CommandFeedback(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Send feedback to developer
+	// Send anonymous feedback to developer
 	channel, err := s.UserChannelCreate(developerID)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to create DM channel with developer")
@@ -24,16 +24,9 @@ func CommandFeedback(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	var userInfo string
-	if i.Member != nil {
-		userInfo = fmt.Sprintf("User: %s (ID: %s) in Guild: %s", i.Member.User.Username, i.Member.User.ID, i.GuildID)
-	} else if i.User != nil {
-		userInfo = fmt.Sprintf("User: %s (ID: %s) via DM", i.User.Username, i.User.ID)
-	} else {
-		userInfo = "Unknown user"
-	}
+	anonymousFeedback := fmt.Sprintf("Anonymous Feedback:\n\n%s", feedbackMessage)
 
-	_, err = s.ChannelMessageSend(channel.ID, fmt.Sprintf("New feedback:\n\nFrom: %s\n\nMessage:\n%s", userInfo, feedbackMessage))
+	_, err = s.ChannelMessageSend(channel.ID, anonymousFeedback)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to send feedback to developer")
 		sendResponse(s, i, "There was an error sending your feedback. Please try again later.", true)
@@ -41,7 +34,7 @@ func CommandFeedback(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	// Respond to user
-	sendResponse(s, i, "Your feedback has been sent to the developer. Thank you for your input!", true)
+	sendResponse(s, i, "Your anonymous feedback has been sent to the developer. Thank you for your input!", true)
 }
 
 func sendResponse(s *discordgo.Session, i *discordgo.InteractionCreate, content string, ephemeral bool) {
