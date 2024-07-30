@@ -106,7 +106,6 @@ func CheckAccount(ssoCookie string, captchaAPIKey string) (models.Status, error)
 	}
 
 	if err != nil {
-
 		logger.Log.WithError(err).Error("Failed to solve reCAPTCHA")
 		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %v", err)
 	}
