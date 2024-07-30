@@ -9,36 +9,6 @@ import (
 	"gorm.io/gorm"
 )
 
-func RegisterCommand(s *discordgo.Session, guildID string) {
-	command := &discordgo.ApplicationCommand{
-		Name:        "listaccounts",
-		Description: "List all your monitored accounts",
-	}
-
-	_, err := s.ApplicationCommandCreate(s.State.User.ID, guildID, command)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error creating listaccounts command")
-	}
-}
-
-func UnregisterCommand(s *discordgo.Session, guildID string) {
-	commands, err := s.ApplicationCommands(s.State.User.ID, guildID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error getting application commands")
-		return
-	}
-
-	for _, cmd := range commands {
-		if cmd.Name == "listaccounts" {
-			err := s.ApplicationCommandDelete(s.State.User.ID, guildID, cmd.ID)
-			if err != nil {
-				logger.Log.WithError(err).Error("Error deleting listaccounts command")
-			}
-			return
-		}
-	}
-}
-
 func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	var userID, guildID string
 	// Check if the interaction is from a guild or DM
