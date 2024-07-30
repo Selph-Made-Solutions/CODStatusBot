@@ -13,6 +13,7 @@ DB_PORT=your-database-port
 DB_VAR=?parseTime=true
 
 ## EZCaptcha Settings
+EZAPPID=ez-dev-id
 EZCAPTCHA_CLIENT_KEY=the-client-key-from-solving-service #this is the api key for the reCAPTCHA solving service
 RECAPTCHA_SITE_KEY=6LdB2NUpAAAAANcdcy9YcjBOBD4rY-TIHOeolkkk #this is the banappeal v2 site key as of 07/24/2024 may change in the future
 RECAPTCHA_URL=https://support.activision.com #this doesn't really change unless using a different api endpoint
@@ -27,7 +28,7 @@ STATUS_CHANGE_COOLDOWN=1 #hours
 GLOBAL_NOTIFICATION_COOLDOWN=1 #hours
 
 ## Rate limit settings
-CHECK_NOW_RATE_LIMIT=60 #seconds
+CHECK_NOW_RATE_LIMIT=900 #seconds
 
 ## Settings Explained
 # DISCORD_TOKEN is your Discord bot token
