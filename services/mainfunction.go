@@ -5,6 +5,8 @@ import (
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"fmt"
+	"github.com/bwmarrin/discordgo"
+	"github.com/joho/godotenv"
 	"os"
 	"strconv"
 	"sync"
@@ -288,6 +290,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 		err := sendNotification(discord, account, embed, fmt.Sprintf("<@%s>", account.UserID))
 		if err != nil {
 			logger.Log.WithError(err).Errorf("Failed to send status update message for account %s", account.Title)
+
 		}
 	}
 }
