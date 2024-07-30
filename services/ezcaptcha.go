@@ -15,8 +15,8 @@ import (
 const (
 	EZCaptchaAPIURL    = "https://api.ez-captcha.com/createTask"
 	EZCaptchaResultURL = "https://api.ez-captcha.com/getTaskResult"
-	MaxRetries         = 40
-	RetryInterval      = 3 * time.Second
+	MaxRetries         = 6
+	RetryInterval      = 10 * time.Second
 )
 
 var (
@@ -66,10 +66,9 @@ func LoadEnvironmentVariables() error {
 	ezappID = os.Getenv("EZAPPID")
 	siteKey = os.Getenv("RECAPTCHA_SITE_KEY")
 	pageURL = os.Getenv("RECAPTCHA_URL")
-	twoCaptchaAPIKey = os.Getenv("TWOCAPTCHA_API_KEY")
 
-	if (clientKey == "" || siteKey == "" || pageURL == "") && twoCaptchaAPIKey == "" {
-		return fmt.Errorf("EZCAPTCHA_CLIENT_KEY, RECAPTCHA_SITE_KEY, RECAPTCHA_URL, or TWOCAPTCHA_API_KEY is not set in the environment")
+	if clientKey == "" || siteKey == "" || pageURL == "" {
+		return fmt.Errorf("EZCAPTCHA_CLIENT_KEY, RECAPTCHA_SITE_KEY, or RECAPTCHA_URL is not set in the environment")
 	}
 	return nil
 }
