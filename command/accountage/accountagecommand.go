@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -36,13 +37,14 @@ func CommandAccountAge(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	options := make([]discordgo.SelectMenuOption, len(accounts))
-	for index, account := range accounts {
-		options[index] = discordgo.SelectMenuOption{
-			Label:       account.Title,
-			Value:       strconv.Itoa(int(account.ID)),
-			Description: fmt.Sprintf("Status: %s, Guild: %s", account.LastStatus, account.GuildID),
-		}
+	// Create buttons for each account
+	var components []discordgo.MessageComponent
+	for _, account := range accounts {
+		components = append(components, discordgo.Button{
+			Label:    account.Title,
+			Style:    discordgo.PrimaryButton,
+			CustomID: fmt.Sprintf("account_age_%d", account.ID),
+		})
 	}
 
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -52,13 +54,7 @@ func CommandAccountAge(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			Flags:   discordgo.MessageFlagsEphemeral,
 			Components: []discordgo.MessageComponent{
 				discordgo.ActionsRow{
-					Components: []discordgo.MessageComponent{
-						discordgo.SelectMenu{
-							CustomID:    "account_age_select",
-							Placeholder: "Choose an account",
-							Options:     options,
-						},
-					},
+					Components: components,
 				},
 			},
 		},
@@ -70,20 +66,16 @@ func CommandAccountAge(s *discordgo.Session, i *discordgo.InteractionCreate) {
 }
 
 func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	data := i.MessageComponentData()
-	if len(data.Values) == 0 {
-		respondToInteraction(s, i, "No account selected. Please try again.")
-		return
-	}
-
-	accountID, err := strconv.Atoi(data.Values[0])
+	customID := i.MessageComponentData().CustomID
+	accountID, err := strconv.Atoi(strings.TrimPrefix(customID, "account_age_"))
 	if err != nil {
-		logger.Log.WithError(err).Error("Error converting account ID")
+		logger.Log.WithError(err).Error("Error parsing account ID")
 		respondToInteraction(s, i, "Error processing your selection. Please try again.")
 		return
 	}
 
 	var account models.Account
+	// result := database.DB.Where("user_id = ?", userID).Find(&accounts)
 	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
@@ -116,8 +108,8 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseUpdateMessage,
 		Data: &discordgo.InteractionResponseData{
-			Embeds: []*discordgo.MessageEmbed{embed},
-			Flags:  discordgo.MessageFlagsEphemeral,
+			Embeds:     []*discordgo.MessageEmbed{embed},
+			Components: []discordgo.MessageComponent{},
 		},
 	})
 
@@ -128,24 +120,13 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
-	var err error
-	if i.Type == discordgo.InteractionMessageComponent {
-		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseUpdateMessage,
-			Data: &discordgo.InteractionResponseData{
-				Content: content,
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
-	} else {
-		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: content,
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
-	}
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: content,
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
+	})
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction")
 	}
