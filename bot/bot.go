@@ -62,14 +62,17 @@ func StartBot() error {
 			customID := i.ModalSubmitData().CustomID
 			switch {
 			case customID == "set_captcha_service_modal":
-				logger.Log.Info("Handling set captcha service modal submission")
 				setcaptchaservice.HandleModalSubmit(s, i)
+				logger.Log.Info("Handling set captcha service modal submission")
+
 			case customID == "add_account_modal":
-				logger.Log.Info("Handling add account modal submission")
 				addaccount.HandleModalSubmit(s, i)
+				logger.Log.Info("Handling add account modal submission")
+
 			case strings.HasPrefix(customID, "update_account_modal_"):
-				logger.Log.Info("Handling update account modal submission")
 				updateaccount.HandleModalSubmit(s, i)
+				logger.Log.Info("Handling update account modal submission")
+
 			default:
 				logger.Log.WithField("customID", customID).Error("Unknown modal submission")
 			}
@@ -79,39 +82,40 @@ func StartBot() error {
 			switch {
 			case strings.HasPrefix(customID, "account_age_"):
 				accountage.HandleAccountSelection(s, i)
+				logger.Log.Info("Handling account age selection")
+
 			case strings.HasPrefix(customID, "account_logs_"):
-				logger.Log.Info("Handling account logs selection")
 				accountlogs.HandleAccountSelection(s, i)
+				logger.Log.Info("Handling account logs selection")
+
 			case customID == "account_logs_select":
-				logger.Log.Info("Handling account logs selection")
 				accountlogs.HandleAccountSelection(s, i)
+				logger.Log.Info("Handling account logs selection")
+
 			case strings.HasPrefix(customID, "update_account_"):
-				logger.Log.Info("Handling update account selection")
 				updateaccount.HandleAccountSelection(s, i)
+				logger.Log.Info("Handling update account selection")
+
 			case customID == "update_account_select":
-				logger.Log.Info("Handling update account selection")
 				updateaccount.HandleAccountSelection(s, i)
-			case strings.HasPrefix(customID, "account_age_"):
-				logger.Log.Info("Handling account age selection")
-				accountage.HandleAccountSelection(s, i)
-			case customID == "account_age_select":
-				logger.Log.Info("Handling account age selection")
-				accountage.HandleAccountSelection(s, i)
+				logger.Log.Info("Handling update account selection")
+
 			case strings.HasPrefix(customID, "remove_account_"):
-				logger.Log.Info("Handling remove account selection")
 				removeaccount.HandleAccountSelection(s, i)
+				logger.Log.Info("Handling remove account selection")
+
 			case customID == "cancel_remove" || strings.HasPrefix(customID, "confirm_remove_"):
-				logger.Log.Info("Handling remove account confirmation")
 				removeaccount.HandleConfirmation(s, i)
+				logger.Log.Info("Handling remove account confirmation")
+
 			case strings.HasPrefix(customID, "check_now_"):
-				logger.Log.Info("Handling check now selection")
 				checknow.HandleAccountSelection(s, i)
-			//case strings.HasPrefix(customID, "list_account_"):
-			//	logger.Log.Info("Handling list account selection")
-			//	listaccounts.HandleAccountSelection(s, i)
+				logger.Log.Info("Handling check now selection")
+
 			case customID == "set_preference_channel" || customID == "set_preference_dm":
-				logger.Log.Info("Handling set preference selection")
 				setpreference.HandlePreferenceSelection(s, i)
+				logger.Log.Info("Handling set preference selection")
+
 			default:
 				logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 			}
