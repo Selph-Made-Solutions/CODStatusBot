@@ -5,7 +5,10 @@ import (
 	"CODStatusBot/command/accountage"
 	"CODStatusBot/command/accountlogs"
 	"CODStatusBot/command/addaccount"
+	"CODStatusBot/command/checknow"
 	"CODStatusBot/command/removeaccount"
+	"CODStatusBot/command/setcaptchaservice"
+	"CODStatusBot/command/setpreference"
 	"CODStatusBot/command/updateaccount"
 	"CODStatusBot/logger"
 	"CODStatusBot/services"
@@ -58,6 +61,9 @@ func StartBot() error {
 		case discordgo.InteractionModalSubmit:
 			customID := i.ModalSubmitData().CustomID
 			switch {
+			case customID == "set_captcha_service_modal":
+				logger.Log.Info("Handling set captcha service modal submission")
+				setcaptchaservice.HandleModalSubmit(s, i)
 			case customID == "add_account_modal":
 				logger.Log.Info("Handling add account modal submission")
 				addaccount.HandleModalSubmit(s, i)
@@ -71,6 +77,11 @@ func StartBot() error {
 		case discordgo.InteractionMessageComponent:
 			customID := i.MessageComponentData().CustomID
 			switch {
+			case strings.HasPrefix(customID, "account_age_"):
+				accountage.HandleAccountSelection(s, i)
+			case strings.HasPrefix(customID, "account_logs_"):
+				logger.Log.Info("Handling account logs selection")
+				accountlogs.HandleAccountSelection(s, i)
 			case customID == "account_logs_select":
 				logger.Log.Info("Handling account logs selection")
 				accountlogs.HandleAccountSelection(s, i)
@@ -80,6 +91,9 @@ func StartBot() error {
 			case customID == "update_account_select":
 				logger.Log.Info("Handling update account selection")
 				updateaccount.HandleAccountSelection(s, i)
+			case strings.HasPrefix(customID, "account_age_"):
+				logger.Log.Info("Handling account age selection")
+				accountage.HandleAccountSelection(s, i)
 			case customID == "account_age_select":
 				logger.Log.Info("Handling account age selection")
 				accountage.HandleAccountSelection(s, i)
@@ -89,6 +103,15 @@ func StartBot() error {
 			case customID == "cancel_remove" || strings.HasPrefix(customID, "confirm_remove_"):
 				logger.Log.Info("Handling remove account confirmation")
 				removeaccount.HandleConfirmation(s, i)
+			case strings.HasPrefix(customID, "check_now_"):
+				logger.Log.Info("Handling check now selection")
+				checknow.HandleAccountSelection(s, i)
+			//case strings.HasPrefix(customID, "list_account_"):
+			//	logger.Log.Info("Handling list account selection")
+			//	listaccounts.HandleAccountSelection(s, i)
+			case customID == "set_preference_channel" || customID == "set_preference_dm":
+				logger.Log.Info("Handling set preference selection")
+				setpreference.HandlePreferenceSelection(s, i)
 			default:
 				logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 			}
