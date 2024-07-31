@@ -5,13 +5,48 @@ import (
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"github.com/bwmarrin/discordgo"
+	"strings"
 )
 
 func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	options := i.ApplicationCommandData().Options
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseModal,
+		Data: &discordgo.InteractionResponseData{
+			CustomID: "set_captcha_service_modal",
+			Title:    "Set EZ-Captcha API Key",
+			Components: []discordgo.MessageComponent{
+				discordgo.ActionsRow{
+					Components: []discordgo.MessageComponent{
+						discordgo.TextInput{
+							CustomID:    "api_key",
+							Label:       "Enter your EZ-Captcha API key",
+							Style:       discordgo.TextInputShort,
+							Placeholder: "Leave blank to use bot's default key",
+							Required:    false,
+						},
+					},
+				},
+			},
+		},
+	})
+
+	if err != nil {
+		logger.Log.WithError(err).Error("Error responding with modal")
+	}
+}
+
+func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	data := i.ModalSubmitData()
+
 	var apiKey string
-	if len(options) > 0 {
-		apiKey = options[0].StringValue()
+	for _, comp := range data.Components {
+		if row, ok := comp.(*discordgo.ActionsRow); ok {
+			for _, rowComp := range row.Components {
+				if textInput, ok := rowComp.(*discordgo.TextInput); ok && textInput.CustomID == "api_key" {
+					apiKey = strings.TrimSpace(textInput.Value)
+				}
+			}
+		}
 	}
 
 	var userID string
