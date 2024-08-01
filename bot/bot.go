@@ -5,15 +5,17 @@ import (
 	"CODStatusBot/command/accountage"
 	"CODStatusBot/command/accountlogs"
 	"CODStatusBot/command/addaccount"
+	"CODStatusBot/command/checknow"
 	"CODStatusBot/command/removeaccount"
+	"CODStatusBot/command/setcaptchaservice"
+	"CODStatusBot/command/setpreference"
 	"CODStatusBot/command/updateaccount"
 	"CODStatusBot/logger"
 	"CODStatusBot/services"
-
-	// "CODStatusBot/services"
 	"errors"
 	"github.com/bwmarrin/discordgo"
 	"os"
+	"strings"
 )
 
 var discord *discordgo.Session
@@ -58,31 +60,62 @@ func StartBot() error {
 			}
 		case discordgo.InteractionModalSubmit:
 			customID := i.ModalSubmitData().CustomID
-			switch customID {
-			case "add_account_modal":
-				logger.Log.Info("Handling add account modal submission")
+			switch {
+			case customID == "set_captcha_service_modal":
+				setcaptchaservice.HandleModalSubmit(s, i)
+				logger.Log.Info("Handling set captcha service modal submission")
+
+			case customID == "add_account_modal":
 				addaccount.HandleModalSubmit(s, i)
-			case "remove_account_modal":
-				logger.Log.Info("Handling remove account modal submission")
-				removeaccount.HandleModalSubmit(s, i)
-			case "update_account_modal":
-				logger.Log.Info("Handling update account modal submission")
+				logger.Log.Info("Handling add account modal submission")
+
+			case strings.HasPrefix(customID, "update_account_modal_"):
 				updateaccount.HandleModalSubmit(s, i)
+				logger.Log.Info("Handling update account modal submission")
+
 			default:
 				logger.Log.WithField("customID", customID).Error("Unknown modal submission")
 			}
+
 		case discordgo.InteractionMessageComponent:
 			customID := i.MessageComponentData().CustomID
-			switch customID {
-			case "account_logs_select":
-				logger.Log.Info("Handling account logs selection")
-				accountlogs.HandleAccountSelection(s, i)
-			case "update_account_select":
-				logger.Log.Info("Handling update account selection")
-				updateaccount.HandleAccountSelection(s, i)
-			case "account_age_select":
-				logger.Log.Info("Handling account age selection")
+			switch {
+			case strings.HasPrefix(customID, "account_age_"):
 				accountage.HandleAccountSelection(s, i)
+				logger.Log.Info("Handling account age selection")
+
+			case strings.HasPrefix(customID, "account_logs_"):
+				accountlogs.HandleAccountSelection(s, i)
+				logger.Log.Info("Handling account logs selection")
+
+			case customID == "account_logs_select":
+				accountlogs.HandleAccountSelection(s, i)
+				logger.Log.Info("Handling account logs selection")
+
+			case strings.HasPrefix(customID, "update_account_"):
+				updateaccount.HandleAccountSelection(s, i)
+				logger.Log.Info("Handling update account selection")
+
+			case customID == "update_account_select":
+				updateaccount.HandleAccountSelection(s, i)
+				logger.Log.Info("Handling update account selection")
+
+			case strings.HasPrefix(customID, "remove_account_"):
+				removeaccount.HandleAccountSelection(s, i)
+				logger.Log.Info("Handling remove account selection")
+
+			case customID == "cancel_remove" || strings.HasPrefix(customID, "confirm_remove_"):
+				removeaccount.HandleConfirmation(s, i)
+				logger.Log.Info("Handling remove account confirmation")
+
+			case strings.HasPrefix(customID, "check_now_"):
+				checknow.HandleAccountSelection(s, i)
+				logger.Log.Info("Handling check now selection")
+
+			case customID == "set_preference_channel" || customID == "set_preference_dm":
+				setpreference.HandlePreferenceSelection(s, i)
+				logger.Log.Info("Handling set preference selection")
+
 			default:
 				logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 			}

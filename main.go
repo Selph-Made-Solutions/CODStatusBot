@@ -26,13 +26,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = database.Databaselogin() // Connect to the database.
+	err = database.Databaselogin()
 	if err != nil {
 		logger.Log.WithError(err).WithField("Bot Startup", "Database login").Error()
 		os.Exit(1)
 	}
 
 	err = bot.StartBot() // Start the Discord bot.
+
 	if err != nil {
 		logger.Log.WithError(err).WithField("Bot Startup", "Discord login").Error()
 		os.Exit(1)
@@ -55,11 +56,9 @@ func loadEnvironmentVariables() error {
 
 	requiredEnvVars := []string{
 		"DISCORD_TOKEN",
-		// "TWOCAPTCHA_API_KEY",
 		"EZCAPTCHA_CLIENT_KEY",
 		"RECAPTCHA_SITE_KEY",
 		"RECAPTCHA_URL",
-		// Add any other required environment variables here
 	}
 
 	for _, envVar := range requiredEnvVars {

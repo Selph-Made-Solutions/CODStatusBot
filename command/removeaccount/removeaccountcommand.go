@@ -6,48 +6,9 @@ import (
 	"CODStatusBot/models"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
+	"strconv"
 	"strings"
-	"unicode"
 )
-
-func sanitizeInput(input string) string {
-	return strings.Map(func(r rune) rune {
-		if unicode.IsLetter(r) || unicode.IsNumber(r) || r == ' ' || r == '-' || r == '_' {
-			return r
-		}
-		return -1
-	}, input)
-}
-
-func RegisterCommand(s *discordgo.Session, guildID string) {
-	command := &discordgo.ApplicationCommand{
-		Name:        "removeaccount",
-		Description: "Remove a monitored account",
-	}
-
-	_, err := s.ApplicationCommandCreate(s.State.User.ID, guildID, command)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error creating removeaccount command")
-	}
-}
-
-func UnregisterCommand(s *discordgo.Session, guildID string) {
-	commands, err := s.ApplicationCommands(s.State.User.ID, guildID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error getting application commands")
-		return
-	}
-
-	for _, cmd := range commands {
-		if cmd.Name == "removeaccount" {
-			err := s.ApplicationCommandDelete(s.State.User.ID, guildID, cmd.ID)
-			if err != nil {
-				logger.Log.WithError(err).Error("Error deleting removeaccount command")
-			}
-			return
-		}
-	}
-}
 
 func CommandRemoveAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	var userID string
@@ -74,40 +35,69 @@ func CommandRemoveAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		return
 	}
 
-	accountList := "Your accounts:\n"
+	// Create buttons for each account
+	var components []discordgo.MessageComponent
 	for _, account := range accounts {
-		accountList += fmt.Sprintf("• %s (Status: %s, Guild: %s)\n", account.Title, account.LastStatus, account.GuildID)
+		components = append(components, discordgo.Button{
+			Label:    account.Title,
+			Style:    discordgo.PrimaryButton,
+			CustomID: fmt.Sprintf("remove_account_%d", account.ID),
+		})
 	}
 
+	// Send message with account buttons
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseModal,
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			CustomID: "remove_account_modal",
-			Title:    "Remove Account",
+			Content: "Select an account to remove:",
+			Flags:   discordgo.MessageFlagsEphemeral,
+			Components: []discordgo.MessageComponent{
+				discordgo.ActionsRow{
+					Components: components,
+				},
+			},
+		},
+	})
+
+	if err != nil {
+		logger.Log.WithError(err).Error("Error responding with account selection")
+	}
+}
+
+func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	customID := i.MessageComponentData().CustomID
+	accountID, err := strconv.Atoi(strings.TrimPrefix(customID, "remove_account_"))
+	if err != nil {
+		logger.Log.WithError(err).Error("Error parsing account ID")
+		respondToInteraction(s, i, "Error processing your selection. Please try again.")
+		return
+	}
+
+	var account models.Account
+	result := database.DB.First(&account, accountID)
+	if result.Error != nil {
+		logger.Log.WithError(result.Error).Error("Error fetching account")
+		respondToInteraction(s, i, "Error: Account not found or you don't have permission to remove it.")
+		return
+	}
+
+	// Show confirmation buttons
+	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseUpdateMessage,
+		Data: &discordgo.InteractionResponseData{
+			Content: fmt.Sprintf("Are you sure you want to remove the account '%s'? This action is permanent and cannot be undone.", account.Title),
 			Components: []discordgo.MessageComponent{
 				discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
-						discordgo.TextInput{
-							CustomID:    "account_title",
-							Label:       "Enter the title of the account to remove",
-							Style:       discordgo.TextInputShort,
-							Placeholder: "Enter the account title",
-							Required:    true,
-							MinLength:   1,
-							MaxLength:   100,
+						discordgo.Button{
+							Label:    "Delete",
+							Style:    discordgo.DangerButton,
+							CustomID: fmt.Sprintf("confirm_remove_%d", account.ID),
 						},
-					},
-				},
-				discordgo.ActionsRow{
-					Components: []discordgo.MessageComponent{
-						discordgo.TextInput{
-							CustomID:    "confirmation",
-							Label:       "Type 'CONFIRM' to remove this account",
-							Style:       discordgo.TextInputShort,
-							Placeholder: "CONFIRM",
-							Required:    true,
-							MinLength:   7,
-							MaxLength:   7,
+						discordgo.Button{
+							Label:    "Cancel",
+							Style:    discordgo.SecondaryButton,
+							CustomID: "cancel_remove",
 						},
 					},
 				},
@@ -116,62 +106,28 @@ func CommandRemoveAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 	})
 
 	if err != nil {
-		logger.Log.WithError(err).Error("Error responding with modal")
-		return
-	}
-
-	// Send the account list as a follow-up message
-	_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
-		Content: accountList,
-		Flags:   discordgo.MessageFlagsEphemeral,
-	})
-	if err != nil {
-		logger.Log.WithError(err).Error("Error sending follow-up message with account list")
+		logger.Log.WithError(err).Error("Error showing confirmation buttons")
+		respondToInteraction(s, i, "An error occurred. Please try again.")
 	}
 }
 
-func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	data := i.ModalSubmitData()
+func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	customID := i.MessageComponentData().CustomID
 
-	var accountTitle, confirmation string
-	for _, comp := range data.Components {
-		if row, ok := comp.(*discordgo.ActionsRow); ok {
-			for _, rowComp := range row.Components {
-				if textInput, ok := rowComp.(*discordgo.TextInput); ok {
-					switch textInput.CustomID {
-					case "account_title":
-						accountTitle = sanitizeInput(strings.TrimSpace(textInput.Value))
-					case "confirmation":
-						confirmation = strings.TrimSpace(textInput.Value)
-					}
-				}
-			}
-		}
-	}
-
-	if accountTitle == "" {
-		respondToInteraction(s, i, "Error: No account title provided.")
+	if customID == "cancel_remove" {
+		respondToInteraction(s, i, "Account removal cancelled.")
 		return
 	}
 
-	if confirmation != "CONFIRM" {
-		respondToInteraction(s, i, "Account removal cancelled. The confirmation was not correct.")
-		return
-	}
-
-	var userID string
-	if i.Member != nil {
-		userID = i.Member.User.ID
-	} else if i.User != nil {
-		userID = i.User.ID
-	} else {
-		logger.Log.Error("Interaction doesn't have Member or User")
-		respondToInteraction(s, i, "An error occurred while processing your request.")
+	accountID, err := strconv.Atoi(strings.TrimPrefix(customID, "confirm_remove_"))
+	if err != nil {
+		logger.Log.WithError(err).Error("Error parsing account ID")
+		respondToInteraction(s, i, "Error processing your confirmation. Please try again.")
 		return
 	}
 
 	var account models.Account
-	result := database.DB.Where("title = ? AND user_id = ?", accountTitle, userID).First(&account)
+	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
 		respondToInteraction(s, i, "Error: Account not found or you don't have permission to remove it.")
@@ -204,15 +160,15 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	respondToInteraction(s, i, fmt.Sprintf("Account '%s' has been successfully removed from the database. This action cannot be undone.", account.Title))
+	respondToInteraction(s, i, fmt.Sprintf("Account '%s' has been successfully removed from the database.", account.Title))
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Type: discordgo.InteractionResponseUpdateMessage,
 		Data: &discordgo.InteractionResponseData{
-			Content: message,
-			Flags:   discordgo.MessageFlagsEphemeral,
+			Content:    message,
+			Components: []discordgo.MessageComponent{}, // Remove all components
 		},
 	})
 	if err != nil {

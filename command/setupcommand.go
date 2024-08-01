@@ -9,6 +9,7 @@ import (
 	"CODStatusBot/command/help"
 	"CODStatusBot/command/listaccounts"
 	"CODStatusBot/command/removeaccount"
+	"CODStatusBot/command/setcaptchaservice"
 	"CODStatusBot/command/setpreference"
 	"CODStatusBot/command/updateaccount"
 	"CODStatusBot/logger"
@@ -23,20 +24,12 @@ func RegisterCommands(s *discordgo.Session) {
 
 	commands := []*discordgo.ApplicationCommand{
 		{
+			Name:        "setcaptchaservice",
+			Description: "Set your EZ-Captcha API key",
+		},
+		{
 			Name:        "setpreference",
 			Description: "Set your preference for where you want to receive status notifications",
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "type",
-					Description: "Where do you want to receive Status Notifications?",
-					Required:    true,
-					Choices: []*discordgo.ApplicationCommandOptionChoice{
-						{Name: "Channel", Value: "channel"},
-						{Name: "Direct Message", Value: "dm"},
-					},
-				},
-			},
 		},
 		{
 			Name:        "addaccount",
@@ -57,14 +50,6 @@ func RegisterCommands(s *discordgo.Session) {
 		{
 			Name:        "checknow",
 			Description: "Immediately check the status of all your accounts or a specific account",
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "account_title",
-					Description: "The title of the account to check (leave empty to check all accounts)",
-					Required:    false,
-				},
-			},
 		},
 		{
 			Name:        "listaccounts",
@@ -99,16 +84,20 @@ func RegisterCommands(s *discordgo.Session) {
 	}
 
 	// Set up command handlers
+	Handlers["setcaptchaservice"] = setcaptchaservice.CommandSetCaptchaService
 	Handlers["setpreference"] = setpreference.CommandSetPreference
 	Handlers["addaccount"] = addaccount.CommandAddAccount
+	Handlers["add_account_modal"] = addaccount.HandleModalSubmit
 	Handlers["help"] = help.CommandHelp
+	Handlers["feedback"] = feedback.CommandFeedback
 	Handlers["accountage"] = accountage.CommandAccountAge
 	Handlers["accountlogs"] = accountlogs.CommandAccountLogs
 	Handlers["checknow"] = checknow.CommandCheckNow
 	Handlers["listaccounts"] = listaccounts.CommandListAccounts
 	Handlers["removeaccount"] = removeaccount.CommandRemoveAccount
+	Handlers["remove_account_select"] = removeaccount.HandleAccountSelection
 	Handlers["updateaccount"] = updateaccount.CommandUpdateAccount
-	Handlers["feedback"] = feedback.CommandFeedback
+	Handlers["update_account_modal"] = updateaccount.HandleModalSubmit
 
 	logger.Log.Info("Global commands registered and handlers set up")
 }

@@ -1,8 +1,6 @@
 package models
 
-import (
-	"gorm.io/gorm"
-)
+import "gorm.io/gorm"
 
 type Account struct {
 	gorm.Model
@@ -21,6 +19,7 @@ type Account struct {
 	IsPermabanned          bool   `gorm:"default:false"`   // A flag indicating if the account is permanently banned
 	LastCookieCheck        int64  `gorm:"default:0"`       // The timestamp of the last cookie check for permanently banned accounts
 	LastStatusChange       int64  `gorm:"default:0"`       // The timestamp of the last status change
+	CaptchaAPIKey          string // User's own API key, if provided
 }
 
 type Ban struct {

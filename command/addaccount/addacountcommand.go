@@ -5,7 +5,6 @@ import (
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
-
 	"github.com/bwmarrin/discordgo"
 	"strings"
 	"unicode"
@@ -18,36 +17,6 @@ func sanitizeInput(input string) string {
 		}
 		return -1
 	}, input)
-}
-
-func RegisterCommand(s *discordgo.Session, guildID string) {
-	command := &discordgo.ApplicationCommand{
-		Name:        "addaccount",
-		Description: "Add a new account to monitor using a modal",
-	}
-
-	_, err := s.ApplicationCommandCreate(s.State.User.ID, guildID, command)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error creating addaccount command")
-	}
-}
-
-func UnregisterCommand(s *discordgo.Session, guildID string) {
-	commands, err := s.ApplicationCommands(s.State.User.ID, guildID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error getting application commands")
-		return
-	}
-
-	for _, cmd := range commands {
-		if cmd.Name == "addaccount" {
-			err := s.ApplicationCommandDelete(s.State.User.ID, guildID, cmd.ID)
-			if err != nil {
-				logger.Log.WithError(err).Error("Error deleting addaccount command")
-			}
-			return
-		}
-	}
 }
 
 func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -83,6 +52,17 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 						},
 					},
 				},
+				discordgo.ActionsRow{
+					Components: []discordgo.MessageComponent{
+						discordgo.TextInput{
+							CustomID:    "captcha_api_key",
+							Label:       "EZ-Captcha API Key (optional)",
+							Style:       discordgo.TextInputShort,
+							Placeholder: "Enter your own API key (leave blank to use default)",
+							Required:    false,
+						},
+					},
+				},
 			},
 		},
 	})
@@ -97,6 +77,14 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	title := sanitizeInput(strings.TrimSpace(data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value))
 	ssoCookie := strings.TrimSpace(data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
+	captchaAPIKey := ""
+
+	// Handle captcha API key
+	if len(data.Components) > 2 {
+		if textInput, ok := data.Components[2].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput); ok {
+			captchaAPIKey = strings.TrimSpace(textInput.Value)
+		}
+	}
 
 	// Verify SSO Cookie
 	if !services.VerifySSOCookie(ssoCookie) {
@@ -126,8 +114,6 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		notificationType = existingAccount.NotificationType
 	}
 
-	// logger.Log.Infof("Using notification preference '%s' for new account of user %s in guild %s", notificationType, userID, i.GuildID)
-
 	// Create new account
 	account := models.Account{
 		UserID:           userID,
@@ -136,6 +122,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		GuildID:          guildID,
 		ChannelID:        i.ChannelID,
 		NotificationType: notificationType,
+		CaptchaAPIKey:    captchaAPIKey,
 	}
 
 	// Save to database

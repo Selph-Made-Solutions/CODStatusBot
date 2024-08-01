@@ -7,56 +7,49 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-func RegisterCommand(s *discordgo.Session, guildID string) {
-	command := &discordgo.ApplicationCommand{
-		Name:        "setpreference",
-		Description: "Set your preference for where you want to receive status notifications",
-		Options: []*discordgo.ApplicationCommandOption{
-			{
-				Type:        discordgo.ApplicationCommandOptionString,
-				Name:        "type",
-				Description: "Where do you want to receive Status Notifications?",
-				Required:    true,
-				Choices: []*discordgo.ApplicationCommandOptionChoice{
-					{
-						Name:  "Channel",
-						Value: "channel",
-					},
-					{
-						Name:  "Direct Message",
-						Value: "dm",
+func CommandSetPreference(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: "Select your preferred notification type:",
+			Flags:   discordgo.MessageFlagsEphemeral,
+			Components: []discordgo.MessageComponent{
+				discordgo.ActionsRow{
+					Components: []discordgo.MessageComponent{
+						discordgo.Button{
+							Label:    "Channel",
+							Style:    discordgo.PrimaryButton,
+							CustomID: "set_preference_channel",
+						},
+						discordgo.Button{
+							Label:    "Direct Message",
+							Style:    discordgo.PrimaryButton,
+							CustomID: "set_preference_dm",
+						},
 					},
 				},
 			},
 		},
-	}
+	})
 
-	_, err := s.ApplicationCommandCreate(s.State.User.ID, guildID, command)
 	if err != nil {
-		logger.Log.WithError(err).Error("Error creating setpreference command")
+		logger.Log.WithError(err).Error("Error responding with preference selection")
 	}
 }
 
-func UnregisterCommand(s *discordgo.Session, guildID string) {
-	commands, err := s.ApplicationCommands(s.State.User.ID, guildID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error getting application commands")
+func HandlePreferenceSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	customID := i.MessageComponentData().CustomID
+	var preferenceType string
+
+	switch customID {
+	case "set_preference_channel":
+		preferenceType = "channel"
+	case "set_preference_dm":
+		preferenceType = "dm"
+	default:
+		respondToInteraction(s, i, "Invalid preference type. Please try again.")
 		return
 	}
-
-	for _, command := range commands {
-		if command.Name == "setpreference" {
-			err := s.ApplicationCommandDelete(s.State.User.ID, guildID, command.ID)
-			if err != nil {
-				logger.Log.WithError(err).Error("Error deleting setpreference command")
-			}
-			return
-		}
-	}
-}
-
-func CommandSetPreference(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	preferenceType := i.ApplicationCommandData().Options[0].StringValue()
 
 	var userID string
 	if i.Member != nil {
@@ -66,12 +59,6 @@ func CommandSetPreference(s *discordgo.Session, i *discordgo.InteractionCreate) 
 	} else {
 		logger.Log.Error("Interaction doesn't have Member or User")
 		respondToInteraction(s, i, "An error occurred while processing your request.")
-		return
-	}
-
-	// Validate preference type
-	if preferenceType != "channel" && preferenceType != "dm" {
-		respondToInteraction(s, i, "Invalid preference type. Please choose either 'channel' or 'dm'.")
 		return
 	}
 
@@ -100,13 +87,25 @@ func CommandSetPreference(s *discordgo.Session, i *discordgo.InteractionCreate) 
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: message,
-			Flags:   discordgo.MessageFlagsEphemeral,
-		},
-	})
+	var err error
+	if i.Type == discordgo.InteractionMessageComponent {
+		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseUpdateMessage,
+			Data: &discordgo.InteractionResponseData{
+				Content:    message,
+				Components: []discordgo.MessageComponent{},
+				Flags:      discordgo.MessageFlagsEphemeral,
+			},
+		})
+	} else {
+		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: message,
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+	}
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction")
 	}

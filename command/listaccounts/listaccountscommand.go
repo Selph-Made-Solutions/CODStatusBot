@@ -6,48 +6,15 @@ import (
 	"CODStatusBot/models"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
-	"gorm.io/gorm"
 )
-
-func RegisterCommand(s *discordgo.Session, guildID string) {
-	command := &discordgo.ApplicationCommand{
-		Name:        "listaccounts",
-		Description: "List all your monitored accounts",
-	}
-
-	_, err := s.ApplicationCommandCreate(s.State.User.ID, guildID, command)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error creating listaccounts command")
-	}
-}
-
-func UnregisterCommand(s *discordgo.Session, guildID string) {
-	commands, err := s.ApplicationCommands(s.State.User.ID, guildID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error getting application commands")
-		return
-	}
-
-	for _, cmd := range commands {
-		if cmd.Name == "listaccounts" {
-			err := s.ApplicationCommandDelete(s.State.User.ID, guildID, cmd.ID)
-			if err != nil {
-				logger.Log.WithError(err).Error("Error deleting listaccounts command")
-			}
-			return
-		}
-	}
-}
 
 func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	var userID, guildID string
-	// Check if the interaction is from a guild or DM
 	if i.Member != nil {
 		userID = i.Member.User.ID
 		guildID = i.GuildID
 	} else if i.User != nil {
 		userID = i.User.ID
-		// In DMs, we don't have a guildID, so we'll leave it empty
 	} else {
 		logger.Log.Error("Interaction doesn't have Member or User")
 		respondToInteraction(s, i, "An error occurred while processing your request.")
@@ -55,18 +22,16 @@ func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	var accounts []models.Account
-	var result *gorm.DB
+	var result error
 
 	if guildID != "" {
-		// If we have a guildID, query for accounts in this specific guild
-		result = database.DB.Where("user_id = ? AND guild_id = ?", userID, guildID).Find(&accounts)
+		result = database.DB.Where("user_id = ? AND guild_id = ?", userID, guildID).Find(&accounts).Error
 	} else {
-		// If we don't have a guildID (DM context), query for all accounts of this user
-		result = database.DB.Where("user_id = ?", userID).Find(&accounts)
+		result = database.DB.Where("user_id = ?", userID).Find(&accounts).Error
 	}
 
-	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
+	if result != nil {
+		logger.Log.WithError(result).Error("Error fetching user accounts")
 		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
 		return
 	}
@@ -76,15 +41,20 @@ func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	var accountList string
-	for _, account := range accounts {
-		accountList += fmt.Sprintf("• %s (Status: %s, Guild: %s)\n", account.Title, account.LastStatus, account.GuildID)
-	}
-
 	embed := &discordgo.MessageEmbed{
 		Title:       "Your Monitored Accounts",
-		Description: accountList,
+		Description: "Here's a list of all your monitored accounts:",
 		Color:       0x00ff00,
+		Fields:      make([]*discordgo.MessageEmbedField, len(accounts)),
+	}
+
+	for i, account := range accounts {
+		embed.Fields[i] = &discordgo.MessageEmbedField{
+			Name: account.Title,
+			Value: fmt.Sprintf("Status: %s\nGuild: %s\nNotification Type: %s",
+				account.LastStatus, account.GuildID, account.NotificationType),
+			Inline: false,
+		}
 	}
 
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
