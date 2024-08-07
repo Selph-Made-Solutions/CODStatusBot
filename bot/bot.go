@@ -113,11 +113,9 @@ func StartBot() error {
 			case strings.HasPrefix(customID, "check_now_"):
 				checknow.HandleAccountSelection(s, i)
 				logger.Log.Info("Handling check now selection")
-
 			case customID == "set_preference_channel" || customID == "set_preference_dm":
 				setpreference.HandlePreferenceSelection(s, i)
 				logger.Log.Info("Handling set preference selection")
-
 			default:
 				logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 			}
@@ -135,9 +133,9 @@ func init() {
 		logger.Log.WithError(err).Fatal("Failed to initialize database connection")
 	}
 
-	// Create the UserSettings table if it doesn't exist
+	// Create or update the UserSettings table
 	err = database.DB.AutoMigrate(&models.UserSettings{})
 	if err != nil {
-		logger.Log.WithError(err).Fatal("Failed to create UserSettings table")
+		logger.Log.WithError(err).Fatal("Failed to create or update UserSettings table")
 	}
 }
