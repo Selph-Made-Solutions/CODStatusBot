@@ -42,7 +42,6 @@ func RegisterCommands(s *discordgo.Session) {
 			Description: "Get help on using the bot and setting up your API key",
 		},
 		{
-
 			Name:        "helpcookie",
 			Description: "Simple guide to getting your SSOCookie",
 		},
