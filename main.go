@@ -4,6 +4,7 @@ import (
 	"CODStatusBot/bot"
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
+	"CODStatusBot/models"
 	"CODStatusBot/services"
 	"fmt"
 	"github.com/joho/godotenv"
@@ -32,8 +33,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = bot.StartBot() // Start the Discord bot.
+	err = services.LoadEnvironmentVariables() // Initialize EZ-Captcha service
+	if err != nil {
+		logger.Log.WithError(err).WithField("Bot Startup", "EZ-Captcha Initialization").Error()
+		os.Exit(1)
+	}
 
+	err = bot.StartBot() // Start the Discord bot.
 	if err != nil {
 		logger.Log.WithError(err).WithField("Bot Startup", "Discord login").Error()
 		os.Exit(1)
@@ -59,6 +65,12 @@ func loadEnvironmentVariables() error {
 		"EZCAPTCHA_CLIENT_KEY",
 		"RECAPTCHA_SITE_KEY",
 		"RECAPTCHA_URL",
+		"DB_USER",
+		"DB_PASSWORD",
+		"DB_HOST",
+		"DB_PORT",
+		"DB_NAME",
+		"DB_VAR",
 	}
 
 	for _, envVar := range requiredEnvVars {
@@ -66,6 +78,21 @@ func loadEnvironmentVariables() error {
 			logger.Log.Errorf("%s is not set in the environment", envVar)
 			return fmt.Errorf("%s is not set in the environment", envVar)
 		}
+	}
+
+	return nil
+}
+
+func initializeDatabase() error {
+	err := database.Databaselogin()
+	if err != nil {
+		return fmt.Errorf("failed to initialize database connection: %w", err)
+	}
+
+	// Create or update necessary tables
+	err = database.DB.AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{})
+	if err != nil {
+		return fmt.Errorf("failed to migrate database tables: %w", err)
 	}
 
 	return nil
