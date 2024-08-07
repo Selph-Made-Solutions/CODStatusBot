@@ -24,11 +24,13 @@ type Account struct {
 
 type UserSettings struct {
 	gorm.Model
-	UserID           string `gorm:"uniqueIndex"`
-	CaptchaAPIKey    string // user's ezcaptcha API key
-	CheckInterval    int    // in minutes
-	NotificationType string // "channel" or "dm"
-	LastAnnouncement uint   // ID of the last seen announcement
+	UserID               string  `gorm:"uniqueIndex"`
+	CaptchaAPIKey        string  // user's ezcaptcha API key
+	CheckInterval        int     // in minutes
+	NotificationInterval float64 // in hours
+	CooldownDuration     float64 // in hours
+	StatusChangeCooldown float64 // in hours
+	// LastAnnouncement uint   // ID of the last seen announcement
 }
 
 type Ban struct {
