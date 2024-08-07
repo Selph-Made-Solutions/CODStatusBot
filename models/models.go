@@ -22,6 +22,13 @@ type Account struct {
 	CaptchaAPIKey          string // User's own API key, if provided
 }
 
+type UserSettings struct {
+	gorm.Model
+	UserID        string `gorm:"uniqueIndex"`
+	CaptchaAPIKey string
+	CheckInterval int // in minutes
+}
+
 type Ban struct {
 	gorm.Model
 	Account   Account // The account that has been banned.
