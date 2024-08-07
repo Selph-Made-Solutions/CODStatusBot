@@ -3,7 +3,7 @@ package setcheckinterval
 import (
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
-	"CODStatusBot/models"
+	"CODStatusBot/services"
 	"github.com/bwmarrin/discordgo"
 	"strconv"
 )
@@ -33,10 +33,9 @@ func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreat
 		return
 	}
 
-	var userSettings models.UserSettings
-	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings)
-	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error fetching or creating user settings")
+	userSettings, err := services.GetUserSettings(userID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error fetching user settings")
 		respondToInteraction(s, i, "Error setting check interval. Please try again.")
 		return
 	}
