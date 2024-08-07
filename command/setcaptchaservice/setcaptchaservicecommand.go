@@ -60,18 +60,23 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Update all accounts for this user
-	result := database.DB.Model(&models.Account{}).
-		Where("user_id = ?", userID).
-		Update("captcha_api_key", apiKey)
-
+	var userSettings models.UserSettings
+	result := database.DB.Where(models.UserSettings{UserID: userID}).
+		FirstOrCreate(&userSettings)
 	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error updating user accounts")
+		logger.Log.WithError(result.Error).Error("Error fetching or creating user settings")
 		respondToInteraction(s, i, "Error setting EZ-Captcha API key. Please try again.")
 		return
 	}
 
-	logger.Log.Infof("Updated %d accounts for user %s", result.RowsAffected, userID)
+	userSettings.CaptchaAPIKey = apiKey
+	if err := database.DB.Save(&userSettings).Error; err != nil {
+		logger.Log.WithError(err).Error("Error saving user settings")
+		respondToInteraction(s, i, "Error setting EZ-Captcha API key. Please try again.")
+		return
+	}
+
+	//logger.Log.Infof("Updated %d accounts for user %s", result.RowsAffected, userID)
 
 	message := "Your EZ-Captcha API key has been updated for all your accounts."
 	if apiKey == "" {
