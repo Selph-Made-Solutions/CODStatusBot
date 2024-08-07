@@ -10,7 +10,9 @@ import (
 	"CODStatusBot/command/setcaptchaservice"
 	"CODStatusBot/command/setpreference"
 	"CODStatusBot/command/updateaccount"
+	"CODStatusBot/database"
 	"CODStatusBot/logger"
+	"CODStatusBot/models"
 	"CODStatusBot/services"
 	"errors"
 	"github.com/bwmarrin/discordgo"
@@ -124,4 +126,18 @@ func StartBot() error {
 
 	go services.CheckAccounts(discord)
 	return nil
+}
+
+func init() {
+	// Initialize the database connection
+	err := database.Databaselogin()
+	if err != nil {
+		logger.Log.WithError(err).Fatal("Failed to initialize database connection")
+	}
+
+	// Create the UserSettings table if it doesn't exist
+	err = database.DB.AutoMigrate(&models.UserSettings{})
+	if err != nil {
+		logger.Log.WithError(err).Fatal("Failed to create UserSettings table")
+	}
 }
