@@ -127,6 +127,12 @@ func CheckAccounts(s *discordgo.Session) {
 
 		// Iterate through each account and perform checks
 		for _, account := range accounts {
+			userSettings, err := GetUserSettings(account.UserID)
+			if err != nil {
+				logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", account.UserID)
+				continue
+			}
+
 			var lastCheck time.Time
 			if account.LastCheck != 0 {
 				lastCheck = time.Unix(account.LastCheck, 0)
@@ -160,26 +166,26 @@ func CheckAccounts(s *discordgo.Session) {
 			// Handle accounts with expired cookies
 			if account.IsExpiredCookie {
 				logger.Log.WithField("account", account.Title).Info("Skipping account with expired cookie")
-				if time.Since(lastNotification).Hours() > notificationInterval {
+				if time.Since(lastNotification).Hours() > userSettings.NotificationInterval {
 					go sendDailyUpdate(account, s)
 				} else {
-					logger.Log.WithField("account", account.Title).Infof("Owner of %s recently notified within %.2f hours already, skipping", account.Title, notificationInterval)
+					logger.Log.WithField("account", account.Title).Infof("Owner of %s recently notified within %.2f hours already, skipping", account.Title, userSettings.NotificationInterval)
 				}
 				continue
 			}
 
 			// Check account status if enough time has passed since the last check
-			if time.Since(lastCheck).Minutes() > checkInterval {
+			if time.Since(lastCheck).Minutes() > float64(userSettings.CheckInterval) {
 				go CheckSingleAccount(account, s)
 			} else {
-				logger.Log.WithField("account", account.Title).Infof("Account %s checked recently less than %.2f minutes ago, skipping", account.Title, checkInterval)
+				logger.Log.WithField("account", account.Title).Infof("Account %s checked recently less than %.2f minutes ago, skipping", account.Title, float64(userSettings.CheckInterval))
 			}
 
 			// Send daily update if enough time has passed since the last notification
-			if time.Since(lastNotification).Hours() > notificationInterval {
+			if time.Since(lastNotification).Hours() > userSettings.NotificationInterval {
 				go sendDailyUpdate(account, s)
 			} else {
-				logger.Log.WithField("account", account.Title).Infof("Owner of %s recently notified within %.2f hours already, skipping", account.Title, notificationInterval)
+				logger.Log.WithField("account", account.Title).Infof("Owner of %s recently notified within %.2f hours already, skipping", account.Title, userSettings.NotificationInterval)
 			}
 		}
 		time.Sleep(time.Duration(sleepDuration) * time.Minute)
@@ -204,7 +210,12 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	// Handle invalid cookie status
 	if result == models.StatusInvalidCookie {
 		lastNotification := time.Unix(account.LastCookieNotification, 0)
-		if time.Since(lastNotification).Hours() >= cooldownDuration || account.LastCookieNotification == 0 {
+		userSettings, err := GetUserSettings(account.UserID)
+		if err != nil {
+			logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", account.UserID)
+			return
+		}
+		if time.Since(lastNotification).Hours() >= userSettings.CooldownDuration || account.LastCookieNotification == 0 {
 			logger.Log.Infof("Account %s has an invalid SSO cookie", account.Title)
 			embed := &discordgo.MessageEmbed{
 				Title:       fmt.Sprintf("%s - Invalid SSO Cookie", account.Title),
@@ -247,7 +258,12 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	// Handle status changes and send notifications
 	if result != lastStatus {
 		lastStatusChange := time.Unix(account.LastStatusChange, 0)
-		if time.Since(lastStatusChange).Hours() < statusChangeCooldown {
+		userSettings, err := GetUserSettings(account.UserID)
+		if err != nil {
+			logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", account.UserID)
+			return
+		}
+		if time.Since(lastStatusChange).Hours() < userSettings.StatusChangeCooldown {
 			logger.Log.Infof("Skipping status change notification for account %s (cooldown)", account.Title)
 			return
 		}
@@ -286,11 +302,9 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 			Color:       GetColorForStatus(result, account.IsExpiredCookie),
 			Timestamp:   time.Now().Format(time.RFC3339),
 		}
-
-		err := sendNotification(discord, account, embed, fmt.Sprintf("<@%s>", account.UserID))
+		err = sendNotification(discord, account, embed, fmt.Sprintf("<@%s>", account.UserID))
 		if err != nil {
 			logger.Log.WithError(err).Errorf("Failed to send status update message for account %s", account.Title)
-
 		}
 	}
 }
