@@ -12,7 +12,6 @@ import (
 	"CODStatusBot/command/removeaccount"
 	"CODStatusBot/command/setcaptchaservice"
 	"CODStatusBot/command/setcheckinterval"
-	"CODStatusBot/command/setpreference"
 	"CODStatusBot/command/updateaccount"
 	"CODStatusBot/logger"
 
@@ -30,8 +29,8 @@ func RegisterCommands(s *discordgo.Session) {
 			Description: "Set your EZ-Captcha API key",
 		},
 		{
-			Name:        "setpreference",
-			Description: "Set your preference for where you want to receive status notifications",
+			Name:        "setcheckinterval",
+			Description: "Set your preferences for check interval, notification interval, and notification type",
 		},
 		{
 			Name:        "addaccount",
@@ -81,18 +80,6 @@ func RegisterCommands(s *discordgo.Session) {
 				},
 			},
 		},
-		{
-			Name:        "setcheckinterval",
-			Description: "Set the interval for checking your accounts (in minutes)",
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionInteger,
-					Name:        "interval",
-					Description: "Check interval in minutes",
-					Required:    true,
-				},
-			},
-		},
 	}
 
 	_, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, "", commands)
@@ -103,7 +90,7 @@ func RegisterCommands(s *discordgo.Session) {
 
 	// Set up command handlers
 	Handlers["setcaptchaservice"] = setcaptchaservice.CommandSetCaptchaService
-	Handlers["setpreference"] = setpreference.CommandSetPreference
+	Handlers["setcheckinterval"] = setcheckinterval.CommandSetCheckInterval
 	Handlers["addaccount"] = addaccount.CommandAddAccount
 	Handlers["add_account_modal"] = addaccount.HandleModalSubmit
 	Handlers["helpcookie"] = helpcookie.CommandHelpCookie
@@ -117,7 +104,7 @@ func RegisterCommands(s *discordgo.Session) {
 	Handlers["remove_account_select"] = removeaccount.HandleAccountSelection
 	Handlers["updateaccount"] = updateaccount.CommandUpdateAccount
 	Handlers["update_account_modal"] = updateaccount.HandleModalSubmit
-	Handlers["setcheckinterval"] = setcheckinterval.CommandSetCheckInterval
+	Handlers["set_check_interval_modal"] = setcheckinterval.HandleModalSubmit
 
 	logger.Log.Info("Global commands registered and handlers set up")
 }
