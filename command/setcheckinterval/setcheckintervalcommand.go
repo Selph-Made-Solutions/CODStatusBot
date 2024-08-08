@@ -47,10 +47,10 @@ func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreat
 							CustomID:    "check_interval",
 							Label:       "Check Interval (minutes)",
 							Style:       discordgo.TextInputShort,
-							Placeholder: "Enter a number between 1 and 60",
-							Required:    true,
-							MinLength:   1,
-							MaxLength:   2,
+							Placeholder: "Enter a number between 1 and 1440 (24 hours)",
+							Required:    false,
+							MinLength:   0,
+							MaxLength:   4,
 							Value:       strconv.Itoa(userSettings.CheckInterval),
 						},
 					},
@@ -62,8 +62,8 @@ func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreat
 							Label:       "Notification Interval (hours)",
 							Style:       discordgo.TextInputShort,
 							Placeholder: "Enter a number between 1 and 24",
-							Required:    true,
-							MinLength:   1,
+							Required:    false,
+							MinLength:   0,
 							MaxLength:   2,
 							Value:       fmt.Sprintf("%.0f", userSettings.NotificationInterval),
 						},
@@ -76,8 +76,8 @@ func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreat
 							Label:       "Notification Type (channel or dm)",
 							Style:       discordgo.TextInputShort,
 							Placeholder: "Enter 'channel' or 'dm'",
-							Required:    true,
-							MinLength:   2,
+							Required:    false,
+							MinLength:   0,
 							MaxLength:   7,
 							Value:       userSettings.NotificationType,
 						},
@@ -113,32 +113,51 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
+	defaultSettings, err := services.GetDefaultSettings()
+	if err != nil {
+		logger.Log.WithError(err).Error("Error fetching default settings")
+		respondToInteraction(s, i, "Error fetching default settings. Please try again.")
+		return
+	}
+
 	for _, comp := range data.Components {
 		if row, ok := comp.(*discordgo.ActionsRow); ok {
 			for _, rowComp := range row.Components {
 				if textInput, ok := rowComp.(*discordgo.TextInput); ok {
 					switch textInput.CustomID {
 					case "check_interval":
-						interval, err := strconv.Atoi(textInput.Value)
-						if err != nil || interval < 1 || interval > 60 {
-							respondToInteraction(s, i, "Invalid check interval. Please enter a number between 1 and 60.")
-							return
+						if textInput.Value == "" {
+							userSettings.CheckInterval = defaultSettings.CheckInterval
+						} else {
+							interval, err := strconv.Atoi(textInput.Value)
+							if err != nil || interval < 1 || interval > 1440 {
+								respondToInteraction(s, i, "Invalid check interval. Please enter a number between 1 and 1440.")
+								return
+							}
+							userSettings.CheckInterval = interval
 						}
-						userSettings.CheckInterval = interval
 					case "notification_interval":
-						interval, err := strconv.ParseFloat(textInput.Value, 64)
-						if err != nil || interval < 1 || interval > 24 {
-							respondToInteraction(s, i, "Invalid notification interval. Please enter a number between 1 and 24.")
-							return
+						if textInput.Value == "" {
+							userSettings.NotificationInterval = defaultSettings.NotificationInterval
+						} else {
+							interval, err := strconv.ParseFloat(textInput.Value, 64)
+							if err != nil || interval < 1 || interval > 24 {
+								respondToInteraction(s, i, "Invalid notification interval. Please enter a number between 1 and 24.")
+								return
+							}
+							userSettings.NotificationInterval = interval
 						}
-						userSettings.NotificationInterval = interval
 					case "notification_type":
-						notificationType := strings.ToLower(textInput.Value)
-						if notificationType != "channel" && notificationType != "dm" {
-							respondToInteraction(s, i, "Invalid notification type. Please enter 'channel' or 'dm'.")
-							return
+						if textInput.Value == "" {
+							userSettings.NotificationType = defaultSettings.NotificationType
+						} else {
+							notificationType := strings.ToLower(textInput.Value)
+							if notificationType != "channel" && notificationType != "dm" {
+								respondToInteraction(s, i, "Invalid notification type. Please enter 'channel' or 'dm'.")
+								return
+							}
+							userSettings.NotificationType = notificationType
 						}
-						userSettings.NotificationType = notificationType
 					}
 				}
 			}
@@ -169,7 +188,9 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	message := fmt.Sprintf("Your preferences have been updated:\n"+
 		"Check Interval: %d minutes\n"+
 		"Notification Interval: %.1f hours\n"+
-		"Notification Type: %s", userSettings.CheckInterval, userSettings.NotificationInterval, userSettings.NotificationType)
+		"Notification Type: %s\n\n"+
+		"These settings will be used for all your account checks and notifications.",
+		userSettings.CheckInterval, userSettings.NotificationInterval, userSettings.NotificationType)
 
 	respondToInteraction(s, i, message)
 }
