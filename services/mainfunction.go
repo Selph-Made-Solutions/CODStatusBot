@@ -44,7 +44,7 @@ func init() {
 		checkInterval, notificationInterval, cooldownDuration, sleepDuration, cookieCheckIntervalPermaban, statusChangeCooldown, globalNotificationCooldown)
 }
 
-func canSendNotification(userID string, userSettings models.UserSettings) bool {
+func canSendNotification(userID string) bool {
 	userNotificationMutex.Lock()
 	defer userNotificationMutex.Unlock()
 
@@ -58,18 +58,13 @@ func canSendNotification(userID string, userSettings models.UserSettings) bool {
 
 // sendNotification function: sends notifications based on user preference
 func sendNotification(discord *discordgo.Session, account models.Account, embed *discordgo.MessageEmbed, content string) error {
-	userSettings, err := GetUserSettings(account.UserID)
-	if err != nil {
-		return fmt.Errorf("failed to get user settings: %v", err)
-	}
-
-	if !canSendNotification(account.UserID, userSettings) {
+	if !canSendNotification(account.UserID) {
 		logger.Log.Infof("Skipping notification for user %s (global cooldown)", account.UserID)
 		return nil
 	}
 
 	var channelID string
-	if userSettings.NotificationType == "dm" {
+	if account.NotificationType == "dm" {
 		channel, err := discord.UserChannelCreate(account.UserID)
 		if err != nil {
 			return fmt.Errorf("failed to create DM channel: %v", err)
@@ -79,7 +74,7 @@ func sendNotification(discord *discordgo.Session, account models.Account, embed 
 		channelID = account.ChannelID
 	}
 
-	_, err = discord.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
+	_, err := discord.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
 		Embed:   embed,
 		Content: content,
 	})
@@ -89,12 +84,6 @@ func sendNotification(discord *discordgo.Session, account models.Account, embed 
 // sendDailyUpdate function: sends a daily update message for a given account
 func sendDailyUpdate(account models.Account, discord *discordgo.Session) {
 	logger.Log.Infof("Sending daily update for account %s", account.Title)
-
-	userSettings, err := GetUserSettings(account.UserID)
-	if err != nil {
-		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", account.UserID)
-		return
-	}
 
 	// Prepare the description based on the account's cookie status
 	var description string
@@ -106,14 +95,14 @@ func sendDailyUpdate(account models.Account, discord *discordgo.Session) {
 
 	// Create the embed message
 	embed := &discordgo.MessageEmbed{
-		Title:       fmt.Sprintf("%.2f Hour Update - %s", userSettings.NotificationInterval, account.Title),
+		Title:       fmt.Sprintf("%.2f Hour Update - %s", notificationInterval, account.Title),
 		Description: description,
 		Color:       GetColorForStatus(account.LastStatus, account.IsExpiredCookie),
 		Timestamp:   time.Now().Format(time.RFC3339),
 	}
 
 	// Send the notification
-	err = sendNotification(discord, account, embed, "")
+	err := sendNotification(discord, account, embed, "")
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to send scheduled update message for account %s", account.Title)
 	}
@@ -205,14 +194,39 @@ func CheckAccounts(s *discordgo.Session) {
 
 // CheckSingleAccount function: checks the status of a single account
 func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
+	// Check SSO cookie expiration
+	timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookie)
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to check SSO cookie expiration for account %s", account.Title)
+	} else if timeUntilExpiration < 24*time.Hour {
+		// Notify user if the cookie will expire within 24 hours
+		embed := &discordgo.MessageEmbed{
+			Title:       fmt.Sprintf("%s - SSO Cookie Expiring Soon", account.Title),
+			Description: fmt.Sprintf("The SSO cookie for account %s will expire in %.1f hours. Please update the cookie soon using the /updateaccount command.", account.Title, timeUntilExpiration.Hours()),
+			Color:       0xFFA500, // Orange color for warning
+			Timestamp:   time.Now().Format(time.RFC3339),
+		}
+		err = sendNotification(discord, account, embed, "")
+		if err != nil {
+			logger.Log.WithError(err).Errorf("Failed to send SSO cookie expiration notification for account %s", account.Title)
+		}
+	}
+
 	// Skip checking if the account is already permanently banned
 	if account.IsPermabanned {
 		logger.Log.WithField("account", account.Title).Info("Skipping permanently banned account")
 		return
 	}
 
+	// Get user's captcha key
+	userSettings, err := GetUserSettings(account.UserID)
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", account.UserID)
+		return
+	}
+
 	// Check the account status
-	result, err := CheckAccount(account.SSOCookie, account.CaptchaAPIKey)
+	result, err := CheckAccount(account.SSOCookie, userSettings.CaptchaAPIKey)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to check account %s: possible expired SSO Cookie", account.Title)
 		return
@@ -221,11 +235,6 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	// Handle invalid cookie status
 	if result == models.StatusInvalidCookie {
 		lastNotification := time.Unix(account.LastCookieNotification, 0)
-		userSettings, err := GetUserSettings(account.UserID)
-		if err != nil {
-			logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", account.UserID)
-			return
-		}
 		if time.Since(lastNotification).Hours() >= userSettings.CooldownDuration || account.LastCookieNotification == 0 {
 			logger.Log.Infof("Account %s has an invalid SSO cookie", account.Title)
 			embed := &discordgo.MessageEmbed{
@@ -269,11 +278,6 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	// Handle status changes and send notifications
 	if result != lastStatus {
 		lastStatusChange := time.Unix(account.LastStatusChange, 0)
-		userSettings, err := GetUserSettings(account.UserID)
-		if err != nil {
-			logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", account.UserID)
-			return
-		}
 		if time.Since(lastStatusChange).Hours() < userSettings.StatusChangeCooldown {
 			logger.Log.Infof("Skipping status change notification for account %s (cooldown)", account.Title)
 			return

@@ -13,10 +13,11 @@ import (
 )
 
 const (
-	EZCaptchaAPIURL    = "https://api.ez-captcha.com/createTask"
-	EZCaptchaResultURL = "https://api.ez-captcha.com/getTaskResult"
-	MaxRetries         = 6
-	RetryInterval      = 10 * time.Second
+	EZCaptchaAPIURL     = "https://api.ez-captcha.com/createTask"
+	EZCaptchaResultURL  = "https://api.ez-captcha.com/getTaskResult"
+	EZCaptchaBalanceURL = "https://api.ez-captcha.com/getBalance"
+	MaxRetries          = 6
+	RetryInterval       = 10 * time.Second
 )
 
 var (
@@ -273,4 +274,42 @@ func getTaskResult(taskID string) (string, error) {
 	}
 
 	return "", errors.New("max retries reached, captcha solving timed out")
+}
+
+func ValidateCaptchaKey(apiKey string) (bool, error) {
+	payload := map[string]string{
+		"clientKey": apiKey,
+	}
+
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		return false, fmt.Errorf("failed to marshal JSON payload: %v", err)
+	}
+
+	resp, err := http.Post(EZCaptchaBalanceURL, "application/json", bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return false, fmt.Errorf("failed to send getBalance request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	var result struct {
+		ErrorID int     `json:"errorId"`
+		Balance float64 `json:"balance"`
+	}
+
+	err = json.Unmarshal(body, &result)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse JSON response: %v", err)
+	}
+
+	if result.ErrorID != 0 {
+		return false, nil
+	}
+
+	return true, nil
 }
