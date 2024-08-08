@@ -182,7 +182,13 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Update the account
 	account.SSOCookie = newSSOCookie
 	account.IsExpiredCookie = false // Reset the expired cookie flag
-	if captchaAPIKey != "" {
+
+	// Handle CaptchaAPIKey update
+	if captchaAPIKey == "" {
+		// If the field is left blank, remove the custom API key
+		account.CaptchaAPIKey = ""
+	} else if captchaAPIKey != account.CaptchaAPIKey {
+		// If a new key is provided, update it
 		account.CaptchaAPIKey = captchaAPIKey
 	}
 
@@ -195,7 +201,12 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 	services.DBMutex.Unlock()
 
-	respondToInteraction(s, i, fmt.Sprintf("Account '%s' has been successfully updated with the new SSO cookie and EZ-Captcha settings.", account.Title))
+	message := fmt.Sprintf("Account '%s' has been successfully updated with the new SSO cookie.", account.Title)
+	if captchaAPIKey == "" {
+		message += " Your custom EZ-Captcha API key has been removed, and the bot's default key will be used."
+	} else if captchaAPIKey != account.CaptchaAPIKey {
+		message += " Your EZ-Captcha API key has been updated."
+	}
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
