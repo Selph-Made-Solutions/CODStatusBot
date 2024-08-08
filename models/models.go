@@ -22,6 +22,17 @@ type Account struct {
 	CaptchaAPIKey          string // User's own API key, if provided
 }
 
+type UserSettings struct {
+	gorm.Model
+	UserID               string  `gorm:"uniqueIndex"`
+	CaptchaAPIKey        string  // user's ezcaptcha API key
+	CheckInterval        int     // in minutes
+	NotificationInterval float64 // in hours
+	CooldownDuration     float64 // in hours
+	StatusChangeCooldown float64 // in hours
+	NotificationType     string  `gorm:"default:channel"` // User preference for location of notifications either channel or dm
+}
+
 type Ban struct {
 	gorm.Model
 	Account   Account // The account that has been banned.

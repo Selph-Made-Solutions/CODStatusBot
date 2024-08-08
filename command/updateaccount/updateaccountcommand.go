@@ -93,17 +93,6 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 						},
 					},
 				},
-				discordgo.ActionsRow{
-					Components: []discordgo.MessageComponent{
-						discordgo.TextInput{
-							CustomID:    "captcha_api_key",
-							Label:       "EZ-Captcha API Key (optional)",
-							Style:       discordgo.TextInputShort,
-							Placeholder: "Enter your own API key (leave blank to use default)",
-							Required:    false,
-						},
-					},
-				},
 			},
 		},
 	})
@@ -125,18 +114,12 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	var newSSOCookie string
-	var captchaAPIKey string
 
 	for _, comp := range data.Components {
 		if row, ok := comp.(*discordgo.ActionsRow); ok {
 			for _, rowComp := range row.Components {
-				switch v := rowComp.(type) {
-				case *discordgo.TextInput:
-					if v.CustomID == "new_sso_cookie" {
-						newSSOCookie = strings.TrimSpace(v.Value)
-					} else if v.CustomID == "captcha_api_key" {
-						captchaAPIKey = strings.TrimSpace(v.Value)
-					}
+				if v, ok := rowComp.(*discordgo.TextInput); ok && v.CustomID == "new_sso_cookie" {
+					newSSOCookie = strings.TrimSpace(v.Value)
 				}
 			}
 		}
@@ -182,9 +165,6 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Update the account
 	account.SSOCookie = newSSOCookie
 	account.IsExpiredCookie = false // Reset the expired cookie flag
-	if captchaAPIKey != "" {
-		account.CaptchaAPIKey = captchaAPIKey
-	}
 
 	services.DBMutex.Lock()
 	if err := database.DB.Save(&account).Error; err != nil {
@@ -195,7 +175,8 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 	services.DBMutex.Unlock()
 
-	respondToInteraction(s, i, fmt.Sprintf("Account '%s' has been successfully updated with the new SSO cookie and EZ-Captcha settings.", account.Title))
+	message := fmt.Sprintf("Account '%s' has been successfully updated with the new SSO cookie.", account.Title)
+	respondToInteraction(s, i, message)
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {

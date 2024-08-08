@@ -13,48 +13,6 @@ import (
 
 var url1 = "https://support.activision.com/api/bans/v2/appeal?locale=en" // Replacement Endpoint for checking account bans
 var url2 = "https://support.activision.com/api/profile?accts=false"      // Endpoint for retrieving profile information
-// var url3 = "https://profile.callofduty.com/promotions/redeemCode/" // Endpoint for claiming rewards (currently unused)
-// var url4 = "https://profile.callofduty.com/api/papi-client/crm/cod/v2/accounts" // Endpoint for retrieving linked platforms and their associated IDs (currently unused)
-// var url5 = "https://www.callofduty.com/api/papi-client/crm/cod/v2/identities/" // Endpoint for retrieving (currently unused)
-// var url6 = "https://s.activision.com/activision/userInfo/{SSO_COOKIE}" // Endpoint for retrieving extremely detailed account information (currently unused)
-
-/*
-func ClaimSingleReward(ssoCookie, code string) (string, error) {
-	logger.Log.Info("Starting ClaimSingleReward function")
-	req, err := http.NewRequest("POST", url3, strings.NewReader(fmt.Sprintf("code=%s", code)))
-	if err != nil {
-		return "", fmt.Errorf("failed to create HTTP request to claim reward: %w", err)
-	}
-	headers := GeneratePostHeaders(ssoCookie)
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to send HTTP request to claim reward: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %w", err)
-	}
-	if strings.Contains(string(body), "redemption-success") {
-		start := strings.Index(string(body), "Just Unlocked:<br><br><div class=\"accent-highlight mw2\">")
-		end := strings.Index(string(body), "</div></h4>")
-		if start != -1 && end != -1 {
-			unlockedItem := strings.TrimSpace(string(body)[start+len("Just Unlocked:<br><br><div class=\"accent-highlight mw2\">") : end])
-			return fmt.Sprintf("Successfully claimed reward: %s", unlockedItem), nil
-		}
-		return "Successfully claimed reward, but couldn't extract details", nil
-	}
-	logger.Log.Infof("Unexpected response body: %s", string(body))
-	return "", fmt.Errorf("failed to claim reward: unexpected response")
-}
-*/
 
 // VerifySSOCookie checks if the provided SSO cookie is valid.
 func VerifySSOCookie(ssoCookie string) bool {
@@ -101,13 +59,16 @@ func CheckAccount(ssoCookie string, captchaAPIKey string) (models.Status, error)
 	if captchaAPIKey != "" {
 		// Use user's API key
 		gRecaptchaResponse, err = SolveReCaptchaV2WithKey(captchaAPIKey)
+		if err != nil {
+			logger.Log.WithError(err).Error("Failed to solve reCAPTCHA with user's API key")
+			return models.StatusUnknown, fmt.Errorf("invalid API key or reCAPTCHA solving failed: %v", err)
+		}
 	} else {
 		gRecaptchaResponse, err = SolveReCaptchaV2()
-	}
-
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to solve reCAPTCHA")
-		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %v", err)
+		if err != nil {
+			logger.Log.WithError(err).Error("Failed to solve reCAPTCHA with default key")
+			return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %v", err)
+		}
 	}
 
 	logger.Log.Info("Successfully solved reCAPTCHA")

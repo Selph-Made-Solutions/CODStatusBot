@@ -8,9 +8,11 @@ import (
 	"CODStatusBot/command/checknow"
 	"CODStatusBot/command/removeaccount"
 	"CODStatusBot/command/setcaptchaservice"
-	"CODStatusBot/command/setpreference"
+	"CODStatusBot/command/setcheckinterval"
 	"CODStatusBot/command/updateaccount"
+	"CODStatusBot/database"
 	"CODStatusBot/logger"
+	"CODStatusBot/models"
 	"CODStatusBot/services"
 	"errors"
 	"github.com/bwmarrin/discordgo"
@@ -73,6 +75,10 @@ func StartBot() error {
 				updateaccount.HandleModalSubmit(s, i)
 				logger.Log.Info("Handling update account modal submission")
 
+			case customID == "set_check_interval_modal":
+				setcheckinterval.HandleModalSubmit(s, i)
+				logger.Log.Info("Handling set check interval modal submission")
+
 			default:
 				logger.Log.WithField("customID", customID).Error("Unknown modal submission")
 			}
@@ -112,10 +118,6 @@ func StartBot() error {
 				checknow.HandleAccountSelection(s, i)
 				logger.Log.Info("Handling check now selection")
 
-			case customID == "set_preference_channel" || customID == "set_preference_dm":
-				setpreference.HandlePreferenceSelection(s, i)
-				logger.Log.Info("Handling set preference selection")
-
 			default:
 				logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 			}
@@ -124,4 +126,18 @@ func StartBot() error {
 
 	go services.CheckAccounts(discord)
 	return nil
+}
+
+func init() {
+	// Initialize the database connection
+	err := database.Databaselogin()
+	if err != nil {
+		logger.Log.WithError(err).Fatal("Failed to initialize database connection")
+	}
+
+	// Create or update the UserSettings table
+	err = database.DB.AutoMigrate(&models.UserSettings{})
+	if err != nil {
+		logger.Log.WithError(err).Fatal("Failed to create or update UserSettings table")
+	}
 }

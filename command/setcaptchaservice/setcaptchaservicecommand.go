@@ -4,6 +4,7 @@ import (
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
+	"CODStatusBot/services"
 	"github.com/bwmarrin/discordgo"
 	"strings"
 )
@@ -60,25 +61,46 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Update all accounts for this user
+	userSettings, err := services.GetUserSettings(userID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error fetching user settings")
+		respondToInteraction(s, i, "Error setting EZ-Captcha API key. Please try again.")
+		return
+	}
+
+	if apiKey == "" {
+		err = services.RemoveCaptchaKey(userID)
+		if err != nil {
+			logger.Log.WithError(err).Error("Error removing captcha key")
+			respondToInteraction(s, i, "Error removing EZ-Captcha API key. Please try again.")
+			return
+		}
+		message := "Your EZ-Captcha API key has been removed. The bot's default settings will be used for all your accounts."
+		respondToInteraction(s, i, message)
+		return
+	}
+
+	userSettings.CaptchaAPIKey = apiKey
+	if err := database.DB.Save(&userSettings).Error; err != nil {
+		logger.Log.WithError(err).Error("Error saving user settings")
+		respondToInteraction(s, i, "Error setting EZ-Captcha API key. Please try again.")
+		return
+	}
+
+	// Update all accounts for this user with the new API key
 	result := database.DB.Model(&models.Account{}).
 		Where("user_id = ?", userID).
 		Update("captcha_api_key", apiKey)
 
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error updating user accounts")
-		respondToInteraction(s, i, "Error setting EZ-Captcha API key. Please try again.")
+		respondToInteraction(s, i, "Error updating accounts with new API key. Please try again.")
 		return
 	}
 
 	logger.Log.Infof("Updated %d accounts for user %s", result.RowsAffected, userID)
 
-	message := "Your EZ-Captcha API key has been updated for all your accounts."
-	if apiKey == "" {
-		message += " The bot's default API key will be used."
-	} else {
-		message += " Your custom API key has been set."
-	}
+	message := "Your EZ-Captcha API key has been updated for all your accounts. You can now use custom settings for check intervals and notifications."
 
 	respondToInteraction(s, i, message)
 }

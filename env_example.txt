@@ -18,6 +18,15 @@ EZCAPTCHA_CLIENT_KEY=the-client-key-from-solving-service #this is the api key fo
 RECAPTCHA_SITE_KEY=6LdB2NUpAAAAANcdcy9YcjBOBD4rY-TIHOeolkkk #this is the banappeal v2 site key as of 07/24/2024 may change in the future
 RECAPTCHA_URL=https://support.activision.com #this doesn't really change unless using a different api endpoint
 
+
+## Bot Settings (Default fallback if data is not found)
+CHECK_INTERVAL=60
+NOTIFICATION_INTERVAL=24
+COOLDOWN_DURATION=6
+STATUS_CHANGE_COOLDOWN=1
+GLOBAL_NOTIFICATION_COOLDOWN=1
+
+
 ## Bot Settings
 COOLDOWN_DURATION=6 #hours
 CHECK_INTERVAL=15 #minutes
