@@ -30,7 +30,6 @@ func GetUserSettings(userID string) (models.UserSettings, error) {
 	if settings.StatusChangeCooldown == 0 {
 		settings.StatusChangeCooldown, _ = strconv.ParseFloat(os.Getenv("STATUS_CHANGE_COOLDOWN"), 64)
 	}
-
 	logger.Log.Infof("Got user settings for user: %s", userID)
 	return settings, nil
 }
