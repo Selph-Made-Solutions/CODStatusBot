@@ -4,8 +4,8 @@ import (
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/services"
+	"fmt"
 	"github.com/bwmarrin/discordgo"
-	"strconv"
 )
 
 func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -15,9 +15,8 @@ func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreat
 		return
 	}
 
-	intervalStr := options[0].StringValue()
-	interval, err := strconv.Atoi(intervalStr)
-	if err != nil || interval < 1 {
+	interval := options[0].IntValue()
+	if interval < 1 {
 		respondToInteraction(s, i, "Invalid interval. Please provide a positive integer value in minutes.")
 		return
 	}
@@ -40,14 +39,14 @@ func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreat
 		return
 	}
 
-	userSettings.CheckInterval = interval
+	userSettings.CheckInterval = int(interval)
 	if err := database.DB.Save(&userSettings).Error; err != nil {
 		logger.Log.WithError(err).Error("Error saving user settings")
 		respondToInteraction(s, i, "Error setting check interval. Please try again.")
 		return
 	}
 
-	respondToInteraction(s, i, "Your account check interval has been set to "+intervalStr+" minutes.")
+	respondToInteraction(s, i, fmt.Sprintf("Your account check interval has been set to %d minutes.", interval))
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
