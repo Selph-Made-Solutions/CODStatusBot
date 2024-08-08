@@ -93,17 +93,6 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 						},
 					},
 				},
-				discordgo.ActionsRow{
-					Components: []discordgo.MessageComponent{
-						discordgo.TextInput{
-							CustomID:    "captcha_api_key",
-							Label:       "EZ-Captcha API Key (optional)",
-							Style:       discordgo.TextInputShort,
-							Placeholder: "Enter your own API key (leave blank to use default)",
-							Required:    false,
-						},
-					},
-				},
 			},
 		},
 	})
@@ -125,18 +114,12 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	var newSSOCookie string
-	var captchaAPIKey string
 
 	for _, comp := range data.Components {
 		if row, ok := comp.(*discordgo.ActionsRow); ok {
 			for _, rowComp := range row.Components {
-				switch v := rowComp.(type) {
-				case *discordgo.TextInput:
-					if v.CustomID == "new_sso_cookie" {
-						newSSOCookie = strings.TrimSpace(v.Value)
-					} else if v.CustomID == "captcha_api_key" {
-						captchaAPIKey = strings.TrimSpace(v.Value)
-					}
+				if v, ok := rowComp.(*discordgo.TextInput); ok && v.CustomID == "new_sso_cookie" {
+					newSSOCookie = strings.TrimSpace(v.Value)
 				}
 			}
 		}
@@ -183,15 +166,6 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	account.SSOCookie = newSSOCookie
 	account.IsExpiredCookie = false // Reset the expired cookie flag
 
-	// Handle CaptchaAPIKey update
-	if captchaAPIKey == "" {
-		// If the field is left blank, remove the custom API key
-		account.CaptchaAPIKey = ""
-	} else if captchaAPIKey != account.CaptchaAPIKey {
-		// If a new key is provided, update it
-		account.CaptchaAPIKey = captchaAPIKey
-	}
-
 	services.DBMutex.Lock()
 	if err := database.DB.Save(&account).Error; err != nil {
 		services.DBMutex.Unlock()
@@ -202,11 +176,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	services.DBMutex.Unlock()
 
 	message := fmt.Sprintf("Account '%s' has been successfully updated with the new SSO cookie.", account.Title)
-	if captchaAPIKey == "" {
-		message += " Your custom EZ-Captcha API key has been removed, and the bot's default key will be used."
-	} else if captchaAPIKey != account.CaptchaAPIKey {
-		message += " Your EZ-Captcha API key has been updated."
-	}
+	respondToInteraction(s, i, message)
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
