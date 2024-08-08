@@ -9,10 +9,9 @@ import (
 )
 
 func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	var userID, guildID string
+	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
-		guildID = i.GuildID
 	} else if i.User != nil {
 		userID = i.User.ID
 	} else {
@@ -22,16 +21,10 @@ func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	var accounts []models.Account
-	var result error
+	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
 
-	if guildID != "" {
-		result = database.DB.Where("user_id = ? AND guild_id = ?", userID, guildID).Find(&accounts).Error
-	} else {
-		result = database.DB.Where("user_id = ?", userID).Find(&accounts).Error
-	}
-
-	if result != nil {
-		logger.Log.WithError(result).Error("Error fetching user accounts")
+	if result.Error != nil {
+		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
 		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
 		return
 	}
