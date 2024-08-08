@@ -68,6 +68,18 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
+	if apiKey == "" {
+		err = services.RemoveCaptchaKey(userID)
+		if err != nil {
+			logger.Log.WithError(err).Error("Error removing captcha key")
+			respondToInteraction(s, i, "Error removing EZ-Captcha API key. Please try again.")
+			return
+		}
+		message := "Your EZ-Captcha API key has been removed. The bot's default settings will be used for all your accounts."
+		respondToInteraction(s, i, message)
+		return
+	}
+
 	userSettings.CaptchaAPIKey = apiKey
 	if err := database.DB.Save(&userSettings).Error; err != nil {
 		logger.Log.WithError(err).Error("Error saving user settings")
@@ -88,12 +100,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	logger.Log.Infof("Updated %d accounts for user %s", result.RowsAffected, userID)
 
-	message := "Your EZ-Captcha API key has been updated for all your accounts."
-	if apiKey == "" {
-		message += " The bot's default API key will be used."
-	} else {
-		message += " Your custom API key has been set."
-	}
+	message := "Your EZ-Captcha API key has been updated for all your accounts. You can now use custom settings for check intervals and notifications."
 
 	respondToInteraction(s, i, message)
 }
