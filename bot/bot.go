@@ -8,7 +8,7 @@ import (
 	"CODStatusBot/command/checknow"
 	"CODStatusBot/command/removeaccount"
 	"CODStatusBot/command/setcaptchaservice"
-	"CODStatusBot/command/setpreference"
+	"CODStatusBot/command/setcheckinterval"
 	"CODStatusBot/command/updateaccount"
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
@@ -75,6 +75,10 @@ func StartBot() error {
 				updateaccount.HandleModalSubmit(s, i)
 				logger.Log.Info("Handling update account modal submission")
 
+			case customID == "set_check_interval_modal":
+				setcheckinterval.HandleModalSubmit(s, i)
+				logger.Log.Info("Handling set check interval modal submission")
+
 			default:
 				logger.Log.WithField("customID", customID).Error("Unknown modal submission")
 			}
@@ -113,9 +117,7 @@ func StartBot() error {
 			case strings.HasPrefix(customID, "check_now_"):
 				checknow.HandleAccountSelection(s, i)
 				logger.Log.Info("Handling check now selection")
-			case customID == "set_preference_channel" || customID == "set_preference_dm":
-				setpreference.HandlePreferenceSelection(s, i)
-				logger.Log.Info("Handling set preference selection")
+
 			default:
 				logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 			}
