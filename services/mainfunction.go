@@ -44,7 +44,7 @@ func init() {
 		checkInterval, notificationInterval, cooldownDuration, sleepDuration, cookieCheckIntervalPermaban, statusChangeCooldown, globalNotificationCooldown)
 }
 
-func canSendNotification(userID string) bool {
+func canSendNotification(userID string, userSettings models.UserSettings) bool {
 	userNotificationMutex.Lock()
 	defer userNotificationMutex.Unlock()
 
@@ -58,13 +58,18 @@ func canSendNotification(userID string) bool {
 
 // sendNotification function: sends notifications based on user preference
 func sendNotification(discord *discordgo.Session, account models.Account, embed *discordgo.MessageEmbed, content string) error {
-	if !canSendNotification(account.UserID) {
+	userSettings, err := GetUserSettings(account.UserID)
+	if err != nil {
+		return fmt.Errorf("failed to get user settings: %v", err)
+	}
+
+	if !canSendNotification(account.UserID, userSettings) {
 		logger.Log.Infof("Skipping notification for user %s (global cooldown)", account.UserID)
 		return nil
 	}
 
 	var channelID string
-	if account.NotificationType == "dm" {
+	if userSettings.NotificationType == "dm" {
 		channel, err := discord.UserChannelCreate(account.UserID)
 		if err != nil {
 			return fmt.Errorf("failed to create DM channel: %v", err)
@@ -74,7 +79,7 @@ func sendNotification(discord *discordgo.Session, account models.Account, embed 
 		channelID = account.ChannelID
 	}
 
-	_, err := discord.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
+	_, err = discord.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
 		Embed:   embed,
 		Content: content,
 	})
@@ -84,6 +89,12 @@ func sendNotification(discord *discordgo.Session, account models.Account, embed 
 // sendDailyUpdate function: sends a daily update message for a given account
 func sendDailyUpdate(account models.Account, discord *discordgo.Session) {
 	logger.Log.Infof("Sending daily update for account %s", account.Title)
+
+	userSettings, err := GetUserSettings(account.UserID)
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", account.UserID)
+		return
+	}
 
 	// Prepare the description based on the account's cookie status
 	var description string
@@ -95,14 +106,14 @@ func sendDailyUpdate(account models.Account, discord *discordgo.Session) {
 
 	// Create the embed message
 	embed := &discordgo.MessageEmbed{
-		Title:       fmt.Sprintf("%.2f Hour Update - %s", notificationInterval, account.Title),
+		Title:       fmt.Sprintf("%.2f Hour Update - %s", userSettings.NotificationInterval, account.Title),
 		Description: description,
 		Color:       GetColorForStatus(account.LastStatus, account.IsExpiredCookie),
 		Timestamp:   time.Now().Format(time.RFC3339),
 	}
 
 	// Send the notification
-	err := sendNotification(discord, account, embed, "")
+	err = sendNotification(discord, account, embed, "")
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to send scheduled update message for account %s", account.Title)
 	}
