@@ -30,7 +30,7 @@ type UserSettings struct {
 	NotificationInterval float64 // in hours
 	CooldownDuration     float64 // in hours
 	StatusChangeCooldown float64 // in hours
-	// LastAnnouncement uint   // ID of the last seen announcement
+	NotificationType     string  `gorm:"default:channel"` // User preference for location of notifications either channel or dm
 }
 
 type Ban struct {
