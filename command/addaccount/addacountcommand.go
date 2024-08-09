@@ -5,6 +5,7 @@ import (
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
+	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"strings"
 	"unicode"
@@ -67,9 +68,29 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	title := sanitizeInput(strings.TrimSpace(data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value))
 	ssoCookie := strings.TrimSpace(data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
 
+	// Acknowledge the interaction immediately
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Flags: discordgo.MessageFlagsEphemeral,
+		},
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Error acknowledging interaction")
+		return
+	}
+
 	// Verify SSO Cookie
 	if !services.VerifySSOCookie(ssoCookie) {
-		respondToInteraction(s, i, "Invalid SSO cookie. Please try again with a valid cookie.")
+		sendFollowUpMessage(s, i, "Invalid SSO cookie. Please try again with a valid cookie.")
+		return
+	}
+
+	// Get SSO Cookie expiration
+	_, expirationTime, err := services.DecodeSSOCookie(ssoCookie)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error decoding SSO cookie")
+		sendFollowUpMessage(s, i, "Error processing SSO cookie. Please try again.")
 		return
 	}
 
@@ -82,7 +103,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		// In DMs, we don't have a guildID, so we'll leave it empty
 	} else {
 		logger.Log.Error("Interaction doesn't have Member or User")
-		respondToInteraction(s, i, "An error occurred while processing your request.")
+		sendFollowUpMessage(s, i, "An error occurred while processing your request.")
 		return
 	}
 
@@ -99,41 +120,42 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	userSettings, err := services.GetUserSettings(userID)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error fetching user settings")
-		respondToInteraction(s, i, "Error creating account. Please try again.")
+		sendFollowUpMessage(s, i, "Error creating account. Please try again.")
 		return
 	}
 
 	// Create new account
 	account := models.Account{
-		UserID:           userID,
-		Title:            title,
-		SSOCookie:        ssoCookie,
-		GuildID:          guildID,
-		ChannelID:        i.ChannelID,
-		NotificationType: notificationType,
-		CaptchaAPIKey:    userSettings.CaptchaAPIKey,
+		UserID:              userID,
+		Title:               title,
+		SSOCookie:           ssoCookie,
+		SSOCookieExpiration: expirationTime,
+		GuildID:             guildID,
+		ChannelID:           i.ChannelID,
+		NotificationType:    notificationType,
+		CaptchaAPIKey:       userSettings.CaptchaAPIKey,
 	}
 
 	// Save to database
 	result = database.DB.Create(&account)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error creating account")
-		respondToInteraction(s, i, "Error creating account. Please try again.")
+		sendFollowUpMessage(s, i, "Error creating account. Please try again.")
 		return
 	}
 
-	respondToInteraction(s, i, "Account added successfully!")
+	// Assuming FormatExpirationTime is a function that formats the expiration time
+	// If it's not implemented, you need to either implement it or remove the usage of this function
+	formattedExpiration := services.FormatExpirationTime(expirationTime)
+	sendFollowUpMessage(s, i, fmt.Sprintf("Account added successfully! SSO cookie will expire in %s", formattedExpiration))
 }
 
-func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: message,
-			Flags:   discordgo.MessageFlagsEphemeral,
-		},
+func sendFollowUpMessage(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
+	_, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+		Content: message,
+		Flags:   discordgo.MessageFlagsEphemeral,
 	})
 	if err != nil {
-		logger.Log.WithError(err).Error("Error responding to interaction")
+		logger.Log.WithError(err).Error("Error sending follow-up message")
 	}
 }
