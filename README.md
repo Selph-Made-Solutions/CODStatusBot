@@ -16,6 +16,7 @@ COD Status Bot is a Discord bot designed to help you monitor your Activision acc
 - Customizable notification preferences
 - Anonymous feedback submission
 - EZ-Captcha integration for improved reliability
+- SSO Cookie expiration tracking and notifications
 
 ## Getting Started
 
@@ -62,11 +63,11 @@ This command will display a list of your monitored accounts and prompt you to co
 
 ### /updateaccount
 
-Update the SSO cookie or EZ-Captcha API key for an existing account.
+Update the SSO cookie for an existing account.
 
 Usage: `/updateaccount`
 
-This command will display a list of your monitored accounts and allow you to update the SSO cookie or EZ-Captcha API key for the selected account.
+This command will display a list of your monitored accounts and allow you to update the SSO cookie for the selected account.
 
 ### /listaccounts
 
@@ -98,27 +99,36 @@ Usage: `/checknow [account_title]`
 
 - `account_title` (optional): The title of the specific account to check. If omitted, all accounts will be checked.
 
-### /setpreference
+### /setcheckinterval
 
-Set your preference for where you want to receive status notifications.
+Set your preferences for check interval, notification interval, and notification type.
 
-Usage: `/setpreference <type>`
+Usage: `/setcheckinterval`
 
-- `type`: Choose between "channel" (default) or "dm" for direct messages.
+This command will open a modal where you can enter:
+- Check Interval: How often the bot should check your accounts (in minutes)
+- Notification Interval: How often you want to receive status updates (in hours)
+- Notification Type: Choose between "channel" or "dm" for notifications
 
 ### /setcaptchaservice
 
 Set your personal EZ-Captcha API key for unlimited use and customizable check intervals.
 
-Usage: `/setcaptchaservice <api_key>`
+Usage: `/setcaptchaservice`
 
-- `api_key`: Your personal EZ-Captcha API key. Leave blank to use the bot's default key.
+This command will open a modal where you can enter your EZ-Captcha API key.
 
-### /help
+### /helpapi
+
+Display a guide on how to use the bot and set up your API key.
+
+Usage: `/helpapi`
+
+### /helpcookie
 
 Display a guide on how to obtain your SSO cookie.
 
-Usage: `/help`
+Usage: `/helpcookie`
 
 ### /feedback
 
@@ -134,9 +144,10 @@ The bot will send notifications:
 
 - When there's a change in the ban status of an account
 - Daily for each account, confirming that it's still being monitored
-- If an SSO cookie becomes invalid or expires
+- If an SSO cookie becomes invalid or is about to expire
+- 24 hours before an SSO cookie is set to expire
 
-Notifications will be sent to the channel where the account was added or to your DMs, depending on your preference set with `/setpreference`.
+Notifications will be sent to the channel where the account was added or to your DMs, depending on your preference set with `/setcheckinterval`.
 
 ## SSO Cookie
 
@@ -147,15 +158,15 @@ To get the SSO cookie:
 3. Navigate to the Application tab, then Cookies.
 4. Find the cookie named `ACT_SSO_COOKIE` associated with the Activision domain.
 
-**Important:** Keep your SSO cookie confidential and do not share it with anyone.
+**Important:** Keep your SSO cookie confidential and do not share it with anyone. The bot will notify you when your cookie is about to expire, allowing you to update it in time.
 
 ## Support
 
-If you encounter any issues or have questions, please contact the bot developer through Discord or the platform where you discovered this bot.
+If you encounter any issues or have questions, please use the `/feedback` command to contact the bot developer or reach out through the platform where you discovered this bot.
 
 ## Note on Data Privacy
 
-The bot stores minimal data necessary for its operation, including account titles, SSO cookies, and status logs. This data is used solely for the purpose of monitoring account status and providing notifications. The bot does not share this data with any third parties. Users can use the provided commands to delete their data from the bot at any time, ensuring that no data is left afterwards.
+The bot stores minimal data necessary for its operation, including account titles, SSO cookies, and status logs. This data is used solely for the purpose of monitoring account status and providing notifications. The bot does not share this data with any third parties. Users can use the `/removeaccount` command to delete their data from the bot at any time.
 
 ## Disclaimer
 
