@@ -90,9 +90,12 @@ func sendDailyUpdate(account models.Account, discord *discordgo.Session) {
 	if account.IsExpiredCookie {
 		description = fmt.Sprintf("The SSO cookie for account %s has expired. Please update the cookie using the /updateaccount command or delete the account using the /removeaccount command.", account.Title)
 	} else {
-		timeUntilExpiration := time.Until(account.SSOCookieExpiration)
-		if timeUntilExpiration > 0 {
-			description = fmt.Sprintf("The last status of account %s was %s. SSO cookie will expire in %.1f hours.", account.Title, account.LastStatus, timeUntilExpiration.Hours())
+		timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
+		if err != nil {
+			logger.Log.WithError(err).Errorf("Error checking SSO cookie expiration for account %s", account.Title)
+			description = fmt.Sprintf("An error occurred while checking the SSO cookie expiration for account %s. Please check the account status manually.", account.Title)
+		} else if timeUntilExpiration > 0 {
+			description = fmt.Sprintf("The last status of account %s was %s. SSO cookie will expire in %s.", account.Title, account.LastStatus, FormatExpirationTime(account.SSOCookieExpiration))
 		} else {
 			description = fmt.Sprintf("The SSO cookie for account %s has expired. Please update the cookie using the /updateaccount command or delete the account using the /removeaccount command.", account.Title)
 		}
@@ -204,12 +207,14 @@ func CheckAccounts(s *discordgo.Session) {
 // CheckSingleAccount function: checks the status of a single account
 func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	// Check SSO cookie expiration
-	timeUntilExpiration := time.Until(account.SSOCookieExpiration)
-	if timeUntilExpiration < 24*time.Hour {
+	timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to check SSO cookie expiration for account %s", account.Title)
+	} else if timeUntilExpiration > 0 && timeUntilExpiration <= 24*time.Hour {
 		// Notify user if the cookie will expire within 24 hours
 		embed := &discordgo.MessageEmbed{
 			Title:       fmt.Sprintf("%s - SSO Cookie Expiring Soon", account.Title),
-			Description: fmt.Sprintf("The SSO cookie for account %s will expire in %.1f hours. Please update the cookie soon using the /updateaccount command.", account.Title, timeUntilExpiration.Hours()),
+			Description: fmt.Sprintf("The SSO cookie for account %s will expire in %s. Please update the cookie soon using the /updateaccount command.", account.Title, FormatExpirationTime(account.SSOCookieExpiration)),
 			Color:       0xFFA500, // Orange color for warning
 			Timestamp:   time.Now().Format(time.RFC3339),
 		}
