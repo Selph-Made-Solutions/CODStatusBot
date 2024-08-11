@@ -41,14 +41,12 @@ func CheckSSOCookieExpiration(encodedStr string) (time.Duration, error) {
 		return 0, err
 	}
 
-	now := time.Now()
-	if now.After(expirationTime) {
+	timeUntilExpiration := time.Until(expirationTime)
+	if timeUntilExpiration <= 0 {
 		return 0, nil // Cookie has expired
 	}
 
-	timeUntilExpiration := expirationTime.Sub(now)
 	maxDuration := 14 * 24 * time.Hour // 14 days
-
 	if timeUntilExpiration > maxDuration {
 		return maxDuration, nil
 	}
@@ -57,19 +55,18 @@ func CheckSSOCookieExpiration(encodedStr string) (time.Duration, error) {
 }
 
 func FormatExpirationTime(expirationTime time.Time) string {
-	now := time.Now()
-	if now.After(expirationTime) {
+	timeUntilExpiration := time.Until(expirationTime)
+	if timeUntilExpiration <= 0 {
 		return "Expired"
 	}
 
-	duration := expirationTime.Sub(now)
 	maxDuration := 14 * 24 * time.Hour // 14 days
-	if duration > maxDuration {
-		duration = maxDuration
+	if timeUntilExpiration > maxDuration {
+		timeUntilExpiration = maxDuration
 	}
 
-	days := int(duration.Hours() / 24)
-	hours := int(duration.Hours()) % 24
+	days := int(timeUntilExpiration.Hours() / 24)
+	hours := int(timeUntilExpiration.Hours()) % 24
 
 	if days > 0 {
 		return fmt.Sprintf("%d days, %d hours", days, hours)
