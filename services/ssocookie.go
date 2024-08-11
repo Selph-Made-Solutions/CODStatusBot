@@ -29,12 +29,8 @@ func DecodeSSOCookie(encodedStr string) (string, time.Time, error) {
 		return "", time.Time{}, fmt.Errorf("failed to parse expiration timestamp: %v", err)
 	}
 
-	// Convert milliseconds to seconds if necessary
-	if expirationTimestamp > 1000000000000 {
-		expirationTimestamp /= 1000
-	}
-
-	expirationTime := time.Unix(expirationTimestamp, 0)
+	// The timestamp is already in milliseconds, so we divide by 1000 to get seconds
+	expirationTime := time.UnixMilli(expirationTimestamp)
 
 	return accountID, expirationTime, nil
 }
@@ -45,7 +41,12 @@ func CheckSSOCookieExpiration(encodedStr string) (time.Duration, error) {
 		return 0, err
 	}
 
-	timeUntilExpiration := expirationTime.Sub(time.Now())
+	now := time.Now()
+	if now.After(expirationTime) {
+		return 0, nil // Cookie has expired
+	}
+
+	timeUntilExpiration := expirationTime.Sub(now)
 	maxDuration := 14 * 24 * time.Hour // 14 days
 
 	if timeUntilExpiration > maxDuration {
@@ -57,12 +58,11 @@ func CheckSSOCookieExpiration(encodedStr string) (time.Duration, error) {
 
 func FormatExpirationTime(expirationTime time.Time) string {
 	now := time.Now()
-	duration := expirationTime.Sub(now)
-
-	if duration <= 0 {
+	if now.After(expirationTime) {
 		return "Expired"
 	}
 
+	duration := expirationTime.Sub(now)
 	maxDuration := 14 * 24 * time.Hour // 14 days
 	if duration > maxDuration {
 		duration = maxDuration
