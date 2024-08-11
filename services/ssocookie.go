@@ -11,7 +11,7 @@ import (
 func DecodeSSOCookie(encodedStr string) (string, time.Time, error) {
 	decodedBytes, err := base64.StdEncoding.DecodeString(encodedStr)
 	if err != nil {
-		return "", time.Time{}, err
+		return "", time.Time{}, fmt.Errorf("failed to decode base64: %v", err)
 	}
 
 	decodedStr := string(decodedBytes)
@@ -22,9 +22,11 @@ func DecodeSSOCookie(encodedStr string) (string, time.Time, error) {
 	}
 
 	accountID := parts[0]
-	expirationTimestamp, err := strconv.ParseInt(parts[1], 10, 64)
+	expirationStr := parts[1]
+
+	expirationTimestamp, err := strconv.ParseInt(expirationStr, 10, 64)
 	if err != nil {
-		return "", time.Time{}, err
+		return "", time.Time{}, fmt.Errorf("failed to parse expiration timestamp: %v", err)
 	}
 
 	expirationTime := time.Unix(expirationTimestamp, 0)
