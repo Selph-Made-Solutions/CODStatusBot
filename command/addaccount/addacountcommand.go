@@ -68,17 +68,20 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	title := sanitizeInput(strings.TrimSpace(data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value))
 	ssoCookie := strings.TrimSpace(data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
 
+	logger.Log.Infof("Attempting to add account. Title: %s, SSO Cookie length: %d", title, len(ssoCookie))
+
 	// Verify SSO Cookie
 	if !services.VerifySSOCookie(ssoCookie) {
-		respondToInteraction(s, i, "Invalid SSO cookie. Please try again with a valid cookie.")
+		logger.Log.Error("Invalid SSO cookie provided")
+		respondToInteraction(s, i, "Invalid SSO cookie. Please make sure you've copied the entire cookie value.")
 		return
 	}
 
 	// Get SSO Cookie expiration
-	_, expirationTime, err := services.DecodeSSOCookie(ssoCookie)
+	expirationTimestamp, err := services.DecodeSSOCookie(ssoCookie)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error decoding SSO cookie")
-		respondToInteraction(s, i, "Error processing SSO cookie. Please try again.")
+		respondToInteraction(s, i, fmt.Sprintf("Error processing SSO cookie: %v", err))
 		return
 	}
 
@@ -117,7 +120,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		UserID:              userID,
 		Title:               title,
 		SSOCookie:           ssoCookie,
-		SSOCookieExpiration: expirationTime,
+		SSOCookieExpiration: expirationTimestamp,
 		GuildID:             guildID,
 		ChannelID:           i.ChannelID,
 		NotificationType:    notificationType,
@@ -132,7 +135,9 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	formattedExpiration := services.FormatExpirationTime(expirationTime)
+	logger.Log.Infof("Account added successfully. ID: %d, Title: %s, UserID: %s", account.ID, account.Title, account.UserID)
+
+	formattedExpiration := services.FormatExpirationTime(expirationTimestamp)
 	respondToInteraction(s, i, fmt.Sprintf("Account added successfully! SSO cookie will expire in %s", formattedExpiration))
 }
 

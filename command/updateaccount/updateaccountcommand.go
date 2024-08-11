@@ -162,8 +162,17 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
+	// Get SSO Cookie expiration
+	expirationTimestamp, err := services.DecodeSSOCookie(newSSOCookie)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error decoding SSO cookie")
+		respondToInteraction(s, i, fmt.Sprintf("Error processing SSO cookie: %v", err))
+		return
+	}
+
 	// Update the account
 	account.SSOCookie = newSSOCookie
+	account.SSOCookieExpiration = expirationTimestamp
 	account.IsExpiredCookie = false // Reset the expired cookie flag
 
 	services.DBMutex.Lock()
@@ -175,7 +184,8 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 	services.DBMutex.Unlock()
 
-	message := fmt.Sprintf("Account '%s' has been successfully updated with the new SSO cookie.", account.Title)
+	formattedExpiration := services.FormatExpirationTime(expirationTimestamp)
+	message := fmt.Sprintf("Account '%s' has been successfully updated. New SSO cookie will expire in %s", account.Title, formattedExpiration)
 	respondToInteraction(s, i, message)
 }
 
