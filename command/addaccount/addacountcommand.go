@@ -73,15 +73,15 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Verify SSO Cookie
 	if !services.VerifySSOCookie(ssoCookie) {
 		logger.Log.Error("Invalid SSO cookie provided")
-		respondToInteraction(s, i, "Invalid SSO cookie. Please try again with a valid cookie.")
+		respondToInteraction(s, i, "Invalid SSO cookie. Please make sure you've copied the entire cookie value.")
 		return
 	}
 
 	// Get SSO Cookie expiration
-	_, expirationTime, err := services.DecodeSSOCookie(ssoCookie)
+	expirationTimestamp, err := services.DecodeSSOCookie(ssoCookie)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error decoding SSO cookie")
-		respondToInteraction(s, i, "Error processing SSO cookie. Please try again.")
+		respondToInteraction(s, i, fmt.Sprintf("Error processing SSO cookie: %v", err))
 		return
 	}
 
@@ -120,7 +120,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		UserID:              userID,
 		Title:               title,
 		SSOCookie:           ssoCookie,
-		SSOCookieExpiration: expirationTime,
+		SSOCookieExpiration: expirationTimestamp,
 		GuildID:             guildID,
 		ChannelID:           i.ChannelID,
 		NotificationType:    notificationType,
@@ -137,7 +137,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	logger.Log.Infof("Account added successfully. ID: %d, Title: %s, UserID: %s", account.ID, account.Title, account.UserID)
 
-	formattedExpiration := services.FormatExpirationTime(expirationTime)
+	formattedExpiration := services.FormatExpirationTime(expirationTimestamp)
 	respondToInteraction(s, i, fmt.Sprintf("Account added successfully! SSO cookie will expire in %s", formattedExpiration))
 }
 
