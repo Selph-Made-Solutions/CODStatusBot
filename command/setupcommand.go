@@ -6,6 +6,7 @@ import (
 	"CODStatusBot/command/addaccount"
 	"CODStatusBot/command/checknow"
 	"CODStatusBot/command/feedback"
+	"CODStatusBot/command/globalannouncement"
 	"CODStatusBot/command/helpapi"
 	"CODStatusBot/command/helpcookie"
 	"CODStatusBot/command/listaccounts"
@@ -13,7 +14,9 @@ import (
 	"CODStatusBot/command/setcaptchaservice"
 	"CODStatusBot/command/setcheckinterval"
 	"CODStatusBot/command/updateaccount"
+	"CODStatusBot/database"
 	"CODStatusBot/logger"
+	"CODStatusBot/models"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -24,6 +27,10 @@ func RegisterCommands(s *discordgo.Session) {
 	logger.Log.Info("Registering global commands")
 
 	commands := []*discordgo.ApplicationCommand{
+		{
+			Name:        "globalannouncement",
+			Description: "Send a global announcement to all users (Admin only)",
+		},
 		{
 			Name:        "setcaptchaservice",
 			Description: "Set your EZ-Captcha API key",
@@ -89,6 +96,7 @@ func RegisterCommands(s *discordgo.Session) {
 	}
 
 	// Set up command handlers
+	Handlers["globalannouncement"] = globalannouncement.CommandGlobalAnnouncement
 	Handlers["setcaptchaservice"] = setcaptchaservice.CommandSetCaptchaService
 	Handlers["setcheckinterval"] = setcheckinterval.CommandSetCheckInterval
 	Handlers["addaccount"] = addaccount.CommandAddAccount
@@ -107,4 +115,24 @@ func RegisterCommands(s *discordgo.Session) {
 	Handlers["set_check_interval_modal"] = setcheckinterval.HandleModalSubmit
 
 	logger.Log.Info("Global commands registered and handlers set up")
+}
+
+// New function to handle commands and check for announcements
+func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// Check if the user has seen the announcement
+	var userSettings models.UserSettings
+	result := database.DB.Where(models.UserSettings{UserID: i.Member.User.ID}).FirstOrCreate(&userSettings)
+	if result.Error != nil {
+		logger.Log.WithError(result.Error).Error("Error getting user settings")
+	} else if !userSettings.HasSeenAnnouncement {
+		// Send the announcement to the user
+		if err := globalannouncement.SendGlobalAnnouncement(s, i.Member.User.ID); err != nil {
+			logger.Log.WithError(err).Error("Error sending announcement to user")
+		}
+	}
+
+	// Continue with regular command handling
+	if h, ok := Handlers[i.ApplicationCommandData().Name]; ok {
+		h(s, i)
+	}
 }

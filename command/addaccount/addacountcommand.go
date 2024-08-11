@@ -5,6 +5,7 @@ import (
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
+	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"strings"
 	"unicode"
@@ -48,18 +49,7 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 							Placeholder: "Enter the SSO cookie for this account",
 							Required:    true,
 							MinLength:   1,
-							MaxLength:   4000,
-						},
-					},
-				},
-				discordgo.ActionsRow{
-					Components: []discordgo.MessageComponent{
-						discordgo.TextInput{
-							CustomID:    "captcha_api_key",
-							Label:       "EZ-Captcha API Key (optional)",
-							Style:       discordgo.TextInputShort,
-							Placeholder: "Enter your own API key (leave blank to use default)",
-							Required:    false,
+							MaxLength:   100,
 						},
 					},
 				},
@@ -77,18 +67,18 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	title := sanitizeInput(strings.TrimSpace(data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value))
 	ssoCookie := strings.TrimSpace(data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
-	captchaAPIKey := ""
-
-	// Handle captcha API key
-	if len(data.Components) > 2 {
-		if textInput, ok := data.Components[2].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput); ok {
-			captchaAPIKey = strings.TrimSpace(textInput.Value)
-		}
-	}
 
 	// Verify SSO Cookie
 	if !services.VerifySSOCookie(ssoCookie) {
 		respondToInteraction(s, i, "Invalid SSO cookie. Please try again with a valid cookie.")
+		return
+	}
+
+	// Get SSO Cookie expiration
+	_, expirationTime, err := services.DecodeSSOCookie(ssoCookie)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error decoding SSO cookie")
+		respondToInteraction(s, i, "Error processing SSO cookie. Please try again.")
 		return
 	}
 
@@ -114,15 +104,24 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		notificationType = existingAccount.NotificationType
 	}
 
+	// Get user's captcha key
+	userSettings, err := services.GetUserSettings(userID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error fetching user settings")
+		respondToInteraction(s, i, "Error creating account. Please try again.")
+		return
+	}
+
 	// Create new account
 	account := models.Account{
-		UserID:           userID,
-		Title:            title,
-		SSOCookie:        ssoCookie,
-		GuildID:          guildID,
-		ChannelID:        i.ChannelID,
-		NotificationType: notificationType,
-		CaptchaAPIKey:    captchaAPIKey,
+		UserID:              userID,
+		Title:               title,
+		SSOCookie:           ssoCookie,
+		SSOCookieExpiration: expirationTime,
+		GuildID:             guildID,
+		ChannelID:           i.ChannelID,
+		NotificationType:    notificationType,
+		CaptchaAPIKey:       userSettings.CaptchaAPIKey,
 	}
 
 	// Save to database
@@ -133,7 +132,8 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	respondToInteraction(s, i, "Account added successfully!")
+	formattedExpiration := services.FormatExpirationTime(expirationTime)
+	respondToInteraction(s, i, fmt.Sprintf("Account added successfully! SSO cookie will expire in %s", formattedExpiration))
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {

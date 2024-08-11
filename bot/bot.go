@@ -22,30 +22,31 @@ import (
 
 var discord *discordgo.Session
 
-func StartBot() error {
+func StartBot() (*discordgo.Session, error) {
 	envToken := os.Getenv("DISCORD_TOKEN")
 	if envToken == "" {
 		err := errors.New("DISCORD_TOKEN environment variable not set")
 		logger.Log.WithError(err).WithField("env", "DISCORD_TOKEN").Error()
-		return err
+		return nil, err
 	}
+
 	var err error
 	discord, err = discordgo.New("Bot " + envToken)
 	if err != nil {
 		logger.Log.WithError(err).WithField("Bot startup", "Token").Error()
-		return err
+		return nil, err
 	}
 
 	err = discord.Open()
 	if err != nil {
 		logger.Log.WithError(err).WithField("Bot startup", "Opening Session").Error()
-		return err
+		return nil, err
 	}
 
 	err = discord.UpdateWatchStatus(0, "the Status of your Accounts so you dont have to.")
 	if err != nil {
 		logger.Log.WithError(err).WithField("Bot startup", "Setting Presence Status").Error()
-		return err
+		return nil, err
 	}
 
 	command.RegisterCommands(discord)
@@ -54,78 +55,64 @@ func StartBot() error {
 	discord.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		switch i.Type {
 		case discordgo.InteractionApplicationCommand:
-			if h, ok := command.Handlers[i.ApplicationCommandData().Name]; ok {
-				logger.Log.WithField("command", i.ApplicationCommandData().Name).Info("Handling command")
-				h(s, i)
-			} else {
-				logger.Log.WithField("command", i.ApplicationCommandData().Name).Error("Command handler not found")
-			}
+			command.HandleCommand(s, i)
 		case discordgo.InteractionModalSubmit:
-			customID := i.ModalSubmitData().CustomID
-			switch {
-			case customID == "set_captcha_service_modal":
-				setcaptchaservice.HandleModalSubmit(s, i)
-				logger.Log.Info("Handling set captcha service modal submission")
-
-			case customID == "add_account_modal":
-				addaccount.HandleModalSubmit(s, i)
-				logger.Log.Info("Handling add account modal submission")
-
-			case strings.HasPrefix(customID, "update_account_modal_"):
-				updateaccount.HandleModalSubmit(s, i)
-				logger.Log.Info("Handling update account modal submission")
-
-			case customID == "set_check_interval_modal":
-				setcheckinterval.HandleModalSubmit(s, i)
-				logger.Log.Info("Handling set check interval modal submission")
-
-			default:
-				logger.Log.WithField("customID", customID).Error("Unknown modal submission")
-			}
-
+			handleModalSubmit(s, i)
 		case discordgo.InteractionMessageComponent:
-			customID := i.MessageComponentData().CustomID
-			switch {
-			case strings.HasPrefix(customID, "account_age_"):
-				accountage.HandleAccountSelection(s, i)
-				logger.Log.Info("Handling account age selection")
-
-			case strings.HasPrefix(customID, "account_logs_"):
-				accountlogs.HandleAccountSelection(s, i)
-				logger.Log.Info("Handling account logs selection")
-
-			case customID == "account_logs_select":
-				accountlogs.HandleAccountSelection(s, i)
-				logger.Log.Info("Handling account logs selection")
-
-			case strings.HasPrefix(customID, "update_account_"):
-				updateaccount.HandleAccountSelection(s, i)
-				logger.Log.Info("Handling update account selection")
-
-			case customID == "update_account_select":
-				updateaccount.HandleAccountSelection(s, i)
-				logger.Log.Info("Handling update account selection")
-
-			case strings.HasPrefix(customID, "remove_account_"):
-				removeaccount.HandleAccountSelection(s, i)
-				logger.Log.Info("Handling remove account selection")
-
-			case customID == "cancel_remove" || strings.HasPrefix(customID, "confirm_remove_"):
-				removeaccount.HandleConfirmation(s, i)
-				logger.Log.Info("Handling remove account confirmation")
-
-			case strings.HasPrefix(customID, "check_now_"):
-				checknow.HandleAccountSelection(s, i)
-				logger.Log.Info("Handling check now selection")
-
-			default:
-				logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
-			}
+			handleMessageComponent(s, i)
 		}
 	})
 
 	go services.CheckAccounts(discord)
-	return nil
+	return discord, nil
+}
+
+func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	customID := i.ModalSubmitData().CustomID
+	switch {
+	case customID == "set_captcha_service_modal":
+		setcaptchaservice.HandleModalSubmit(s, i)
+	case customID == "add_account_modal":
+		addaccount.HandleModalSubmit(s, i)
+	case strings.HasPrefix(customID, "update_account_modal_"):
+		updateaccount.HandleModalSubmit(s, i)
+	case customID == "set_check_interval_modal":
+		setcheckinterval.HandleModalSubmit(s, i)
+	default:
+		logger.Log.WithField("customID", customID).Error("Unknown modal submission")
+	}
+}
+
+func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	customID := i.MessageComponentData().CustomID
+	switch {
+	case strings.HasPrefix(customID, "account_age_"):
+		accountage.HandleAccountSelection(s, i)
+		logger.Log.Info("Handling account age selection")
+	case strings.HasPrefix(customID, "account_logs_"):
+		accountlogs.HandleAccountSelection(s, i)
+		logger.Log.Info("Handling account logs selection")
+	case customID == "account_logs_select":
+		accountlogs.HandleAccountSelection(s, i)
+		logger.Log.Info("Handling account logs selection")
+	case strings.HasPrefix(customID, "update_account_"):
+		updateaccount.HandleAccountSelection(s, i)
+		logger.Log.Info("Handling update account selection")
+	case customID == "update_account_select":
+		updateaccount.HandleAccountSelection(s, i)
+		logger.Log.Info("Handling update account selection")
+	case strings.HasPrefix(customID, "remove_account_"):
+		removeaccount.HandleAccountSelection(s, i)
+		logger.Log.Info("Handling remove account selection")
+	case customID == "cancel_remove" || strings.HasPrefix(customID, "confirm_remove_"):
+		removeaccount.HandleConfirmation(s, i)
+		logger.Log.Info("Handling remove account confirmation")
+	case strings.HasPrefix(customID, "check_now_"):
+		checknow.HandleAccountSelection(s, i)
+		logger.Log.Info("Handling check now selection")
+	default:
+		logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
+	}
 }
 
 func init() {
