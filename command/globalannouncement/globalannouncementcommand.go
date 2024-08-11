@@ -117,27 +117,36 @@ func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 
 func createAnnouncementEmbed() *discordgo.MessageEmbed {
 	return &discordgo.MessageEmbed{
-		Title: "Important Announcement: Changes to COD Status Bot",
-		Description: "Due to the high demand and usage of our bot, we've reached the limit of our free EZCaptcha tokens. " +
-			"To continue using the check ban feature, users now need to provide their own EZCaptcha API key.\n\n" +
-			"Here's what you need to know:",
-		Color: 0xFFD700, // Gold color
+		Title:       "Important Update: Changes to COD Status Bot",
+		Description: "Due to high demand, we've reached our limit of free EZCaptcha tokens. To ensure continued functionality, we're introducing some changes:",
+		Color:       0xFFD700, // Gold color
 		Fields: []*discordgo.MessageEmbedField{
 			{
+				Name: "What's Changing",
+				Value: "• The check ban feature now requires users to provide their own EZCaptcha API key.\n" +
+					"• Without an API key, the bot's check ban functionality will be limited.",
+			},
+			{
 				Name: "How to Get Your Own API Key",
-				Value: "1. Visit our [referral link](https://dashboard.ez-captcha.com/#/register?inviteCode=uyNrRgWlEKy) to sign up for EZCaptcha\n" +
-					"2. Request a free trial of 10,000 tokens\n" +
-					"3. Use the `/setcaptchaservice` command to set your API key in the bot",
+				Value: "1. Sign up at [EZ-Captcha](https://dashboard.ez-captcha.com/#/register?inviteCode=uyNrRgWlEKy) using our referral link.\n" +
+					"2. Request a free trial of 10,000 tokens.\n" +
+					"3. Use the `/setcaptchaservice` command to set your API key in the bot.",
 			},
 			{
 				Name: "Benefits of Using Your Own API Key",
-				Value: "• Continue using the check ban feature\n" +
-					"• Customize your check intervals\n" +
-					"• Support the bot indirectly through our referral program",
+				Value: "• Uninterrupted access to the check ban feature\n" +
+					"• Ability to customize check intervals\n" +
+					"• Support the bot's development through our referral program",
+			},
+			{
+				Name: "Next Steps",
+				Value: "1. Obtain your API key as soon as possible.\n" +
+					"2. Set up your key using the `/setcaptchaservice` command.\n" +
+					"3. Adjust your check interval preferences if desired.",
 			},
 			{
 				Name:  "Our Commitment",
-				Value: "We're working on ways to maintain a free tier for all users. Your support by using our referral link helps us achieve this goal.",
+				Value: "We're actively exploring ways to maintain a free tier for all users. Your support through the referral program directly contributes to this goal.",
 			},
 		},
 		Footer: &discordgo.MessageEmbedFooter{
