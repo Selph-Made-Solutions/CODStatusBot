@@ -68,21 +68,9 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	title := sanitizeInput(strings.TrimSpace(data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value))
 	ssoCookie := strings.TrimSpace(data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
 
-	// Acknowledge the interaction immediately
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Flags: discordgo.MessageFlagsEphemeral,
-		},
-	})
-	if err != nil {
-		logger.Log.WithError(err).Error("Error acknowledging interaction")
-		return
-	}
-
 	// Verify SSO Cookie
 	if !services.VerifySSOCookie(ssoCookie) {
-		sendFollowUpMessage(s, i, "Invalid SSO cookie. Please try again with a valid cookie.")
+		respondToInteraction(s, i, "Invalid SSO cookie. Please try again with a valid cookie.")
 		return
 	}
 
@@ -90,7 +78,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	_, expirationTime, err := services.DecodeSSOCookie(ssoCookie)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error decoding SSO cookie")
-		sendFollowUpMessage(s, i, "Error processing SSO cookie. Please try again.")
+		respondToInteraction(s, i, "Error processing SSO cookie. Please try again.")
 		return
 	}
 
@@ -103,7 +91,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		// In DMs, we don't have a guildID, so we'll leave it empty
 	} else {
 		logger.Log.Error("Interaction doesn't have Member or User")
-		sendFollowUpMessage(s, i, "An error occurred while processing your request.")
+		respondToInteraction(s, i, "An error occurred while processing your request.")
 		return
 	}
 
@@ -120,7 +108,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	userSettings, err := services.GetUserSettings(userID)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error fetching user settings")
-		sendFollowUpMessage(s, i, "Error creating account. Please try again.")
+		respondToInteraction(s, i, "Error creating account. Please try again.")
 		return
 	}
 
@@ -140,22 +128,23 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	result = database.DB.Create(&account)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error creating account")
-		sendFollowUpMessage(s, i, "Error creating account. Please try again.")
+		respondToInteraction(s, i, "Error creating account. Please try again.")
 		return
 	}
 
-	// Assuming FormatExpirationTime is a function that formats the expiration time
-	// If it's not implemented, you need to either implement it or remove the usage of this function
 	formattedExpiration := services.FormatExpirationTime(expirationTime)
-	sendFollowUpMessage(s, i, fmt.Sprintf("Account added successfully! SSO cookie will expire in %s", formattedExpiration))
+	respondToInteraction(s, i, fmt.Sprintf("Account added successfully! SSO cookie will expire in %s", formattedExpiration))
 }
 
-func sendFollowUpMessage(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
-	_, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
-		Content: message,
-		Flags:   discordgo.MessageFlagsEphemeral,
+func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: message,
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
 	})
 	if err != nil {
-		logger.Log.WithError(err).Error("Error sending follow-up message")
+		logger.Log.WithError(err).Error("Error responding to interaction")
 	}
 }
