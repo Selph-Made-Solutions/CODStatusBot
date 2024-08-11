@@ -127,6 +127,11 @@ func CheckAccounts(s *discordgo.Session) {
 
 		// Iterate through each account and perform checks
 		for _, account := range accounts {
+			// Send global announcement if the user hasn't seen it yet
+			if err := SendGlobalAnnouncement(s, account.UserID); err != nil {
+				logger.Log.WithError(err).Errorf("Failed to send global announcement to user %s", account.UserID)
+			}
+
 			userSettings, err := GetUserSettings(account.UserID)
 			if err != nil {
 				logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", account.UserID)
@@ -347,4 +352,66 @@ func EmbedTitleFromStatus(status models.Status) string {
 	default:
 		return "ACCOUNT NOT BANNED"
 	}
+}
+
+// SendGlobalAnnouncement function: sends a global announcement to users who haven't seen it yet
+func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
+	var userSettings models.UserSettings
+	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings)
+	if result.Error != nil {
+		logger.Log.WithError(result.Error).Error("Error getting user settings for global announcement")
+		return result.Error
+	}
+
+	if !userSettings.HasSeenAnnouncement {
+		channel, err := s.UserChannelCreate(userID)
+		if err != nil {
+			logger.Log.WithError(err).Error("Error creating DM channel for global announcement")
+			return err
+		}
+
+		announcementEmbed := &discordgo.MessageEmbed{
+			Title: "Important Announcement: Changes to COD Status Bot",
+			Description: "Due to the high demand and usage of our bot, we've reached the limit of our free EZCaptcha tokens. " +
+				"To continue using the check ban feature, users now need to provide their own EZCaptcha API key.\n\n" +
+				"Here's what you need to know:",
+			Color: 0xFFD700, // Gold color
+			Fields: []*discordgo.MessageEmbedField{
+				{
+					Name: "How to Get Your Own API Key",
+					Value: "1. Visit our [referral link](https://dashboard.ez-captcha.com/#/register?inviteCode=uyNrRgWlEKy) to sign up for EZCaptcha\n" +
+						"2. Request a free trial of 10,000 tokens\n" +
+						"3. Use the `/setcaptchaservice` command to set your API key in the bot",
+				},
+				{
+					Name: "Benefits of Using Your Own API Key",
+					Value: "• Continue using the check ban feature\n" +
+						"• Customize your check intervals\n" +
+						"• Support the bot indirectly through our referral program",
+				},
+				{
+					Name:  "Our Commitment",
+					Value: "We're working on ways to maintain a free tier for all users. Your support by using our referral link helps us achieve this goal.",
+				},
+			},
+			Footer: &discordgo.MessageEmbedFooter{
+				Text: "Thank you for your understanding and continued support!",
+			},
+			Timestamp: time.Now().Format(time.RFC3339),
+		}
+
+		_, err = s.ChannelMessageSendEmbed(channel.ID, announcementEmbed)
+		if err != nil {
+			logger.Log.WithError(err).Error("Error sending global announcement")
+			return err
+		}
+
+		userSettings.HasSeenAnnouncement = true
+		if err := database.DB.Save(&userSettings).Error; err != nil {
+			logger.Log.WithError(err).Error("Error updating user settings after sending global announcement")
+			return err
+		}
+	}
+
+	return nil
 }
