@@ -32,8 +32,12 @@ func DecodeSSOCookie(encodedStr string) (string, time.Time, error) {
 		return "", time.Time{}, fmt.Errorf("failed to parse expiration timestamp: %v", err)
 	}
 
-	// Assume the timestamp is in milliseconds
-	expirationTime := time.UnixMilli(expirationTimestamp)
+	// Convert milliseconds to seconds if necessary
+	if len(expirationStr) > 10 {
+		expirationTimestamp /= 1000
+	}
+
+	expirationTime := time.Unix(expirationTimestamp, 0)
 
 	logger.Log.Infof("Parsed expiration time: %v", expirationTime)
 
