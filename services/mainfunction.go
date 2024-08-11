@@ -98,7 +98,6 @@ func sendDailyUpdate(account models.Account, discord *discordgo.Session) {
 		}
 	}
 
-	// Create the embed message
 	embed := &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%.2f Hour Update - %s", notificationInterval, account.Title),
 		Description: description,
