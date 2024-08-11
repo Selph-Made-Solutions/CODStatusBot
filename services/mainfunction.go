@@ -364,43 +364,29 @@ func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 	}
 
 	if !userSettings.HasSeenAnnouncement {
-		channel, err := s.UserChannelCreate(userID)
-		if err != nil {
-			logger.Log.WithError(err).Error("Error creating DM channel for global announcement")
-			return err
+		var channelID string
+		var err error
+
+		if userSettings.NotificationType == "dm" {
+			channel, err := s.UserChannelCreate(userID)
+			if err != nil {
+				logger.Log.WithError(err).Error("Error creating DM channel for global announcement")
+				return err
+			}
+			channelID = channel.ID
+		} else {
+			// Find the most recent channel used by the user
+			var account models.Account
+			if err := database.DB.Where("user_id = ?", userID).Order("updated_at DESC").First(&account).Error; err != nil {
+				logger.Log.WithError(err).Error("Error finding recent channel for user")
+				return err
+			}
+			channelID = account.ChannelID
 		}
 
-		announcementEmbed := &discordgo.MessageEmbed{
-			Title: "Important Announcement: Changes to COD Status Bot",
-			Description: "Due to the high demand and usage of our bot, we've reached the limit of our free EZCaptcha tokens. " +
-				"To continue using the check ban feature, users now need to provide their own EZCaptcha API key.\n\n" +
-				"Here's what you need to know:",
-			Color: 0xFFD700, // Gold color
-			Fields: []*discordgo.MessageEmbedField{
-				{
-					Name: "How to Get Your Own API Key",
-					Value: "1. Visit our [referral link](https://dashboard.ez-captcha.com/#/register?inviteCode=uyNrRgWlEKy) to sign up for EZCaptcha\n" +
-						"2. Request a free trial of 10,000 tokens\n" +
-						"3. Use the `/setcaptchaservice` command to set your API key in the bot",
-				},
-				{
-					Name: "Benefits of Using Your Own API Key",
-					Value: "• Continue using the check ban feature\n" +
-						"• Customize your check intervals\n" +
-						"• Support the bot indirectly through our referral program",
-				},
-				{
-					Name:  "Our Commitment",
-					Value: "We're working on ways to maintain a free tier for all users. Your support by using our referral link helps us achieve this goal.",
-				},
-			},
-			Footer: &discordgo.MessageEmbedFooter{
-				Text: "Thank you for your understanding and continued support!",
-			},
-			Timestamp: time.Now().Format(time.RFC3339),
-		}
+		announcementEmbed := createAnnouncementEmbed()
 
-		_, err = s.ChannelMessageSendEmbed(channel.ID, announcementEmbed)
+		_, err = s.ChannelMessageSendEmbed(channelID, announcementEmbed)
 		if err != nil {
 			logger.Log.WithError(err).Error("Error sending global announcement")
 			return err
@@ -414,4 +400,52 @@ func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 	}
 
 	return nil
+}
+
+func SendAnnouncementToAllUsers(s *discordgo.Session) error {
+	var users []models.UserSettings
+	if err := database.DB.Find(&users).Error; err != nil {
+		logger.Log.WithError(err).Error("Error fetching all users")
+		return err
+	}
+
+	for _, user := range users {
+		if err := SendGlobalAnnouncement(s, user.UserID); err != nil {
+			logger.Log.WithError(err).Errorf("Failed to send announcement to user %s", user.UserID)
+		}
+	}
+
+	return nil
+}
+
+func createAnnouncementEmbed() *discordgo.MessageEmbed {
+	return &discordgo.MessageEmbed{
+		Title: "Important Announcement: Changes to COD Status Bot",
+		Description: "Due to the high demand and usage of our bot, we've reached the limit of our free EZCaptcha tokens. " +
+			"To continue using the check ban feature, users now need to provide their own EZCaptcha API key.\n\n" +
+			"Here's what you need to know:",
+		Color: 0xFFD700, // Gold color
+		Fields: []*discordgo.MessageEmbedField{
+			{
+				Name: "How to Get Your Own API Key",
+				Value: "1. Visit our [referral link](https://dashboard.ez-captcha.com/#/register?inviteCode=uyNrRgWlEKy) to sign up for EZCaptcha\n" +
+					"2. Request a free trial of 10,000 tokens\n" +
+					"3. Use the `/setcaptchaservice` command to set your API key in the bot",
+			},
+			{
+				Name: "Benefits of Using Your Own API Key",
+				Value: "• Continue using the check ban feature\n" +
+					"• Customize your check intervals\n" +
+					"• Support the bot indirectly through our referral program",
+			},
+			{
+				Name:  "Our Commitment",
+				Value: "We're working on ways to maintain a free tier for all users. Your support by using our referral link helps us achieve this goal.",
+			},
+		},
+		Footer: &discordgo.MessageEmbedFooter{
+			Text: "Thank you for your understanding and continued support!",
+		},
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
 }
