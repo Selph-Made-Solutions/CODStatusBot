@@ -138,6 +138,14 @@ Usage: `/feedback <message>`
 
 - `message`: Your feedback or suggestion.
 
+### /globalannouncement
+
+Send a global announcement to all users of the bot (Admin only).
+
+Usage: `/globalannouncement`
+
+This command allows administrators to send important announcements to all users of the bot. The announcement will be sent to each user based on their notification preferences (DM or channel).
+
 ## Notifications
 
 The bot will send notifications:
