@@ -1,6 +1,7 @@
 package services
 
 import (
+	"CODStatusBot/logger"
 	"encoding/base64"
 	"fmt"
 	"strconv"
@@ -24,13 +25,17 @@ func DecodeSSOCookie(encodedStr string) (string, time.Time, error) {
 	accountID := parts[0]
 	expirationStr := parts[1]
 
+	logger.Log.Infof("Decoded cookie parts - AccountID: %s, ExpirationStr: %s", accountID, expirationStr)
+
 	expirationTimestamp, err := strconv.ParseInt(expirationStr, 10, 64)
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("failed to parse expiration timestamp: %v", err)
 	}
 
-	// The timestamp is already in milliseconds, so we divide by 1000 to get seconds
+	// Assume the timestamp is in milliseconds
 	expirationTime := time.UnixMilli(expirationTimestamp)
+
+	logger.Log.Infof("Parsed expiration time: %v", expirationTime)
 
 	return accountID, expirationTime, nil
 }
@@ -41,7 +46,13 @@ func CheckSSOCookieExpiration(encodedStr string) (time.Duration, error) {
 		return 0, err
 	}
 
-	timeUntilExpiration := time.Until(expirationTime)
+	now := time.Now().UTC()
+	timeUntilExpiration := expirationTime.Sub(now)
+
+	logger.Log.Infof("Current time (UTC): %v", now)
+	logger.Log.Infof("Expiration time (UTC): %v", expirationTime)
+	logger.Log.Infof("Time until expiration: %v", timeUntilExpiration)
+
 	if timeUntilExpiration <= 0 {
 		return 0, nil // Cookie has expired
 	}
@@ -55,7 +66,11 @@ func CheckSSOCookieExpiration(encodedStr string) (time.Duration, error) {
 }
 
 func FormatExpirationTime(expirationTime time.Time) string {
-	timeUntilExpiration := time.Until(expirationTime)
+	now := time.Now().UTC()
+	timeUntilExpiration := expirationTime.Sub(now)
+
+	logger.Log.Infof("Formatting expiration time - Current time (UTC): %v, Expiration time (UTC): %v, Time until expiration: %v", now, expirationTime, timeUntilExpiration)
+
 	if timeUntilExpiration <= 0 {
 		return "Expired"
 	}
