@@ -29,6 +29,11 @@ func DecodeSSOCookie(encodedStr string) (string, time.Time, error) {
 		return "", time.Time{}, fmt.Errorf("failed to parse expiration timestamp: %v", err)
 	}
 
+	// Convert milliseconds to seconds if necessary
+	if expirationTimestamp > 1000000000000 {
+		expirationTimestamp /= 1000
+	}
+
 	expirationTime := time.Unix(expirationTimestamp, 0)
 
 	return accountID, expirationTime, nil
@@ -40,7 +45,13 @@ func CheckSSOCookieExpiration(encodedStr string) (time.Duration, error) {
 		return 0, err
 	}
 
-	timeUntilExpiration := time.Until(expirationTime)
+	timeUntilExpiration := expirationTime.Sub(time.Now())
+	maxDuration := 14 * 24 * time.Hour // 14 days
+
+	if timeUntilExpiration > maxDuration {
+		return maxDuration, nil
+	}
+
 	return timeUntilExpiration, nil
 }
 
@@ -52,15 +63,17 @@ func FormatExpirationTime(expirationTime time.Time) string {
 		return "Expired"
 	}
 
+	maxDuration := 14 * 24 * time.Hour // 14 days
+	if duration > maxDuration {
+		duration = maxDuration
+	}
+
 	days := int(duration.Hours() / 24)
 	hours := int(duration.Hours()) % 24
-	minutes := int(duration.Minutes()) % 60
 
 	if days > 0 {
-		return fmt.Sprintf("%d days, %d hours, %d minutes", days, hours, minutes)
-	} else if hours > 0 {
-		return fmt.Sprintf("%d hours, %d minutes", hours, minutes)
+		return fmt.Sprintf("%d days, %d hours", days, hours)
 	} else {
-		return fmt.Sprintf("%d minutes", minutes)
+		return fmt.Sprintf("%d hours", hours)
 	}
 }
