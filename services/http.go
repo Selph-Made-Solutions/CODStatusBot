@@ -16,7 +16,7 @@ var url2 = "https://support.activision.com/api/profile?accts=false"      // Endp
 
 // VerifySSOCookie checks if the provided SSO cookie is valid.
 func VerifySSOCookie(ssoCookie string) bool {
-	logger.Log.Infof("Verifying SSO cookie: %s ", ssoCookie)
+	logger.Log.Infof("Verifying SSO cookie: %s", ssoCookie)
 	req, err := http.NewRequest("GET", url2, nil)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error creating verification request")
@@ -34,7 +34,7 @@ func VerifySSOCookie(ssoCookie string) bool {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		logger.Log.Errorf("Invalid SSOCookie, status code: %d ", resp.StatusCode)
+		logger.Log.Errorf("Invalid SSOCookie, status code: %d", resp.StatusCode)
 		return false
 	}
 	body, err := io.ReadAll(resp.Body)
@@ -46,6 +46,7 @@ func VerifySSOCookie(ssoCookie string) bool {
 		logger.Log.Error("Invalid SSOCookie, response body is empty")
 		return false
 	}
+	logger.Log.Info("SSO cookie verified successfully")
 	return true
 }
 
