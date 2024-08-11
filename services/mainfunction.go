@@ -90,7 +90,12 @@ func sendDailyUpdate(account models.Account, discord *discordgo.Session) {
 	if account.IsExpiredCookie {
 		description = fmt.Sprintf("The SSO cookie for account %s has expired. Please update the cookie using the /updateaccount command or delete the account using the /removeaccount command.", account.Title)
 	} else {
-		description = fmt.Sprintf("The last status of account %s was %s. SSO cookie will expire on %s.", account.Title, account.LastStatus, account.SSOCookieExpiration.Format(time.RFC1123))
+		timeUntilExpiration := time.Until(account.SSOCookieExpiration)
+		if timeUntilExpiration > 0 {
+			description = fmt.Sprintf("The last status of account %s was %s. SSO cookie will expire in %.1f hours.", account.Title, account.LastStatus, timeUntilExpiration.Hours())
+		} else {
+			description = fmt.Sprintf("The SSO cookie for account %s has expired. Please update the cookie using the /updateaccount command or delete the account using the /removeaccount command.", account.Title)
+		}
 	}
 
 	// Create the embed message
