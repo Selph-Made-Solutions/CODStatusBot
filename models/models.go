@@ -36,6 +36,7 @@ type UserSettings struct {
 	CooldownDuration     float64 // in hours
 	StatusChangeCooldown float64 // in hours
 	NotificationType     string  `gorm:"default:channel"` // User preference for location of notifications either channel or dm
+	HasSeenAnnouncement  bool    `gorm:"default:false"`   // Flag to track if the user has seen the global announcement
 }
 
 type Ban struct {
