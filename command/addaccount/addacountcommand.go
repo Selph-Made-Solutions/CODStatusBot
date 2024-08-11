@@ -68,8 +68,11 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	title := sanitizeInput(strings.TrimSpace(data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value))
 	ssoCookie := strings.TrimSpace(data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
 
+	logger.Log.Infof("Attempting to add account. Title: %s, SSO Cookie length: %d", title, len(ssoCookie))
+
 	// Verify SSO Cookie
 	if !services.VerifySSOCookie(ssoCookie) {
+		logger.Log.Error("Invalid SSO cookie provided")
 		respondToInteraction(s, i, "Invalid SSO cookie. Please try again with a valid cookie.")
 		return
 	}
@@ -131,6 +134,8 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		respondToInteraction(s, i, "Error creating account. Please try again.")
 		return
 	}
+
+	logger.Log.Infof("Account added successfully. ID: %d, Title: %s, UserID: %s", account.ID, account.Title, account.UserID)
 
 	formattedExpiration := services.FormatExpirationTime(expirationTime)
 	respondToInteraction(s, i, fmt.Sprintf("Account added successfully! SSO cookie will expire in %s", formattedExpiration))
