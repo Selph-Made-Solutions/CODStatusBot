@@ -2,6 +2,7 @@ package main
 
 import (
 	"CODStatusBot/bot"
+	"CODStatusBot/command/globalannouncement"
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
@@ -39,12 +40,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = bot.StartBot() // Start the Discord bot.
+	// err = bot.StartBot()           // Start the Discord bot.
+	discord, err := bot.StartBot() // Start the Discord bot.
 	if err != nil {
 		logger.Log.WithError(err).WithField("Bot Startup", "Discord login").Error()
 		os.Exit(1)
 	}
 
+	// Send global announcement to all users
+	successCount, failCount, err := globalannouncement.SendAnnouncementToAllUsers(discord)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to send global announcement on startup")
+	} else {
+		logger.Log.Infof("Global announcement sent to %d users on startup. %d users could not be reached.", successCount, failCount)
+	}
 	logger.Log.Info("Bot is running")                                // Log that the bot is running.
 	sc := make(chan os.Signal, 1)                                    // Set up a channel to receive system signals.
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt) // Notify the channel when a SIGINT, SIGTERM, or Interrupt signal is received.
