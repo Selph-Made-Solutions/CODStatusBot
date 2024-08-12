@@ -13,11 +13,11 @@ import (
 	"CODStatusBot/command/removeaccount"
 	"CODStatusBot/command/setcaptchaservice"
 	"CODStatusBot/command/setcheckinterval"
-	"CODStatusBot/command/setpreference"
 	"CODStatusBot/command/updateaccount"
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
+
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -40,12 +40,8 @@ func RegisterCommands(s *discordgo.Session) {
 			Description: "Set your preferences for check interval, notification interval, and notification type",
 		},
 		{
-			Name:        "setpreference",
-			Description: "Set your notification preference (channel or DM)",
-		},
-		{
 			Name:        "addaccount",
-			Description: "Add a new account to monitor",
+			Description: "Add a new account to monitor using a modal",
 		},
 		{
 			Name:        "helpapi",
@@ -66,14 +62,6 @@ func RegisterCommands(s *discordgo.Session) {
 		{
 			Name:        "checknow",
 			Description: "Immediately check the status of all your accounts or a specific account",
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "account_title",
-					Description: "The title of the specific account to check (optional)",
-					Required:    false,
-				},
-			},
 		},
 		{
 			Name:        "listaccounts",
@@ -111,7 +99,6 @@ func RegisterCommands(s *discordgo.Session) {
 	Handlers["globalannouncement"] = globalannouncement.CommandGlobalAnnouncement
 	Handlers["setcaptchaservice"] = setcaptchaservice.CommandSetCaptchaService
 	Handlers["setcheckinterval"] = setcheckinterval.CommandSetCheckInterval
-	Handlers["setpreference"] = setpreference.CommandSetPreference
 	Handlers["addaccount"] = addaccount.CommandAddAccount
 	Handlers["add_account_modal"] = addaccount.HandleModalSubmit
 	Handlers["helpcookie"] = helpcookie.CommandHelpCookie
