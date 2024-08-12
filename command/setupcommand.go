@@ -117,17 +117,33 @@ func RegisterCommands(s *discordgo.Session) {
 	logger.Log.Info("Global commands registered and handlers set up")
 }
 
-// New function to handle commands and check for announcements
+// HandleCommand handles incoming commands and checks for announcements
 func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Check if the user has seen the announcement
+	var userID string
+	if i.Member != nil {
+		userID = i.Member.User.ID
+	} else if i.User != nil {
+		userID = i.User.ID
+	} else {
+		logger.Log.Error("Interaction doesn't have Member or User")
+		return
+	}
+
 	var userSettings models.UserSettings
-	result := database.DB.Where(models.UserSettings{UserID: i.Member.User.ID}).FirstOrCreate(&userSettings)
+	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error getting user settings")
 	} else if !userSettings.HasSeenAnnouncement {
 		// Send the announcement to the user
-		if err := globalannouncement.SendGlobalAnnouncement(s, i.Member.User.ID); err != nil {
+		if err := globalannouncement.SendGlobalAnnouncement(s, userID); err != nil {
 			logger.Log.WithError(err).Error("Error sending announcement to user")
+		} else {
+			// Update the user's settings to mark the announcement as seen
+			userSettings.HasSeenAnnouncement = true
+			if err := database.DB.Save(&userSettings).Error; err != nil {
+				logger.Log.WithError(err).Error("Error updating user settings after sending announcement")
+			}
 		}
 	}
 
