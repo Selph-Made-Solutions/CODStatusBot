@@ -74,42 +74,44 @@ func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 	var userSettings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings)
 	if result.Error != nil {
-		logger.Log.WithError(result.Error).Errorf("Error getting user settings for user %s", userID)
+		logger.Log.WithError(result.Error).Error("Error getting user settings for global announcement")
 		return result.Error
 	}
 
-	var channelID string
-	var err error
+	if !userSettings.HasSeenAnnouncement {
+		var channelID string
+		var err error
 
-	if userSettings.NotificationType == "dm" {
-		channel, err := s.UserChannelCreate(userID)
+		if userSettings.NotificationType == "dm" {
+			channel, err := s.UserChannelCreate(userID)
+			if err != nil {
+				logger.Log.WithError(err).Error("Error creating DM channel for global announcement")
+				return err
+			}
+			channelID = channel.ID
+		} else {
+			// Find the most recent channel used by the user
+			var account models.Account
+			if err := database.DB.Where("user_id = ?", userID).Order("updated_at DESC").First(&account).Error; err != nil {
+				logger.Log.WithError(err).Error("Error finding recent channel for user")
+				return err
+			}
+			channelID = account.ChannelID
+		}
+
+		announcementEmbed := createAnnouncementEmbed()
+
+		_, err = s.ChannelMessageSendEmbed(channelID, announcementEmbed)
 		if err != nil {
-			logger.Log.WithError(err).Errorf("Error creating DM channel for user %s", userID)
+			logger.Log.WithError(err).Error("Error sending global announcement")
 			return err
 		}
-		channelID = channel.ID
-	} else {
-		// Find the most recent channel used by the user
-		var account models.Account
-		if err := database.DB.Where("user_id = ?", userID).Order("updated_at DESC").First(&account).Error; err != nil {
-			logger.Log.WithError(err).Errorf("Error finding recent channel for user %s", userID)
+
+		userSettings.HasSeenAnnouncement = true
+		if err := database.DB.Save(&userSettings).Error; err != nil {
+			logger.Log.WithError(err).Error("Error updating user settings after sending global announcement")
 			return err
 		}
-		channelID = account.ChannelID
-	}
-
-	announcementEmbed := createAnnouncementEmbed()
-
-	_, err = s.ChannelMessageSendEmbed(channelID, announcementEmbed)
-	if err != nil {
-		logger.Log.WithError(err).Errorf("Error sending global announcement to user %s", userID)
-		return err
-	}
-
-	userSettings.HasSeenAnnouncement = true
-	if err := database.DB.Save(&userSettings).Error; err != nil {
-		logger.Log.WithError(err).Errorf("Error updating user settings after sending global announcement for user %s", userID)
-		return err
 	}
 
 	return nil
