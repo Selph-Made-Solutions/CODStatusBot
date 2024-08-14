@@ -129,29 +129,22 @@ func CheckAccounts(s *discordgo.Session) {
 		var accounts []models.Account
 		if err := database.DB.Find(&accounts).Error; err != nil {
 			logger.Log.WithError(err).Error("Failed to fetch accounts from the database")
+			time.Sleep(time.Duration(sleepDuration) * time.Minute)
 			continue
 		}
 
 		// Iterate through each account and perform checks
 		for _, account := range accounts {
-			// Send global announcement if the user hasn't seen it yet
-			if err := SendGlobalAnnouncement(s, account.UserID); err != nil {
-				logger.Log.WithError(err).Errorf("Failed to send global announcement to user %s", account.UserID)
-			}
-
 			userSettings, err := GetUserSettings(account.UserID)
 			if err != nil {
 				logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", account.UserID)
 				continue
 			}
 
-			var lastCheck time.Time
-			if account.LastCheck != 0 {
-				lastCheck = time.Unix(account.LastCheck, 0)
-			}
-			var lastNotification time.Time
-			if account.LastNotification != 0 {
-				lastNotification = time.Unix(account.LastNotification, 0)
+			lastCheck := time.Unix(account.LastCheck, 0)
+			if time.Since(lastCheck).Minutes() < float64(userSettings.CheckInterval) {
+				logger.Log.WithField("account", account.Title).Infof("Account %s checked recently, skipping", account.Title)
+				continue
 			}
 
 			// Handle permabanned accounts
