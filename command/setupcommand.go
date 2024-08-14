@@ -28,44 +28,54 @@ func RegisterCommands(s *discordgo.Session) {
 
 	commands := []*discordgo.ApplicationCommand{
 		{
-			Name:        "globalannouncement",
-			Description: "Send a global announcement to all users (Admin only)",
+			Name:         "globalannouncement",
+			Description:  "Send a global announcement to all users (Admin only)",
+			DMPermission: BoolPtr(false),
 		},
 		{
-			Name:        "setcaptchaservice",
-			Description: "Set your EZ-Captcha API key",
+			Name:         "setcaptchaservice",
+			Description:  "Set your EZ-Captcha API key",
+			DMPermission: BoolPtr(true),
 		},
 		{
-			Name:        "setcheckinterval",
-			Description: "Set your preferences for check interval, notification interval, and notification type",
+			Name:         "setcheckinterval",
+			Description:  "Set your preferences for check interval, notification interval, and notification type",
+			DMPermission: BoolPtr(true),
 		},
 		{
-			Name:        "setpreference",
-			Description: "Set your notification preference (channel or DM)",
+			Name:         "setpreference",
+			Description:  "Set your notification preference (channel or DM)",
+			DMPermission: BoolPtr(true),
 		},
 		{
-			Name:        "addaccount",
-			Description: "Add a new account to monitor",
+			Name:         "addaccount",
+			Description:  "Add a new account to monitor",
+			DMPermission: BoolPtr(true),
 		},
 		{
-			Name:        "helpapi",
-			Description: "Get help on using the bot and setting up your API key",
+			Name:         "helpapi",
+			Description:  "Get help on using the bot and setting up your API key",
+			DMPermission: BoolPtr(true),
 		},
 		{
-			Name:        "helpcookie",
-			Description: "Simple guide to getting your SSOCookie",
+			Name:         "helpcookie",
+			Description:  "Simple guide to getting your SSOCookie",
+			DMPermission: BoolPtr(true),
 		},
 		{
-			Name:        "accountage",
-			Description: "Check the age of an account",
+			Name:         "accountage",
+			Description:  "Check the age of an account",
+			DMPermission: BoolPtr(true),
 		},
 		{
-			Name:        "accountlogs",
-			Description: "View the logs for an account",
+			Name:         "accountlogs",
+			Description:  "View the logs for an account",
+			DMPermission: BoolPtr(true),
 		},
 		{
-			Name:        "checknow",
-			Description: "Immediately check the status of all your accounts or a specific account",
+			Name:         "checknow",
+			Description:  "Immediately check the status of all your accounts or a specific account",
+			DMPermission: BoolPtr(true),
 			Options: []*discordgo.ApplicationCommandOption{
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
@@ -76,20 +86,24 @@ func RegisterCommands(s *discordgo.Session) {
 			},
 		},
 		{
-			Name:        "listaccounts",
-			Description: "List all your monitored accounts",
+			Name:         "listaccounts",
+			Description:  "List all your monitored accounts",
+			DMPermission: BoolPtr(true),
 		},
 		{
-			Name:        "removeaccount",
-			Description: "Remove a monitored account",
+			Name:         "removeaccount",
+			Description:  "Remove a monitored account",
+			DMPermission: BoolPtr(true),
 		},
 		{
-			Name:        "updateaccount",
-			Description: "Update a monitored account's information",
+			Name:         "updateaccount",
+			Description:  "Update a monitored account's information",
+			DMPermission: BoolPtr(true),
 		},
 		{
-			Name:        "feedback",
-			Description: "Send anonymous feedback or suggestions to the bot developer",
+			Name:         "feedback",
+			Description:  "Send anonymous feedback or suggestions to the bot developer",
+			DMPermission: BoolPtr(true),
 			Options: []*discordgo.ApplicationCommandOption{
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
@@ -164,4 +178,9 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if h, ok := Handlers[i.ApplicationCommandData().Name]; ok {
 		h(s, i)
 	}
+}
+
+// BoolPtr Helper function to create a pointer to a bool
+func BoolPtr(b bool) *bool {
+	return &b
 }
