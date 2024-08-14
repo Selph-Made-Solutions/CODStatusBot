@@ -242,6 +242,17 @@ func checkRateLimit(userID string) bool {
 	rateLimiterLock.Lock()
 	defer rateLimiterLock.Unlock()
 
+	userSettings, err := services.GetUserSettings(userID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error fetching user settings")
+		return false
+	}
+
+	// If user has custom API key, no rate limit
+	if userSettings.CaptchaAPIKey != "" {
+		return true
+	}
+
 	lastUse, exists := rateLimiter[userID]
 	if !exists || time.Since(lastUse) >= rateLimit {
 		rateLimiter[userID] = time.Now()
