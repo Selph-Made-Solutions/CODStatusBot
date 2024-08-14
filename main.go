@@ -39,7 +39,6 @@ func main() {
 		os.Exit(1)
 	}
 	discord, err := bot.StartBot() // Start the Discord bot.
-	// _, err = bot.StartBot() // Start the Discord bot.
 	if err != nil {
 		logger.Log.WithError(err).WithField("Bot Startup", "Discord login").Error()
 		os.Exit(1)
@@ -102,4 +101,23 @@ func initializeDatabase() error {
 	}
 
 	return nil
+}
+
+// Helper function to create a pointer to a bool
+func BoolPtr(b bool) *bool {
+	return &b
+}
+
+func init() {
+	// Initialize the database connection
+	err := database.Databaselogin()
+	if err != nil {
+		logger.Log.WithError(err).Fatal("Failed to initialize database connection")
+	}
+
+	// Create or update the UserSettings table
+	err = database.DB.AutoMigrate(&models.UserSettings{})
+	if err != nil {
+		logger.Log.WithError(err).Fatal("Failed to create or update UserSettings table")
+	}
 }
