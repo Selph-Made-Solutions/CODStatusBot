@@ -42,9 +42,18 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	if !checkRateLimit(userID) {
-		respondToInteraction(s, i, fmt.Sprintf("You're using this command too frequently. Please wait %v before trying again.", rateLimit))
+	userSettings, err := services.GetUserSettings(userID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error fetching user settings")
+		respondToInteraction(s, i, "Error fetching user settings. Please try again later.")
 		return
+	}
+
+	if userSettings.CaptchaAPIKey == "" {
+		if !checkRateLimit(userID) {
+			respondToInteraction(s, i, fmt.Sprintf("You're using this command too frequently. Please wait %v before trying again or set your own API key.", rateLimit))
+			return
+		}
 	}
 
 	var accountTitle string
