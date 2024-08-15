@@ -141,10 +141,13 @@ func CheckAccounts(s *discordgo.Session) {
 				continue
 			}
 
-			lastCheck := time.Unix(account.LastCheck, 0)
-			if time.Since(lastCheck).Minutes() < float64(userSettings.CheckInterval) {
-				logger.Log.WithField("account", account.Title).Infof("Account %s checked recently, skipping", account.Title)
-				continue
+			var lastCheck time.Time
+			if account.LastCheck != 0 {
+				lastCheck = time.Unix(account.LastCheck, 0)
+			}
+			var lastNotification time.Time
+			if account.LastNotification != 0 {
+				lastNotification = time.Unix(account.LastNotification, 0)
 			}
 
 			// Handle permabanned accounts
@@ -230,8 +233,14 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 		return
 	}
 
-	// Check the account status
-	result, err := CheckAccount(account.SSOCookie, userSettings.CaptchaAPIKey)
+	var captchaAPIKey string
+	if userSettings.CaptchaAPIKey != "" {
+		captchaAPIKey = userSettings.CaptchaAPIKey
+	} else {
+		captchaAPIKey = os.Getenv("EZCAPTCHA_CLIENT_KEY")
+	}
+
+	result, err := CheckAccount(account.SSOCookie, captchaAPIKey)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to check account %s: possible expired SSO Cookie", account.Title)
 		return
