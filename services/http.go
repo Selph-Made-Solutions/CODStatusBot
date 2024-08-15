@@ -54,24 +54,13 @@ func VerifySSOCookie(ssoCookie string) bool {
 func CheckAccount(ssoCookie string, captchaAPIKey string) (models.Status, error) {
 	logger.Log.Info("Starting CheckAccount function")
 
-	var gRecaptchaResponse string
-	var err error
-
-	if captchaAPIKey != "" {
-		// Use user's API key
-		gRecaptchaResponse, err = SolveReCaptchaV2WithKey(captchaAPIKey)
-		if err != nil {
-			logger.Log.WithError(err).Error("Failed to solve reCAPTCHA with user's API key")
-			return models.StatusUnknown, fmt.Errorf("invalid API key or reCAPTCHA solving failed: %v", err)
-		}
-	} else {
-		gRecaptchaResponse, err = SolveReCaptchaV2()
-		if err != nil {
-			logger.Log.WithError(err).Error("Failed to solve reCAPTCHA with default key")
-			return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %v", err)
-		}
+	gRecaptchaResponse, err := SolveReCaptchaV2WithKey(captchaAPIKey)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to solve reCAPTCHA")
+		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %v", err)
 	}
 
+	// Further processing of gRecaptchaResponse can be done here
 	logger.Log.Info("Successfully solved reCAPTCHA")
 
 	// Construct the ban appeal URL with the reCAPTCHA response
@@ -120,11 +109,7 @@ func CheckAccount(ssoCookie string, captchaAPIKey string) (models.Status, error)
 
 	if err := json.Unmarshal(body, &errorResponse); err == nil {
 		logger.Log.WithField("errorResponse", errorResponse).Info("Parsed error response")
-		switch {
-		case errorResponse.Status == 404 && errorResponse.Path == "/api/bans/appeal":
-			logger.Log.Error("Old endpoint no longer available")
-			return models.StatusUnknown, errors.New("old endpoint no longer available")
-		case errorResponse.Status == 400 && errorResponse.Path == "/api/bans/v2/appeal":
+		if errorResponse.Status == 400 && errorResponse.Path == "/api/bans/v2/appeal" {
 			logger.Log.Error("Invalid request to new endpoint, possibly missing or invalid reCAPTCHA")
 			return models.StatusUnknown, errors.New("invalid request to new endpoint, possibly missing or invalid reCAPTCHA")
 		}
