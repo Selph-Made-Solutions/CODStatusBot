@@ -42,9 +42,18 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	if !checkRateLimit(userID) {
-		respondToInteraction(s, i, fmt.Sprintf("You're using this command too frequently. Please wait %v before trying again.", rateLimit))
+	userSettings, err := services.GetUserSettings(userID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error fetching user settings")
+		respondToInteraction(s, i, "Error fetching user settings. Please try again later.")
 		return
+	}
+
+	if userSettings.CaptchaAPIKey == "" {
+		if !checkRateLimit(userID) {
+			respondToInteraction(s, i, fmt.Sprintf("You're using this command too frequently. Please wait %v before trying again, or set up your own API key for unlimited use.", rateLimit))
+			return
+		}
 	}
 
 	var accountTitle string
@@ -171,7 +180,6 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 			continue
 		}
 
-		//status, err := services.CheckAccount(account.SSOCookie, account.CaptchaAPIKey)
 		userSettings, err := services.GetUserSettings(account.UserID)
 		if err != nil {
 			logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", account.UserID)
@@ -191,10 +199,10 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 				}
 				embeds = append(embeds, embed)
 
-				// Reset the account's captcha API key to empty (bot will use default)
-				account.CaptchaAPIKey = ""
-				if err := database.DB.Save(&account).Error; err != nil {
-					logger.Log.WithError(err).Errorf("Failed to reset captcha API key for account %s", account.Title)
+				// Reset the user's captcha API key to empty (bot will use default)
+				userSettings.CaptchaAPIKey = ""
+				if err := database.DB.Save(&userSettings).Error; err != nil {
+					logger.Log.WithError(err).Errorf("Failed to reset captcha API key for user %s", account.UserID)
 				}
 			} else {
 				embed := &discordgo.MessageEmbed{
@@ -248,17 +256,6 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 func checkRateLimit(userID string) bool {
 	rateLimiterLock.Lock()
 	defer rateLimiterLock.Unlock()
-
-	userSettings, err := services.GetUserSettings(userID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error fetching user settings")
-		return false
-	}
-
-	// If user has custom API key, no rate limit
-	if userSettings.CaptchaAPIKey != "" {
-		return true
-	}
 
 	lastUse, exists := rateLimiter[userID]
 	if !exists || time.Since(lastUse) >= rateLimit {
