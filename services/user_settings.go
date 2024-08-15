@@ -64,6 +64,16 @@ func SetUserCaptchaKey(userID string, captchaKey string) error {
 	}
 
 	settings.CaptchaAPIKey = captchaKey
+	if captchaKey != "" {
+		// Enable custom settings when user sets their own API key
+		settings.CheckInterval = 15        // Allow more frequent checks, e.g., every 15 minutes
+		settings.NotificationInterval = 12 // Allow more frequent notifications, e.g., every 12 hours
+	} else {
+		// Reset to default settings when API key is removed
+		settings.CheckInterval = defaultSettings.CheckInterval
+		settings.NotificationInterval = defaultSettings.NotificationInterval
+	}
+
 	if err := database.DB.Save(&settings).Error; err != nil {
 		logger.Log.WithError(err).Error("Error saving user settings")
 		return err
