@@ -9,6 +9,7 @@ import (
 	"CODStatusBot/command/removeaccount"
 	"CODStatusBot/command/setcaptchaservice"
 	"CODStatusBot/command/setcheckinterval"
+	"CODStatusBot/command/togglecheck"
 	"CODStatusBot/command/updateaccount"
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
@@ -110,6 +111,9 @@ func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate
 	case strings.HasPrefix(customID, "check_now_"):
 		checknow.HandleAccountSelection(s, i)
 		logger.Log.Info("Handling check now selection")
+	case strings.HasPrefix(customID, "toggle_check_"):
+		togglecheck.HandleAccountSelection(s, i)
+		logger.Log.Info("Handling toggle check selection")
 	default:
 		logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 	}
