@@ -75,7 +75,6 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 
 	var account models.Account
-	// result := database.DB.Where("user_id = ?", userID).Find(&accounts)
 	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
@@ -99,10 +98,22 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 
 	embed := &discordgo.MessageEmbed{
-		Title:       fmt.Sprintf("%s - %s", account.Title, account.LastStatus),
+		Title:       fmt.Sprintf("%s - Account Age", account.Title),
 		Description: fmt.Sprintf("The account is %d years, %d months, and %d days old.", years, months, days),
 		Color:       0x00ff00,
 		Timestamp:   time.Now().Format(time.RFC3339),
+		Fields: []*discordgo.MessageEmbedField{
+			{
+				Name:   "Last Status",
+				Value:  string(account.LastStatus),
+				Inline: true,
+			},
+			{
+				Name:   "Creation Date",
+				Value:  time.Now().AddDate(-years, -months, -days).Format("January 2, 2006"),
+				Inline: true,
+			},
+		},
 	}
 
 	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
