@@ -183,6 +183,7 @@ func CheckAccountAge(ssoCookie string) (int, int, int, error) {
 		return 0, 0, 0, errors.New("failed to send HTTP request to check account age")
 	}
 	defer resp.Body.Close()
+
 	var data struct {
 		Created string `json:"created"`
 	}
@@ -191,14 +192,20 @@ func CheckAccountAge(ssoCookie string) (int, int, int, error) {
 		return 0, 0, 0, errors.New("failed to decode JSON response from check account age request")
 	}
 
+	logger.Log.Infof("Account created date: %s", data.Created)
+
 	created, err := time.Parse(time.RFC3339, data.Created)
 	if err != nil {
 		return 0, 0, 0, errors.New("failed to parse created date in check account age request")
 	}
 
-	duration := time.Since(created)
-	years := int(duration.Hours() / 24 / 365)
-	months := int(duration.Hours()/24/30) % 12
-	days := int(duration.Hours()/24) % 365 % 30
+	now := time.Now()
+	age := now.Sub(created)
+
+	years := int(age.Hours() / 24 / 365.25)
+	months := int(age.Hours()/24/30.44) % 12
+	days := int(age.Hours()/24) % 30
+
+	logger.Log.Infof("Account age calculated: %d years, %d months, %d days", years, months, days)
 	return years, months, days, nil
 }
