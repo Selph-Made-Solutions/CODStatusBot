@@ -180,38 +180,16 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 			continue
 		}
 
-		userSettings, err := services.GetUserSettings(account.UserID)
-		if err != nil {
-			logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", account.UserID)
-			continue
-		}
-
-		status, err := services.CheckAccount(account.SSOCookie, userSettings.CaptchaAPIKey)
+		status, err := services.CheckAccount(account.SSOCookie, account.UserID)
 		if err != nil {
 			logger.Log.WithError(err).Errorf("Error checking account status for %s", account.Title)
 
-			// Check if the error is related to the captcha API key
-			if strings.Contains(err.Error(), "captcha") {
-				embed := &discordgo.MessageEmbed{
-					Title:       fmt.Sprintf("%s - Captcha Error", account.Title),
-					Description: "There was an error with the captcha service. The bot will use its default API key for future checks.",
-					Color:       0xFF9900, // Orange color for captcha error
-				}
-				embeds = append(embeds, embed)
-
-				// Reset the user's captcha API key to empty (bot will use default)
-				userSettings.CaptchaAPIKey = ""
-				if err := database.DB.Save(&userSettings).Error; err != nil {
-					logger.Log.WithError(err).Errorf("Failed to reset captcha API key for user %s", account.UserID)
-				}
-			} else {
-				embed := &discordgo.MessageEmbed{
-					Title:       fmt.Sprintf("%s - Error", account.Title),
-					Description: "An error occurred while checking this account's status.",
-					Color:       0xFF0000, // Red color for error
-				}
-				embeds = append(embeds, embed)
+			embed := &discordgo.MessageEmbed{
+				Title:       fmt.Sprintf("%s - Error", account.Title),
+				Description: "An error occurred while checking this account's status.",
+				Color:       0xFF0000, // Red color for error
 			}
+			embeds = append(embeds, embed)
 			continue
 		}
 
@@ -219,6 +197,8 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 		account.LastCheck = time.Now().Unix()
 		if err := database.DB.Save(&account).Error; err != nil {
 			logger.Log.WithError(err).Errorf("Failed to update account %s after check", account.Title)
+		} else {
+			logger.Log.Infof("Updated LastCheck for account %s to %v", account.Title, account.LastCheck)
 		}
 
 		embed := &discordgo.MessageEmbed{
