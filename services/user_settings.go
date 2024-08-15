@@ -61,15 +61,21 @@ func GetUserSettings(userID string) (models.UserSettings, error) {
 		return settings, result.Error
 	}
 
-	// If the user doesn't have a custom API key, use default settings
-	if settings.CaptchaAPIKey == "" {
+	// If the user doesn't have custom settings, use default settings
+	if settings.CheckInterval == 0 {
 		settings.CheckInterval = defaultSettings.CheckInterval
+	}
+	if settings.NotificationInterval == 0 {
 		settings.NotificationInterval = defaultSettings.NotificationInterval
+	}
+	if settings.CooldownDuration == 0 {
 		settings.CooldownDuration = defaultSettings.CooldownDuration
+	}
+	if settings.StatusChangeCooldown == 0 {
 		settings.StatusChangeCooldown = defaultSettings.StatusChangeCooldown
-		if settings.NotificationType == "" {
-			settings.NotificationType = defaultSettings.NotificationType
-		}
+	}
+	if settings.NotificationType == "" {
+		settings.NotificationType = defaultSettings.NotificationType
 	}
 
 	logger.Log.Infof("Got user settings for user: %s", userID)
@@ -125,18 +131,23 @@ func SetUserCaptchaKey(userID string, captchaKey string) error {
 
 func GetUserCaptchaKey(userID string) (string, error) {
 	var settings models.UserSettings
-	result := database.DB.Where(models.UserSettings{UserID: userID}).First(&settings)
+	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error getting user settings")
 		return "", result.Error
 	}
 
 	// If the user doesn't have a custom API key, return the default key
-	if settings.CaptchaAPIKey == "" {
-		return os.Getenv("EZCAPTCHA_CLIENT_KEY"), nil
+	if settings.CaptchaAPIKey != "" {
+		return settings.CaptchaAPIKey, nil
 	}
 
-	return settings.CaptchaAPIKey, nil
+	// If the user doesn't have a custom API key, return the default key
+	defaultKey := os.Getenv("EZCAPTCHA_CLIENT_KEY")
+	if defaultKey == "" {
+		return "", fmt.Errorf("default EZCAPTCHA_CLIENT_KEY not set in environment")
+	}
+	return defaultKey, nil
 }
 
 func GetDefaultSettings() (models.UserSettings, error) {
