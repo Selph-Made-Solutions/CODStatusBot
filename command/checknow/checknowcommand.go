@@ -42,18 +42,9 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	userSettings, err := services.GetUserSettings(userID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error fetching user settings")
-		respondToInteraction(s, i, "Error fetching user settings. Please try again later.")
+	if !checkRateLimit(userID) {
+		respondToInteraction(s, i, fmt.Sprintf("You're using this command too frequently. Please wait %v before trying again.", rateLimit))
 		return
-	}
-
-	if userSettings.CaptchaAPIKey == "" {
-		if !checkRateLimit(userID) {
-			respondToInteraction(s, i, fmt.Sprintf("You're using this command too frequently. Please wait %v before trying again or set your own API key.", rateLimit))
-			return
-		}
 	}
 
 	var accountTitle string
@@ -75,7 +66,7 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	if len(accounts) == 0 {
-		respondToInteraction(s, i, "No accounts found to check.")
+		respondToInteraction(s, i, "You don't have any monitored accounts.")
 		return
 	}
 
@@ -180,7 +171,14 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 			continue
 		}
 
-		status, err := services.CheckAccount(account.SSOCookie, account.CaptchaAPIKey)
+		//status, err := services.CheckAccount(account.SSOCookie, account.CaptchaAPIKey)
+		userSettings, err := services.GetUserSettings(account.UserID)
+		if err != nil {
+			logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", account.UserID)
+			continue
+		}
+
+		status, err := services.CheckAccount(account.SSOCookie, userSettings.CaptchaAPIKey)
 		if err != nil {
 			logger.Log.WithError(err).Errorf("Error checking account status for %s", account.Title)
 
