@@ -135,6 +135,12 @@ func CheckAccounts(s *discordgo.Session) {
 
 		// Iterate through each account and perform checks
 		for _, account := range accounts {
+			// Skip disabled accounts
+			if account.IsCheckDisabled {
+				logger.Log.Infof("Skipping check for disabled account: %s", account.Title)
+				continue
+			}
+
 			userSettings, err := GetUserSettings(account.UserID)
 			if err != nil {
 				logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", account.UserID)
