@@ -49,6 +49,8 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
+	logger.Log.Infof("User %s initiated a check. API Key set: %v", userID, userSettings.CaptchaAPIKey != "")
+
 	if userSettings.CaptchaAPIKey == "" {
 		if !checkRateLimit(userID) {
 			respondToInteraction(s, i, fmt.Sprintf("You're using this command too frequently. Please wait %v before trying again, or set up your own API key for unlimited use.", rateLimit))
@@ -170,6 +172,8 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 	var embeds []*discordgo.MessageEmbed
 
 	for _, account := range accounts {
+		logger.Log.Infof("Checking account %s for user %s", account.Title, account.UserID)
+
 		if account.IsExpiredCookie {
 			embed := &discordgo.MessageEmbed{
 				Title:       fmt.Sprintf("%s - Expired Cookie", account.Title),
@@ -182,11 +186,18 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 
 		status, err := services.CheckAccount(account.SSOCookie, account.UserID)
 		if err != nil {
-			logger.Log.WithError(err).Errorf("Error checking account status for %s", account.Title)
+			logger.Log.WithError(err).Errorf("Error checking account status for %s: %v", account.Title, err)
+
+			errorDescription := "An error occurred while checking this account's status. "
+			if strings.Contains(err.Error(), "captcha") {
+				errorDescription += "There may be an issue with the captcha service. Please try again in a few minutes or contact support if the problem persists."
+			} else {
+				errorDescription += "Please try again later. If the problem continues, consider updating your account's SSO cookie."
+			}
 
 			embed := &discordgo.MessageEmbed{
 				Title:       fmt.Sprintf("%s - Error", account.Title),
-				Description: "An error occurred while checking this account's status.",
+				Description: errorDescription,
 				Color:       0xFF0000, // Red color for error
 			}
 			embeds = append(embeds, embed)
