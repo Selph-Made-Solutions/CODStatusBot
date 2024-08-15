@@ -131,6 +131,11 @@ func GetUserCaptchaKey(userID string) (string, error) {
 		return "", result.Error
 	}
 
+	// If the user doesn't have a custom API key, return the default key
+	if settings.CaptchaAPIKey == "" {
+		return os.Getenv("EZCAPTCHA_CLIENT_KEY"), nil
+	}
+
 	return settings.CaptchaAPIKey, nil
 }
 
