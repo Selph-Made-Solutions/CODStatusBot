@@ -226,21 +226,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 		return
 	}
 
-	// Get user's captcha key
-	userSettings, err := GetUserSettings(account.UserID)
-	if err != nil {
-		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", account.UserID)
-		return
-	}
-
-	var captchaAPIKey string
-	if userSettings.CaptchaAPIKey != "" {
-		captchaAPIKey = userSettings.CaptchaAPIKey
-	} else {
-		captchaAPIKey = os.Getenv("EZCAPTCHA_CLIENT_KEY")
-	}
-
-	result, err := CheckAccount(account.SSOCookie, captchaAPIKey)
+	result, err := CheckAccount(account.SSOCookie, account.UserID)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to check account %s: possible expired SSO Cookie", account.Title)
 		return
@@ -249,6 +235,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	// Handle invalid cookie status
 	if result == models.StatusInvalidCookie {
 		lastNotification := time.Unix(account.LastCookieNotification, 0)
+		userSettings, _ := GetUserSettings(account.UserID)
 		if time.Since(lastNotification).Hours() >= userSettings.CooldownDuration || account.LastCookieNotification == 0 {
 			logger.Log.Infof("Account %s has an invalid SSO cookie", account.Title)
 			embed := &discordgo.MessageEmbed{
@@ -292,6 +279,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	// Handle status changes and send notifications
 	if result != lastStatus {
 		lastStatusChange := time.Unix(account.LastStatusChange, 0)
+		userSettings, _ := GetUserSettings(account.UserID)
 		if time.Since(lastStatusChange).Hours() < userSettings.StatusChangeCooldown {
 			logger.Log.Infof("Skipping status change notification for account %s (cooldown)", account.Title)
 			return
