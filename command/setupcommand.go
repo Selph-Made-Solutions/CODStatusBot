@@ -13,6 +13,7 @@ import (
 	"CODStatusBot/command/removeaccount"
 	"CODStatusBot/command/setcaptchaservice"
 	"CODStatusBot/command/setcheckinterval"
+	"CODStatusBot/command/togglecheck"
 	"CODStatusBot/command/updateaccount"
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
@@ -107,6 +108,11 @@ func RegisterCommands(s *discordgo.Session) {
 				},
 			},
 		},
+		{
+			Name:         "togglecheck",
+			Description:  "Toggle checks on/off for a monitored account",
+			DMPermission: BoolPtr(true),
+		},
 	}
 
 	_, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, "", commands)
@@ -133,6 +139,7 @@ func RegisterCommands(s *discordgo.Session) {
 	Handlers["updateaccount"] = updateaccount.CommandUpdateAccount
 	Handlers["update_account_modal"] = updateaccount.HandleModalSubmit
 	Handlers["set_check_interval_modal"] = setcheckinterval.HandleModalSubmit
+	Handlers["togglecheck"] = togglecheck.CommandToggleCheck
 
 	logger.Log.Info("Global commands registered and handlers set up")
 }
