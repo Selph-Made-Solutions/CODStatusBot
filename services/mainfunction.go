@@ -129,14 +129,16 @@ func CheckAccounts(s *discordgo.Session) {
 		var accounts []models.Account
 		if err := database.DB.Find(&accounts).Error; err != nil {
 			logger.Log.WithError(err).Error("Failed to fetch accounts from the database")
+			time.Sleep(time.Duration(sleepDuration) * time.Minute)
 			continue
 		}
 
 		// Iterate through each account and perform checks
 		for _, account := range accounts {
-			// Send global announcement if the user hasn't seen it yet
-			if err := SendGlobalAnnouncement(s, account.UserID); err != nil {
-				logger.Log.WithError(err).Errorf("Failed to send global announcement to user %s", account.UserID)
+			// Skip disabled accounts
+			if account.IsCheckDisabled {
+				logger.Log.Infof("Skipping check for disabled account: %s", account.Title)
+				continue
 			}
 
 			userSettings, err := GetUserSettings(account.UserID)
@@ -230,15 +232,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 		return
 	}
 
-	// Get user's captcha key
-	userSettings, err := GetUserSettings(account.UserID)
-	if err != nil {
-		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", account.UserID)
-		return
-	}
-
-	// Check the account status
-	result, err := CheckAccount(account.SSOCookie, userSettings.CaptchaAPIKey)
+	result, err := CheckAccount(account.SSOCookie, account.UserID)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to check account %s: possible expired SSO Cookie", account.Title)
 		return
@@ -247,6 +241,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	// Handle invalid cookie status
 	if result == models.StatusInvalidCookie {
 		lastNotification := time.Unix(account.LastCookieNotification, 0)
+		userSettings, _ := GetUserSettings(account.UserID)
 		if time.Since(lastNotification).Hours() >= userSettings.CooldownDuration || account.LastCookieNotification == 0 {
 			logger.Log.Infof("Account %s has an invalid SSO cookie", account.Title)
 			embed := &discordgo.MessageEmbed{
@@ -290,6 +285,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	// Handle status changes and send notifications
 	if result != lastStatus {
 		lastStatusChange := time.Unix(account.LastStatusChange, 0)
+		userSettings, _ := GetUserSettings(account.UserID)
 		if time.Since(lastStatusChange).Hours() < userSettings.StatusChangeCooldown {
 			logger.Log.Infof("Skipping status change notification for account %s (cooldown)", account.Title)
 			return

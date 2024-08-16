@@ -42,9 +42,20 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	if !checkRateLimit(userID) {
-		respondToInteraction(s, i, fmt.Sprintf("You're using this command too frequently. Please wait %v before trying again.", rateLimit))
+	userSettings, err := services.GetUserSettings(userID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error fetching user settings")
+		respondToInteraction(s, i, "Error fetching user settings. Please try again later.")
 		return
+	}
+
+	logger.Log.Infof("User %s initiated a check. API Key set: %v", userID, userSettings.CaptchaAPIKey != "")
+
+	if userSettings.CaptchaAPIKey == "" {
+		if !checkRateLimit(userID) {
+			respondToInteraction(s, i, fmt.Sprintf("You're using this command too frequently. Please wait %v before trying again, or set up your own API key for unlimited use.", rateLimit))
+			return
+		}
 	}
 
 	var accountTitle string
@@ -66,7 +77,7 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	if len(accounts) == 0 {
-		respondToInteraction(s, i, "No accounts found to check.")
+		respondToInteraction(s, i, "You don't have any monitored accounts.")
 		return
 	}
 
@@ -161,6 +172,8 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 	var embeds []*discordgo.MessageEmbed
 
 	for _, account := range accounts {
+		logger.Log.Infof("Checking account %s for user %s", account.Title, account.UserID)
+
 		if account.IsExpiredCookie {
 			embed := &discordgo.MessageEmbed{
 				Title:       fmt.Sprintf("%s - Expired Cookie", account.Title),
@@ -171,32 +184,23 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 			continue
 		}
 
-		status, err := services.CheckAccount(account.SSOCookie, account.CaptchaAPIKey)
+		status, err := services.CheckAccount(account.SSOCookie, account.UserID)
 		if err != nil {
-			logger.Log.WithError(err).Errorf("Error checking account status for %s", account.Title)
+			logger.Log.WithError(err).Errorf("Error checking account status for %s: %v", account.Title, err)
 
-			// Check if the error is related to the captcha API key
+			errorDescription := "An error occurred while checking this account's status. "
 			if strings.Contains(err.Error(), "captcha") {
-				embed := &discordgo.MessageEmbed{
-					Title:       fmt.Sprintf("%s - Captcha Error", account.Title),
-					Description: "There was an error with the captcha service. The bot will use its default API key for future checks.",
-					Color:       0xFF9900, // Orange color for captcha error
-				}
-				embeds = append(embeds, embed)
-
-				// Reset the account's captcha API key to empty (bot will use default)
-				account.CaptchaAPIKey = ""
-				if err := database.DB.Save(&account).Error; err != nil {
-					logger.Log.WithError(err).Errorf("Failed to reset captcha API key for account %s", account.Title)
-				}
+				errorDescription += "There may be an issue with the captcha service. Please try again in a few minutes or contact support if the problem persists."
 			} else {
-				embed := &discordgo.MessageEmbed{
-					Title:       fmt.Sprintf("%s - Error", account.Title),
-					Description: "An error occurred while checking this account's status.",
-					Color:       0xFF0000, // Red color for error
-				}
-				embeds = append(embeds, embed)
+				errorDescription += "Please try again later. If the problem continues, consider updating your account's SSO cookie."
 			}
+
+			embed := &discordgo.MessageEmbed{
+				Title:       fmt.Sprintf("%s - Error", account.Title),
+				Description: errorDescription,
+				Color:       0xFF0000, // Red color for error
+			}
+			embeds = append(embeds, embed)
 			continue
 		}
 
@@ -204,6 +208,8 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 		account.LastCheck = time.Now().Unix()
 		if err := database.DB.Save(&account).Error; err != nil {
 			logger.Log.WithError(err).Errorf("Failed to update account %s after check", account.Title)
+		} else {
+			logger.Log.Infof("Updated LastCheck for account %s to %v", account.Title, account.LastCheck)
 		}
 
 		embed := &discordgo.MessageEmbed{

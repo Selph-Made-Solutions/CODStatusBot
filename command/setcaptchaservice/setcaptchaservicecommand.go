@@ -82,9 +82,9 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	message := "Your EZ-Captcha API key has been updated for all your accounts."
 	if apiKey == "" {
-		message += " The bot's default API key will be used."
+		message += " The bot's default API key will be used. Your check interval and notification settings have been reset to default values."
 	} else {
-		message += " Your custom API key has been set."
+		message += " Your custom API key has been set. You now have access to more frequent checks and notifications."
 	}
 
 	respondToInteraction(s, i, message)

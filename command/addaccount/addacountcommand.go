@@ -107,14 +107,6 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		notificationType = existingAccount.NotificationType
 	}
 
-	// Get user's captcha key
-	userSettings, err := services.GetUserSettings(userID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error fetching user settings")
-		respondToInteraction(s, i, "Error creating account. Please try again.")
-		return
-	}
-
 	// Create new account
 	account := models.Account{
 		UserID:              userID,
@@ -124,7 +116,6 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		GuildID:             guildID,
 		ChannelID:           i.ChannelID,
 		NotificationType:    notificationType,
-		CaptchaAPIKey:       userSettings.CaptchaAPIKey,
 	}
 
 	// Save to database

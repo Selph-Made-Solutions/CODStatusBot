@@ -22,13 +22,13 @@ type Account struct {
 	IsPermabanned          bool   `gorm:"default:false"`   // A flag indicating if the account is permanently banned
 	LastCookieCheck        int64  `gorm:"default:0"`       // The timestamp of the last cookie check for permanently banned accounts
 	LastStatusChange       int64  `gorm:"default:0"`       // The timestamp of the last status change
-	CaptchaAPIKey          string // User's own API key, if provided
+	IsCheckDisabled        bool   `gorm:"default:false"`   // A flag indicating if checks are disabled for this account
 }
 
 type UserSettings struct {
 	gorm.Model
 	UserID               string  `gorm:"uniqueIndex"`
-	CaptchaAPIKey        string  // user's ezcaptcha API key
+	CaptchaAPIKey        string  // User's own API key, if provided
 	CheckInterval        int     // in minutes
 	NotificationInterval float64 // in hours
 	CooldownDuration     float64 // in hours
