@@ -15,18 +15,21 @@ COD Status Bot is a Discord bot designed to help you monitor your Activision acc
 - Ban history logs
 - Customizable notification preferences
 - Anonymous feedback submission
-- EZ-Captcha integration for improved reliability
+- EZ-Captcha integration for continued compatibility with activision
 - SSO Cookie expiration tracking and notifications
+- Toggle automatic checks on/off for individual accounts
 
 ## Getting Started
 
 1. Invite the bot to your Discord server using the provided [Invite Link](https://discord.com/oauth2/authorize?client_id=1211857854324015124).
 2. Once the bot joins your server, it will automatically register the necessary commands.
-3. (Optional) Get your own EZ-Captcha API key for customized check intervals and improved service.
+3. Set up your EZ-Captcha API key for full functionality and customized check intervals.
+4. Use the `/addaccount` command to start monitoring your first account.
 
 ## EZ-Captcha Integration
 
-The bot now uses EZ-Captcha for solving CAPTCHAs, which improves the reliability of account status checks. Users have two options:
+The bot uses EZ-Captcha for solving CAPTCHAs, which maintains the compatability to check your accounts with 
+activision. Users have two options:
 
 1. Use the bot's default API key (limited use, shared among all users)
 2. Get your own EZ-Captcha API key for unlimited use and customizable check intervals
@@ -44,107 +47,60 @@ By using your own API key, you can customize the check interval for your account
 
 ### /addaccount
 
-Add a new account to be monitored by the bot.
-
-Usage: `/addaccount`
-
-This command will open a modal where you can enter:
+Add a new account to be monitored by the bot. You'll need to provide:
 - Account Title: A name to identify the account
 - SSO Cookie: The Single Sign-On cookie associated with your Activision account
-- EZ-Captcha API Key (optional): Your personal API key for unlimited use
 
 ### /removeaccount
 
-Remove an account from being monitored by the bot.
-
-Usage: `/removeaccount`
-
-This command will display a list of your monitored accounts and prompt you to confirm the removal of the selected account. All related data will be permanently deleted from the bot.
+Remove an account from being monitored by the bot. This will delete all associated data.
 
 ### /updateaccount
 
-Update the SSO cookie for an existing account.
-
-Usage: `/updateaccount`
-
-This command will display a list of your monitored accounts and allow you to update the SSO cookie for the selected account.
+Update the SSO cookie for an existing account. Use this when your cookie expires or becomes invalid.
 
 ### /listaccounts
 
-List all your monitored accounts.
-
-Usage: `/listaccounts`
+List all your monitored accounts, including their current status and notification preferences.
 
 ### /accountlogs
 
-View the status change logs for a specific account.
-
-Usage: `/accountlogs`
-
-This command will display a list of your monitored accounts and show the logs for the selected account.
+View the status change logs for a specific account or all accounts. This shows the last 10 status changes.
 
 ### /accountage
 
-Check the age of a specific account.
-
-Usage: `/accountage`
-
-This command will display a list of your monitored accounts and show the age of the selected account.
+Check the age of a specific account. This displays the account's creation date and current age.
 
 ### /checknow
 
-Immediately check the status of all your accounts or a specific account.
-
-Usage: `/checknow [account_title]`
-
-- `account_title` (optional): The title of the specific account to check. If omitted, all accounts will be checked.
+Immediately check the status of all your accounts or a specific account. This command is rate-limited for users without a personal API key.
 
 ### /setcheckinterval
 
-Set your preferences for check interval, notification interval, and notification type.
-
-Usage: `/setcheckinterval`
-
-This command will open a modal where you can enter:
-- Check Interval: How often the bot should check your accounts (in minutes)
-- Notification Interval: How often you want to receive status updates (in hours)
-- Notification Type: Choose between "channel" or "dm" for notifications
+Set your preferences for:
+- Check Interval: How often the bot checks your accounts (in minutes)
+- Notification Interval: How often you receive status updates (in hours)
+- Notification Type: Choose between channel or DM notifications
 
 ### /setcaptchaservice
 
 Set your personal EZ-Captcha API key for unlimited use and customizable check intervals.
 
-Usage: `/setcaptchaservice`
-
-This command will open a modal where you can enter your EZ-Captcha API key.
-
 ### /helpapi
 
-Display a guide on how to use the bot and set up your API key.
-
-Usage: `/helpapi`
+Display a detailed guide on how to use the bot and set up your API key.
 
 ### /helpcookie
 
-Display a guide on how to obtain your SSO cookie.
-
-Usage: `/helpcookie`
+Display a step-by-step guide on how to obtain your SSO cookie from the Activision website.
 
 ### /feedback
 
-Send anonymous feedback or suggestions to the bot developer.
+Send anonymous feedback or suggestions to the bot developer. This is sent directly to the developer's DMs.
 
-Usage: `/feedback <message>`
+### /togglecheck
 
-- `message`: Your feedback or suggestion.
-
-### /globalannouncement
-
-Send a global announcement to all users of the bot (Admin only).
-
-Usage: `/globalannouncement`
-
-This command allows administrators to send important announcements to all users of the bot. The announcement will be sent to each user based on their notification preferences (DM or channel).
+Toggle automatic checks on/off for a monitored account. Useful for temporarily disabling checks on specific accounts.
 
 ## Notifications
 
@@ -159,23 +115,86 @@ Notifications will be sent to the channel where the account was added or to your
 
 ## SSO Cookie
 
-To get the SSO cookie:
+The SSO (Single Sign-On) cookie is required to authenticate with Activision's services. To get the SSO cookie:
 
 1. Log in to your Activision account on a web browser.
-2. Open the browser's developer tools.
-3. Navigate to the Application tab, then Cookies.
+2. Open the browser's developer tools (usually F12 or right-click and select "Inspect").
+3. Navigate to the Application or Storage tab.
 4. Find the cookie named `ACT_SSO_COOKIE` associated with the Activision domain.
+5. Copy the entire value of this cookie.
 
-**Important:** Keep your SSO cookie confidential and do not share it with anyone. The bot will notify you when your cookie is about to expire, allowing you to update it in time.
+For a detailed guide, use the `/helpcookie` command.
 
-## Support
+## Rate Limiting
 
-If you encounter any issues or have questions, please use the `/feedback` command to contact the bot developer or reach out through the platform where you discovered this bot.
+To prevent abuse and ensure fair usage:
 
-## Note on Data Privacy
+- Users without a personal API key are subject to rate limits on the `/checknow` command.
+- Global cooldowns are implemented for notifications to prevent spam.
 
-The bot stores minimal data necessary for its operation, including account titles, SSO cookies, and status logs. This data is used solely for the purpose of monitoring account status and providing notifications. The bot does not share this data with any third parties. Users can use the `/removeaccount` command to delete their data from the bot at any time.
+## Database and Data Management
+
+The bot uses a MySQL database to store account information and user settings. It includes:
+
+- Secure storage of SSO cookies and user preferences
+- Regular checks for expired cookies and account status changes
+
+
+## Support and Feedback
+
+If you encounter any issues or have questions:
+
+1. Use the `/feedback` command to contact the bot developer anonymously.
+
+## Privacy and Data Security
+
+- The bot stores minimal data necessary for operation: account titles, SSO cookies, and status logs.
+- Data is used solely for monitoring account status and providing notifications.
+- No data is shared with third parties.
+- Users can delete their data at any time using the `/removeaccount` command.
+
+## Recent Changes and Updates
+
+- Added global announcement feature for important updates
+- Implemented user-specific EZ-Captcha API key support
+- Added customizable check intervals for users with personal API keys
+- Improved error handling and logging
+- Enhanced notification system with cooldowns and user preferences
+- Implemented account check toggling feature
+- Added detailed account logs viewing
 
 ## Disclaimer
 
 This bot is not affiliated with or endorsed by Activision. Use it at your own risk. The developers are not responsible for any consequences resulting from the use of this bot.
+
+## Contributing
+
+We welcome contributions to the COD Status Bot! If you'd like to contribute:
+
+1. Fork the repository on GitHub.
+2. Create a new branch for your feature or bug fix.
+3. Commit your changes with clear, descriptive commit messages.
+4. Push your branch and submit a pull request.
+
+Please ensure your code adheres to the existing style and passes all tests. For major changes, please open an issue first to discuss what you would like to change.
+
+## License
+
+This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). This means:
+
+- You can use, modify, and distribute this software freely.
+- If you modify the software and use it to provide a service over a network, you must make your modified source code available to users of that service.
+- Any modifications or larger works must also be licensed under AGPL-3.0.
+
+For more details, see the [LICENSE](LICENSE) file in the repository or visit [GNU AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.en.html).
+
+## Open Source
+
+This project is open source and available on GitHub. We believe in the power of community-driven development and welcome contributions from developers around the world. By making this bot open source, we aim to:
+
+- Encourage collaboration and improvement of the bot's features.
+- Provide transparency in how the bot operates.
+- Allow users to audit the code for security and privacy concerns.
+- Enable the community to adapt the bot for their specific needs.
+
+You can find the full source code, contribute to the project, or report issues at our [GitHub repository](https://github.com/bradselph/CODStatusBot).
