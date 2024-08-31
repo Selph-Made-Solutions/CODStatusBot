@@ -1,6 +1,6 @@
 module CODStatusBot
 
-go 1.22
+go 1.23
 
 require (
 	github.com/bwmarrin/discordgo v0.28.1
