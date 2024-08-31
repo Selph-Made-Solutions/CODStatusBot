@@ -116,6 +116,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		GuildID:             guildID,
 		ChannelID:           i.ChannelID,
 		NotificationType:    notificationType,
+		InstallationType:    determineInstallationType(guildID),
 	}
 
 	// Save to database
@@ -130,6 +131,13 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	formattedExpiration := services.FormatExpirationTime(expirationTimestamp)
 	respondToInteraction(s, i, fmt.Sprintf("Account added successfully! SSO cookie will expire in %s", formattedExpiration))
+}
+
+func determineInstallationType(guildID string) models.InstallationType {
+	if guildID == "" {
+		return models.InstallTypeUser
+	}
+	return models.InstallTypeGuild
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
