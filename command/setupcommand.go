@@ -148,15 +148,20 @@ func RegisterCommands(s *discordgo.Session) {
 func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Check if the user has seen the announcement
 	var userID string
+	var installType models.InstallationType
+
 	if i.Member != nil {
 		userID = i.Member.User.ID
+		installType = models.InstallTypeGuild
 	} else if i.User != nil {
 		userID = i.User.ID
+		installType = models.InstallTypeUser
 	} else {
 		logger.Log.Error("Interaction doesn't have Member or User")
 		return
 	}
 
+	// Check if the user has seen the announcement
 	var userSettings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings)
 	if result.Error != nil {
@@ -176,7 +181,7 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	// Continue with regular command handling
 	if h, ok := Handlers[i.ApplicationCommandData().Name]; ok {
-		h(s, i)
+		h(s, i, installType)
 	}
 }
 
