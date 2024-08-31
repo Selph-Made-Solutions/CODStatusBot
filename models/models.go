@@ -16,14 +16,40 @@ type Account struct {
 	LastCookieNotification int64  // The timestamp of the last notification sent out on the account for an expired ssocookie.
 	SSOCookie              string // The SSO cookie associated with the account.
 	SSOCookieExpiration    int64
-	Created                string // The timestamp of when the account was created on Activision.
-	IsExpiredCookie        bool   `gorm:"default:false"`   // A flag indicating if the SSO cookie has expired.
-	NotificationType       string `gorm:"default:channel"` // User preference for location of notifications either channel or dm
-	IsPermabanned          bool   `gorm:"default:false"`   // A flag indicating if the account is permanently banned
-	LastCookieCheck        int64  `gorm:"default:0"`       // The timestamp of the last cookie check for permanently banned accounts
-	LastStatusChange       int64  `gorm:"default:0"`       // The timestamp of the last status change
-	IsCheckDisabled        bool   `gorm:"default:false"`   // A flag indicating if checks are disabled for this account
+	Created                string           // The timestamp of when the account was created on Activision.
+	IsExpiredCookie        bool             `gorm:"default:false"`   // A flag indicating if the SSO cookie has expired.
+	NotificationType       string           `gorm:"default:channel"` // User preference for location of notifications either channel or dm
+	IsPermabanned          bool             `gorm:"default:false"`   // A flag indicating if the account is permanently banned
+	LastCookieCheck        int64            `gorm:"default:0"`       // The timestamp of the last cookie check for permanently banned accounts
+	LastStatusChange       int64            `gorm:"default:0"`       // The timestamp of the last status change
+	IsCheckDisabled        bool             `gorm:"default:false"`   // A flag indicating if checks are disabled for this account
+	InstallationType       InstallationType `gorm:"default:0"`
 }
+
+type Ban struct {
+	gorm.Model
+	Account   Account // The account that has been banned.
+	AccountID uint    // The ID of the banned account.
+	Status    Status  // The status of the ban.
+}
+
+type InstallationType int
+
+const (
+	InstallTypeUnknown InstallationType = iota
+	InstallTypeUser
+	InstallTypeGuild
+)
+
+type Status string
+
+const (
+	StatusGood          Status = "good"           // The account is in good standing.
+	StatusPermaban      Status = "permaban"       // The account has been permanently banned.
+	StatusShadowban     Status = "shadowban"      // The account has been shadowbanned.
+	StatusUnknown       Status = "unknown"        // The status of the account is unknown.
+	StatusInvalidCookie Status = "invalid_cookie" // The account has an invalid SSO cookie.
+)
 
 type UserSettings struct {
 	gorm.Model
@@ -36,20 +62,3 @@ type UserSettings struct {
 	NotificationType     string  `gorm:"default:channel"` // User preference for location of notifications either channel or dm
 	HasSeenAnnouncement  bool    `gorm:"default:false"`   // Flag to track if the user has seen the global announcement
 }
-
-type Ban struct {
-	gorm.Model
-	Account   Account // The account that has been banned.
-	AccountID uint    // The ID of the banned account.
-	Status    Status  // The status of the ban.
-}
-
-type Status string
-
-const (
-	StatusGood          Status = "good"           // The account is in good standing.
-	StatusPermaban      Status = "permaban"       // The account has been permanently banned.
-	StatusShadowban     Status = "shadowban"      // The account has been shadowbanned.
-	StatusUnknown       Status = "unknown"        // The status of the account is unknown.
-	StatusInvalidCookie Status = "invalid_cookie" // The account has an invalid SSO cookie.
-)
