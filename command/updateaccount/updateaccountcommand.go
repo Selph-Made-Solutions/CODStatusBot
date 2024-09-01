@@ -175,6 +175,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, ins
 	account.SSOCookieExpiration = expirationTimestamp
 	account.IsExpiredCookie = false        // Reset the expired cookie flag
 	account.InstallationType = installType // Update installation type
+	account.LastStatus = models.AccountStatus{Overall: models.StatusUnknown, Games: make(map[string]models.GameStatus)}
 
 	services.DBMutex.Lock()
 	if err := database.DB.Save(&account).Error; err != nil {
