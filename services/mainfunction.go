@@ -95,7 +95,7 @@ func sendDailyUpdate(account models.Account, discord *discordgo.Session) {
 			logger.Log.WithError(err).Errorf("Error checking SSO cookie expiration for account %s", account.Title)
 			description = fmt.Sprintf("An error occurred while checking the SSO cookie expiration for account %s. Please check the account status manually.", account.Title)
 		} else if timeUntilExpiration > 0 {
-			description = fmt.Sprintf("The last status of account %s was %s. SSO cookie will expire in %s.", account.Title, account.LastStatus, FormatExpirationTime(account.SSOCookieExpiration))
+			description = fmt.Sprintf("The last status of account %s was %s. SSO cookie will expire in %s.", account.Title, account.LastStatus.Overall, FormatExpirationTime(account.SSOCookieExpiration))
 		} else {
 			description = fmt.Sprintf("The SSO cookie for account %s has expired. Please update the cookie using the /updateaccount command or delete the account using the /removeaccount command.", account.Title)
 		}
@@ -104,7 +104,7 @@ func sendDailyUpdate(account models.Account, discord *discordgo.Session) {
 	embed := &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%.2f Hour Update - %s", notificationInterval, account.Title),
 		Description: description,
-		Color:       GetColorForStatus(account.LastStatus, account.IsExpiredCookie),
+		Color:       GetColorForStatus(account.LastStatus.Overall),
 		Timestamp:   time.Now().Format(time.RFC3339),
 	}
 
@@ -148,7 +148,6 @@ func CheckAccounts(s *discordgo.Session) {
 }
 
 func checkSingleAccount(account models.Account, s *discordgo.Session) {
-
 	if account.IsCheckDisabled {
 		logger.Log.Infof("Skipping check for disabled account: %s", account.Title)
 		return
@@ -249,40 +248,15 @@ func CheckSingleAccountStatus(account models.Account, discord *discordgo.Session
 	}
 
 	// Handle invalid cookie status
-	if result == models.StatusInvalidCookie {
-		lastNotification := time.Unix(account.LastCookieNotification, 0)
-		userSettings, _ := GetUserSettings(account.UserID, account.InstallationType)
-		if time.Since(lastNotification).Hours() >= userSettings.CooldownDuration || account.LastCookieNotification == 0 {
-			logger.Log.Infof("Account %s has an invalid SSO cookie", account.Title)
-			embed := &discordgo.MessageEmbed{
-				Title:       fmt.Sprintf("%s - Invalid SSO Cookie", account.Title),
-				Description: fmt.Sprintf("The SSO cookie for account %s has expired. Please update the cookie using the /updateaccount command or delete the account using the /removeaccount command.", account.Title),
-				Color:       0xff9900,
-				Timestamp:   time.Now().Format(time.RFC3339),
-			}
-
-			err := sendNotification(discord, account, embed, "")
-			if err != nil {
-				logger.Log.WithError(err).Errorf("Failed to send invalid cookie notification for account %s", account.Title)
-			}
-
-			// Update account information regarding the expired cookie
-			DBMutex.Lock()
-			account.LastCookieNotification = time.Now().Unix()
-			account.IsExpiredCookie = true
-			if err := database.DB.Save(&account).Error; err != nil {
-				logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
-			}
-			DBMutex.Unlock()
-		} else {
-			logger.Log.Infof("Skipping expired cookie notification for account %s (cooldown)", account.Title)
-		}
+	if result.Overall == models.StatusInvalidCookie {
+		handleInvalidCookie(account, discord)
 		return
 	}
 
 	// Update account information
 	DBMutex.Lock()
 	lastStatus := account.LastStatus
+	account.LastStatus = result
 	account.LastCheck = time.Now().Unix()
 	account.IsExpiredCookie = false
 	if err := database.DB.Save(&account).Error; err != nil {
@@ -293,83 +267,145 @@ func CheckSingleAccountStatus(account models.Account, discord *discordgo.Session
 	DBMutex.Unlock()
 
 	// Handle status changes and send notifications
-	if result != lastStatus {
-		lastStatusChange := time.Unix(account.LastStatusChange, 0)
-		userSettings, _ := GetUserSettings(account.UserID, account.InstallationType)
-		if time.Since(lastStatusChange).Hours() < userSettings.StatusChangeCooldown {
-			logger.Log.Infof("Skipping status change notification for account %s (cooldown)", account.Title)
-			return
-		}
-
-		DBMutex.Lock()
-		account.LastStatus = result
-		account.LastStatusChange = time.Now().Unix()
-		if result == models.StatusPermaban {
-			account.IsPermabanned = true
-		} else {
-			account.IsPermabanned = false
-		}
-		if err := database.DB.Save(&account).Error; err != nil {
-			logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
-			DBMutex.Unlock()
-			return
-		}
-		logger.Log.Infof("Account %s status changed to %s", account.Title, result)
-
-		// Create a new record for the account
-		ban := models.Ban{
-			Account:   account,
-			Status:    result,
-			AccountID: account.ID,
-		}
-		if err := database.DB.Create(&ban).Error; err != nil {
-			logger.Log.WithError(err).Errorf("Failed to create new ban record for account %s", account.Title)
-		}
-		// Create an embed message for the status change notification
-		DBMutex.Unlock()
-		logger.Log.Infof("Account %s status changed to %s", account.Title, result)
-
-		embed := &discordgo.MessageEmbed{
-			Title:       fmt.Sprintf("%s - %s", account.Title, EmbedTitleFromStatus(result)),
-			Description: fmt.Sprintf("The status of account %s has changed to %s", account.Title, result),
-			Color:       GetColorForStatus(result, account.IsExpiredCookie),
-			Timestamp:   time.Now().Format(time.RFC3339),
-		}
-		err = sendNotification(discord, account, embed, fmt.Sprintf("<@%s>", account.UserID))
-		if err != nil {
-			logger.Log.WithError(err).Errorf("Failed to send status update message for account %s", account.Title)
-		}
+	if result.Overall != lastStatus.Overall {
+		handleStatusChange(account, result, discord)
 	}
 }
 
-// GetColorForStatus function: returns the appropriate color for an embed message based on the account status
-func GetColorForStatus(status models.Status, isExpiredCookie bool) int {
-	if isExpiredCookie {
-		return 0xff9900 // Orange for expired cookie
+func handleInvalidCookie(account models.Account, discord *discordgo.Session) {
+	lastNotification := time.Unix(account.LastCookieNotification, 0)
+	userSettings, _ := GetUserSettings(account.UserID, account.InstallationType)
+	if time.Since(lastNotification).Hours() >= userSettings.CooldownDuration || account.LastCookieNotification == 0 {
+		logger.Log.Infof("Account %s has an invalid SSO cookie", account.Title)
+		embed := &discordgo.MessageEmbed{
+			Title:       fmt.Sprintf("%s - Invalid SSO Cookie", account.Title),
+			Description: fmt.Sprintf("The SSO cookie for account %s has expired. Please update the cookie using the /updateaccount command or delete the account using the /removeaccount command.", account.Title),
+			Color:       0xff9900,
+			Timestamp:   time.Now().Format(time.RFC3339),
+		}
+
+		err := sendNotification(discord, account, embed, "")
+		if err != nil {
+			logger.Log.WithError(err).Errorf("Failed to send invalid cookie notification for account %s", account.Title)
+		}
+
+		// Update account information regarding the expired cookie
+		DBMutex.Lock()
+		account.LastCookieNotification = time.Now().Unix()
+		account.IsExpiredCookie = true
+		if err := database.DB.Save(&account).Error; err != nil {
+			logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
+		}
+		DBMutex.Unlock()
+	} else {
+		logger.Log.Infof("Skipping expired cookie notification for account %s (cooldown)", account.Title)
 	}
+}
+
+func handleStatusChange(account models.Account, newStatus models.AccountStatus, discord *discordgo.Session) {
+	lastStatusChange := time.Unix(account.LastStatusChange, 0)
+	userSettings, _ := GetUserSettings(account.UserID, account.InstallationType)
+	if time.Since(lastStatusChange).Hours() < userSettings.StatusChangeCooldown {
+		logger.Log.Infof("Skipping status change notification for account %s (cooldown)", account.Title)
+		return
+	}
+
+	DBMutex.Lock()
+	account.LastStatus = newStatus
+	account.LastStatusChange = time.Now().Unix()
+	if newStatus.Overall == models.StatusPermaban {
+		account.IsPermabanned = true
+	} else {
+		account.IsPermabanned = false
+	}
+	if err := database.DB.Save(&account).Error; err != nil {
+		logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
+		DBMutex.Unlock()
+		return
+	}
+	logger.Log.Infof("Account %s status changed to %s", account.Title, newStatus.Overall)
+
+	// Create a new record for the account
+	ban := models.Ban{
+		Account:   account,
+		Status:    newStatus.Overall,
+		AccountID: account.ID,
+	}
+	if err := database.DB.Create(&ban).Error; err != nil {
+		logger.Log.WithError(err).Errorf("Failed to create new ban record for account %s", account.Title)
+	}
+	// Create an embed message for the status change notification
+	DBMutex.Unlock()
+	logger.Log.Infof("Account %s status changed to %s", account.Title, newStatus.Overall)
+
+	embed := createStatusChangeEmbed(account.Title, newStatus)
+	err := sendNotification(discord, account, embed, fmt.Sprintf("<@%s>", account.UserID))
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to send status update message for account %s", account.Title)
+	}
+}
+
+func createStatusChangeEmbed(accountTitle string, status models.AccountStatus) *discordgo.MessageEmbed {
+	embed := &discordgo.MessageEmbed{
+		Title:       fmt.Sprintf("%s - Status Change", accountTitle),
+		Description: fmt.Sprintf("The overall status of account %s has changed to %s", accountTitle, status.Overall),
+		Color:       GetColorForStatus(status.Overall),
+		Timestamp:   time.Now().Format(time.RFC3339),
+		Fields:      []*discordgo.MessageEmbedField{},
+	}
+
+	for game, gameStatus := range status.Games {
+		var statusDesc string
+		switch gameStatus.Status {
+		case models.StatusGood:
+			statusDesc = "Good Standing"
+		case models.StatusPermaban:
+			statusDesc = "Permanently Banned"
+		case models.StatusShadowban:
+			statusDesc = "Under Review"
+		case models.StatusTempban:
+			duration := FormatBanDuration(gameStatus.DurationSeconds)
+			statusDesc = fmt.Sprintf("Temporarily Banned (%s remaining)", duration)
+		default:
+			statusDesc = "Unknown Status"
+		}
+
+		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+			Name:   game,
+			Value:  statusDesc,
+			Inline: true,
+		})
+	}
+
+	return embed
+}
+
+// GetColorForStatus function: returns the appropriate color for an embed message based on the account status
+func GetColorForStatus(status models.Status) int {
 	switch status {
 	case models.StatusPermaban:
 		return 0xff0000 // Red for permanent ban
 	case models.StatusShadowban:
 		return 0xffff00 // Yellow for shadowban
-	default:
+	case models.StatusTempban:
+		return 0xffa500 // Orange for temporary ban
+	case models.StatusGood:
 		return 0x00ff00 // Green for no ban
-	}
-}
-
-// EmbedTitleFromStatus function: returns the appropriate title for an embed message based on the account status
-func EmbedTitleFromStatus(status models.Status) string {
-	switch status {
-	case models.StatusPermaban:
-		return "PERMANENT BAN DETECTED"
-	case models.StatusShadowban:
-		return "SHADOWBAN DETECTED"
 	default:
-		return "ACCOUNT NOT BANNED"
+		return 0x808080 // Gray for unknown status
 	}
 }
 
-// SendGlobalAnnouncement function: sends a global announcement to users who haven't seen it yet
+// FormatBanDuration converts the duration in seconds to a human-readable string
+func FormatBanDuration(seconds int) string {
+	duration := time.Duration(seconds) * time.Second
+	if duration < time.Hour {
+		return fmt.Sprintf("%d minutes", int(duration.Minutes()))
+	}
+	// SendGlobalAnnouncement function: sends a global announcement to users who haven't seen it yet
+	return fmt.Sprintf("%d hours", int(duration.Hours()))
+}
+
 func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 	var userSettings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings)
