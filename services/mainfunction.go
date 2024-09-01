@@ -133,81 +133,91 @@ func CheckAccounts(s *discordgo.Session) {
 			continue
 		}
 
-		// Iterate through each account and perform checks
+		var wg sync.WaitGroup
 		for _, account := range accounts {
-			// Skip disabled accounts
-			if account.IsCheckDisabled {
-				logger.Log.Infof("Skipping check for disabled account: %s", account.Title)
-				continue
-			}
-
-			userSettings, err := GetUserSettings(account.UserID, account.InstallationType)
-			if err != nil {
-				logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", account.UserID)
-				continue
-			}
-
-			var lastCheck time.Time
-			if account.LastCheck != 0 {
-				lastCheck = time.Unix(account.LastCheck, 0)
-			}
-			var lastNotification time.Time
-			if account.LastNotification != 0 {
-				lastNotification = time.Unix(account.LastNotification, 0)
-			}
-
-			// Handle permabanned accounts
-			if account.IsPermabanned {
-				lastCookieCheck := time.Unix(account.LastCookieCheck, 0)
-				if time.Since(lastCookieCheck).Hours() > cookieCheckIntervalPermaban {
-					isValid := VerifySSOCookie(account.SSOCookie)
-					if !isValid {
-						account.IsExpiredCookie = true
-						if err := database.DB.Save(&account).Error; err != nil {
-							logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
-						}
-						go sendDailyUpdate(account, s)
-					}
-					account.LastCookieCheck = time.Now().Unix()
-					if err := database.DB.Save(&account).Error; err != nil {
-						logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
-					}
-				}
-				logger.Log.WithField("account", account.Title).Info("Skipping permanently banned account")
-				continue
-			}
-
-			// Handle accounts with expired cookies
-			if account.IsExpiredCookie {
-				logger.Log.WithField("account", account.Title).Info("Skipping account with expired cookie")
-				if time.Since(lastNotification).Hours() > userSettings.NotificationInterval {
-					go sendDailyUpdate(account, s)
-				} else {
-					logger.Log.WithField("account", account.Title).Infof("Owner of %s recently notified within %.2f hours already, skipping", account.Title, userSettings.NotificationInterval)
-				}
-				continue
-			}
-
-			// Check account status if enough time has passed since the last check
-			if time.Since(lastCheck).Minutes() > float64(userSettings.CheckInterval) {
-				go CheckSingleAccount(account, s)
-			} else {
-				logger.Log.WithField("account", account.Title).Infof("Account %s checked recently less than %.2f minutes ago, skipping", account.Title, float64(userSettings.CheckInterval))
-			}
-
-			// Send daily update if enough time has passed since the last notification
-			if time.Since(lastNotification).Hours() > userSettings.NotificationInterval {
-				go sendDailyUpdate(account, s)
-			} else {
-				logger.Log.WithField("account", account.Title).Infof("Owner of %s recently notified within %.2f hours already, skipping", account.Title, userSettings.NotificationInterval)
-			}
+			wg.Add(1)
+			go func(acc models.Account) {
+				defer wg.Done()
+				checkSingleAccount(acc, s)
+			}(account)
 		}
+		wg.Wait()
+
 		time.Sleep(time.Duration(sleepDuration) * time.Minute)
 	}
 }
 
+func checkSingleAccount(account models.Account, s *discordgo.Session) {
+
+	if account.IsCheckDisabled {
+		logger.Log.Infof("Skipping check for disabled account: %s", account.Title)
+		return
+	}
+
+	userSettings, err := GetUserSettings(account.UserID, account.InstallationType)
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", account.UserID)
+		return
+	}
+
+	var lastCheck time.Time
+	if account.LastCheck != 0 {
+		lastCheck = time.Unix(account.LastCheck, 0)
+	}
+	var lastNotification time.Time
+	if account.LastNotification != 0 {
+		lastNotification = time.Unix(account.LastNotification, 0)
+	}
+
+	// Handle permabanned accounts
+	if account.IsPermabanned {
+		lastCookieCheck := time.Unix(account.LastCookieCheck, 0)
+		if time.Since(lastCookieCheck).Hours() > cookieCheckIntervalPermaban {
+			isValid := VerifySSOCookie(account.SSOCookie)
+			if !isValid {
+				account.IsExpiredCookie = true
+				if err := database.DB.Save(&account).Error; err != nil {
+					logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
+				}
+				go sendDailyUpdate(account, s)
+			}
+			account.LastCookieCheck = time.Now().Unix()
+			if err := database.DB.Save(&account).Error; err != nil {
+				logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
+			}
+		}
+		logger.Log.WithField("account", account.Title).Info("Skipping permanently banned account")
+		return
+	}
+
+	// Handle accounts with expired cookies
+	if account.IsExpiredCookie {
+		logger.Log.WithField("account", account.Title).Info("Skipping account with expired cookie")
+		if time.Since(lastNotification).Hours() > userSettings.NotificationInterval {
+			go sendDailyUpdate(account, s)
+		} else {
+			logger.Log.WithField("account", account.Title).Infof("Owner of %s recently notified within %.2f hours already, skipping", account.Title, userSettings.NotificationInterval)
+		}
+		return
+	}
+
+	// Check account status if enough time has passed since the last check
+	if time.Since(lastCheck).Minutes() > float64(userSettings.CheckInterval) {
+		go CheckSingleAccountStatus(account, s)
+	} else {
+		logger.Log.WithField("account", account.Title).Infof("Account %s checked recently less than %.2f minutes ago, skipping", account.Title, float64(userSettings.CheckInterval))
+	}
+
+	// Send daily update if enough time has passed since the last notification
+	if time.Since(lastNotification).Hours() > userSettings.NotificationInterval {
+		go sendDailyUpdate(account, s)
+	} else {
+		logger.Log.WithField("account", account.Title).Infof("Owner of %s recently notified within %.2f hours already, skipping", account.Title, userSettings.NotificationInterval)
+	}
+}
+
 // CheckSingleAccount function: checks the status of a single account
-func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
+func CheckSingleAccountStatus(account models.Account, discord *discordgo.Session) {
 	// Check SSO cookie expiration
 	timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
 	if err != nil {
@@ -232,7 +242,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 		return
 	}
 
-	result, err := CheckAccount(account.SSOCookie, account.UserID)
+	result, err := CheckAccount(account.SSOCookie, account.UserID, models.InstallType)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to check account %s: possible expired SSO Cookie", account.Title)
 		return
