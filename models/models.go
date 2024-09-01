@@ -65,16 +65,16 @@ const (
 )
 
 type AccountStatus struct {
-	Overall Status                // The overall status of the account.
-	Games   map[string]GameStatus // A map of game titles to their status.
+	Overall Status                `json:"overall"` // The overall status of the account.
+	Games   map[string]GameStatus `json:"games"`   // A map of game titles to their status.
 }
 
 type GameStatus struct {
-	Title           string // The title of the game.
-	Status          Status // The status of the account.
-	Enforcement     string // The enforcement status of the account.
-	CanAppeal       bool   // whether the account can appeal the ban
-	CaseNumber      string // Case number of the account
-	CaseStatus      string // Case status of the account
-	DurationSeconds int    // Duration of temporary ban in seconds
+	Title           string `json:"title"`           // The title of the game.
+	Status          Status `json:"status"`          // The status of the account.
+	Enforcement     string `json:"enforcement"`     // The enforcement status of the account.
+	CanAppeal       bool   `json:"canAppeal"`       // whether the account can appeal the ban
+	CaseNumber      string `json:"caseNumber"`      // Case number of the account
+	CaseStatus      string `json:"caseStatus"`      // Case status of the account
+	DurationSeconds int    `json:"durationSeconds"` // Duration of temporary ban in seconds
 }
