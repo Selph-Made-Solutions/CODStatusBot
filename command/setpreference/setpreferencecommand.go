@@ -7,7 +7,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-func CommandSetPreference(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func CommandSetPreference(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
@@ -37,7 +37,7 @@ func CommandSetPreference(s *discordgo.Session, i *discordgo.InteractionCreate) 
 	}
 }
 
-func HandlePreferenceSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func HandlePreferenceSelection(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	customID := i.MessageComponentData().CustomID
 	var preferenceType string
 
