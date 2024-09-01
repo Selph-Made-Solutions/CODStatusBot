@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
@@ -92,7 +92,7 @@ func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreat
 	}
 }
 
-func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	data := i.ModalSubmitData()
 
 	var userID string
