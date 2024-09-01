@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func CommandRemoveAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func CommandRemoveAccount(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
@@ -64,7 +64,7 @@ func CommandRemoveAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 	}
 }
 
-func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	customID := i.MessageComponentData().CustomID
 	accountID, err := strconv.Atoi(strings.TrimPrefix(customID, "remove_account_"))
 	if err != nil {
@@ -111,7 +111,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 }
 
-func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	customID := i.MessageComponentData().CustomID
 
 	if customID == "cancel_remove" {
