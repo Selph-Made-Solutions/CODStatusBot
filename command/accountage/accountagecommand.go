@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func CommandAccountAge(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func CommandAccountAge(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
@@ -65,7 +65,7 @@ func CommandAccountAge(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 }
 
-func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	customID := i.MessageComponentData().CustomID
 	accountID, err := strconv.Atoi(strings.TrimPrefix(customID, "account_age_"))
 	if err != nil {
