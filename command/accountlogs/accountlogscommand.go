@@ -75,7 +75,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	customID := i.MessageComponentData().CustomID
 
 	if customID == "account_logs_all" {
-		handleAllAccountLogs(s, i)
+		handleAllAccountLogs(s, i, installType)
 		return
 	}
 
