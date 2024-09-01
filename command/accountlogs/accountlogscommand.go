@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func CommandAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func CommandAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
@@ -71,7 +71,7 @@ func CommandAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 }
 
-func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	customID := i.MessageComponentData().CustomID
 
 	if customID == "account_logs_all" {
@@ -110,7 +110,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 }
 
-func handleAllAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func handleAllAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
