@@ -242,7 +242,7 @@ func CheckSingleAccountStatus(account models.Account, discord *discordgo.Session
 		return
 	}
 
-	result, err := CheckAccount(account.SSOCookie, account.UserID, models.InstallType)
+	result, err := CheckAccount(account.SSOCookie, account.UserID, models.InstallTypeUser)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to check account %s: possible expired SSO Cookie", account.Title)
 		return
