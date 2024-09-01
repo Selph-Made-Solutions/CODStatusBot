@@ -15,9 +15,9 @@ import (
 )
 
 var (
-	rateLimiter     = make(map[string]time.Time)
-	rateLimiterLock sync.Mutex
-	rateLimit       time.Duration
+	defaultKeyRateLimiter = make(map[string]time.Time)
+	defaultKeyRateLimit   = 5 * time.Minute
+	defaultKeyMutex       sync.Mutex
 )
 
 func init() {
@@ -30,7 +30,7 @@ func init() {
 	rateLimit = time.Duration(rateLimitSeconds) * time.Second
 }
 
-func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
@@ -42,7 +42,7 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	userSettings, err := services.GetUserSettings(userID)
+	userSettings, err := services.GetUserSettings(userID, installType)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error fetching user settings")
 		respondToInteraction(s, i, "Error fetching user settings. Please try again later.")
@@ -52,8 +52,8 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	logger.Log.Infof("User %s initiated a check. API Key set: %v", userID, userSettings.CaptchaAPIKey != "")
 
 	if userSettings.CaptchaAPIKey == "" {
-		if !checkRateLimit(userID) {
-			respondToInteraction(s, i, fmt.Sprintf("You're using this command too frequently. Please wait %v before trying again, or set up your own API key for unlimited use.", rateLimit))
+		if !checkDefaultKeyRateLimit(userID) {
+			respondToInteraction(s, i, fmt.Sprintf("You're using the default API key too frequently. Please wait %v before trying again, or set up your own API key for unlimited use.", defaultKeyRateLimit))
 			return
 		}
 	}
@@ -124,7 +124,7 @@ func showAccountButtons(s *discordgo.Session, i *discordgo.InteractionCreate, ac
 	}
 }
 
-func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	customID := i.MessageComponentData().CustomID
 
 	if customID == "check_now_all" {
@@ -183,8 +183,7 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 			embeds = append(embeds, embed)
 			continue
 		}
-
-		status, err := services.CheckAccount(account.SSOCookie, account.UserID)
+		status, err := services.CheckAccount(account.SSOCookie, account.UserID, account.InstallationType)
 		if err != nil {
 			logger.Log.WithError(err).Errorf("Error checking account status for %s: %v", account.Title, err)
 
@@ -244,13 +243,13 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 	}
 }
 
-func checkRateLimit(userID string) bool {
-	rateLimiterLock.Lock()
-	defer rateLimiterLock.Unlock()
+func checkDefaultKeyRateLimit(userID string) bool {
+	defaultKeyMutex.Lock()
+	defer defaultKeyMutex.Unlock()
 
-	lastUse, exists := rateLimiter[userID]
-	if !exists || time.Since(lastUse) >= rateLimit {
-		rateLimiter[userID] = time.Now()
+	lastUse, exists := defaultKeyRateLimiter[userID]
+	if !exists || time.Since(lastUse) >= defaultKeyRateLimit {
+		defaultKeyRateLimiter[userID] = time.Now()
 		return true
 	}
 	return false
