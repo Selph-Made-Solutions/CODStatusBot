@@ -19,8 +19,7 @@ func sanitizeInput(input string) string {
 		return -1
 	}, input)
 }
-
-func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseModal,
 		Data: &discordgo.InteractionResponseData{
@@ -62,7 +61,7 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 }
 
-func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	data := i.ModalSubmitData()
 
 	title := sanitizeInput(strings.TrimSpace(data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value))
