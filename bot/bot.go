@@ -2,26 +2,27 @@ package bot
 
 import (
 	"CODStatusBot/command"
-	"CODStatusBot/command/accountage"
-	"CODStatusBot/command/accountlogs"
-	"CODStatusBot/command/addaccount"
-	"CODStatusBot/command/checknow"
-	"CODStatusBot/command/removeaccount"
-	"CODStatusBot/command/setcaptchaservice"
-	"CODStatusBot/command/setcheckinterval"
-	"CODStatusBot/command/togglecheck"
-	"CODStatusBot/command/updateaccount"
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
+	"context"
 	"errors"
 	"github.com/bwmarrin/discordgo"
 	"os"
 	"strings"
+	"time"
 )
 
 var discord *discordgo.Session
+var commandQueue chan *discordgo.InteractionCreate
+var workerPool chan struct{}
+
+const (
+	maxQueueSize  = 1000
+	maxWorkers    = 50
+	workerTimeout = 30 * time.Second
+)
 
 func StartBot() (*discordgo.Session, error) {
 	envToken := os.Getenv("DISCORD_TOKEN")
@@ -44,7 +45,7 @@ func StartBot() (*discordgo.Session, error) {
 		return nil, err
 	}
 
-	err = discord.UpdateWatchStatus(0, "the Status of your Accounts so you dont have to.")
+	err = discord.UpdateWatchStatus(0, "the Status of your Accounts so you don't have to.")
 	if err != nil {
 		logger.Log.WithError(err).WithField("Bot startup", "Setting Presence Status").Error()
 		return nil, err
@@ -53,21 +54,28 @@ func StartBot() (*discordgo.Session, error) {
 	command.RegisterCommands(discord)
 	logger.Log.Info("Registering global commands")
 
-	discord.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-		var installType models.InstallationType
-		if i.GuildID != "" {
-			installType = models.InstallTypeGuild
-		} else {
-			installType = models.InstallTypeUser
-		}
+	// Initialize command queue and worker pool
+	commandQueue = make(chan *discordgo.InteractionCreate, maxQueueSize)
+	workerPool = make(chan struct{}, maxWorkers)
 
-		switch i.Type {
-		case discordgo.InteractionApplicationCommand:
-			command.HandleCommand(s, i, installType)
-		case discordgo.InteractionModalSubmit:
-			handleModalSubmit(s, i, installType)
-		case discordgo.InteractionMessageComponent:
-			handleMessageComponent(s, i, installType)
+	// Start workers
+	for i := 0; i < maxWorkers; i++ {
+		go worker()
+	}
+
+	discord.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		select {
+		case commandQueue <- i:
+			logger.Log.Debugf("Command queued: %s", i.ApplicationCommandData().Name)
+		default:
+			logger.Log.Warn("Command queue is full, dropping command")
+			s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "The bot is currently experiencing high load. Please try again later.",
+					Flags:   discordgo.MessageFlagsEphemeral,
+				},
+			})
 		}
 	})
 
@@ -75,17 +83,71 @@ func StartBot() (*discordgo.Session, error) {
 	return discord, nil
 }
 
+func worker() {
+	for i := range commandQueue {
+		workerPool <- struct{}{}
+		processCommand(i)
+		<-workerPool
+	}
+}
+
+func processCommand(i *discordgo.InteractionCreate) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Log.Errorf("Panic recovered in processCommand: %v", r)
+		}
+	}()
+
+	var installType models.InstallationType
+	if i.GuildID != "" {
+		installType = models.InstallTypeGuild
+	} else {
+		installType = models.InstallTypeUser
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), workerTimeout)
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+
+		switch i.Type {
+		case discordgo.InteractionApplicationCommand:
+			command.HandleCommand(discord, i, installType)
+		case discordgo.InteractionModalSubmit:
+			handleModalSubmit(discord, i, installType)
+		case discordgo.InteractionMessageComponent:
+			handleMessageComponent(discord, i, installType)
+		}
+	}()
+
+	select {
+	case <-ctx.Done():
+		logger.Log.Warnf("Command processing timed out: %s", i.ApplicationCommandData().Name)
+		discord.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "The command processing timed out. Please try again later.",
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+	case <-done:
+		// Command processed successfully
+	}
+}
+
 func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	customID := i.ModalSubmitData().CustomID
 	switch {
 	case customID == "set_captcha_service_modal":
-		setcaptchaservice.HandleModalSubmit(s, i, installType)
+		command.Handlers["set_captcha_service_modal"](s, i, installType)
 	case customID == "add_account_modal":
-		addaccount.HandleModalSubmit(s, i, installType)
+		command.Handlers["add_account_modal"](s, i, installType)
 	case strings.HasPrefix(customID, "update_account_modal_"):
-		updateaccount.HandleModalSubmit(s, i, installType)
+		command.Handlers["update_account_modal"](s, i, installType)
 	case customID == "set_check_interval_modal":
-		setcheckinterval.HandleModalSubmit(s, i, installType)
+		command.Handlers["set_check_interval_modal"](s, i, installType)
 	default:
 		logger.Log.WithField("customID", customID).Error("Unknown modal submission")
 	}
@@ -95,31 +157,31 @@ func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate
 	customID := i.MessageComponentData().CustomID
 	switch {
 	case strings.HasPrefix(customID, "account_age_"):
-		accountage.HandleAccountSelection(s, i, installType)
+		command.Handlers["account_age"](s, i, installType)
 		logger.Log.Info("Handling account age selection")
 	case strings.HasPrefix(customID, "account_logs_"):
-		accountlogs.HandleAccountSelection(s, i, installType)
+		command.Handlers["account_logs"](s, i, installType)
 		logger.Log.Info("Handling account logs selection")
 	case customID == "account_logs_select":
-		accountlogs.HandleAccountSelection(s, i, installType)
+		command.Handlers["account_logs"](s, i, installType)
 		logger.Log.Info("Handling account logs selection")
 	case strings.HasPrefix(customID, "update_account_"):
-		updateaccount.HandleAccountSelection(s, i, installType)
+		command.Handlers["update_account"](s, i, installType)
 		logger.Log.Info("Handling update account selection")
 	case customID == "update_account_select":
-		updateaccount.HandleAccountSelection(s, i, installType)
+		command.Handlers["update_account"](s, i, installType)
 		logger.Log.Info("Handling update account selection")
 	case strings.HasPrefix(customID, "remove_account_"):
-		removeaccount.HandleAccountSelection(s, i, installType)
+		command.Handlers["remove_account"](s, i, installType)
 		logger.Log.Info("Handling remove account selection")
 	case customID == "cancel_remove" || strings.HasPrefix(customID, "confirm_remove_"):
-		removeaccount.HandleConfirmation(s, i, installType)
+		command.Handlers["remove_account"](s, i, installType)
 		logger.Log.Info("Handling remove account confirmation")
 	case strings.HasPrefix(customID, "check_now_"):
-		checknow.HandleAccountSelection(s, i, installType)
+		command.Handlers["check_now"](s, i, installType)
 		logger.Log.Info("Handling check now selection")
 	case strings.HasPrefix(customID, "toggle_check_"):
-		togglecheck.HandleAccountSelection(s, i, installType)
+		command.Handlers["toggle_check"](s, i, installType)
 		logger.Log.Info("Handling toggle check selection")
 	default:
 		logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
