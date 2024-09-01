@@ -105,7 +105,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		Fields: []*discordgo.MessageEmbedField{
 			{
 				Name:   "Last Status",
-				Value:  string(account.LastStatus),
+				Value:  string(account.LastStatus.Overall),
 				Inline: true,
 			},
 			{
