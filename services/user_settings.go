@@ -57,7 +57,7 @@ func init() {
 }
 
 func GetUserSettings(userID string, installType models.InstallationType) (models.UserSettings, error) {
-	logger.Log.Infof("Getting user settings for user: %s", userID)
+	logger.Log.Infof("Getting user settings for user: %s, installation type: %d", userID, installType)
 	var settings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
 	if result.Error != nil {
