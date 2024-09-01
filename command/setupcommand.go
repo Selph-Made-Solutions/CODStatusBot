@@ -145,7 +145,7 @@ func RegisterCommands(s *discordgo.Session) {
 }
 
 // HandleCommand handles incoming commands and checks for announcements
-func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	// Check if the user has seen the announcement
 	var userID string
 
