@@ -11,9 +11,13 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
+	"time"
 )
 
 var defaultSettings models.UserSettings
+var userRateLimiters = make(map[string]*time.Time)
+var rateLimitMutex sync.Mutex
 
 func init() {
 	checkInterval, err := strconv.Atoi(os.Getenv("CHECK_INTERVAL"))
@@ -145,6 +149,7 @@ func isValidUserID(userID string) bool {
 	}
 	return true
 }
+
 func GetUserCaptchaKey(userID string) (string, error) {
 	var settings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).First(&settings)
@@ -269,4 +274,17 @@ func CheckCaptchaKeyValidity(captchaKey string) (bool, float64, error) {
 	}
 
 	return true, result.Balance, nil
+}
+
+func CheckDefaultKeyRateLimit(userID string) bool {
+	rateLimitMutex.Lock()
+	defer rateLimitMutex.Unlock()
+
+	lastUse, exists := userRateLimiters[userID]
+	if !exists || time.Since(*lastUse) >= time.Hour {
+		now := time.Now()
+		userRateLimiters[userID] = &now
+		return true
+	}
+	return false
 }
