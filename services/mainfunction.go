@@ -133,6 +133,13 @@ func CheckAccounts(s *discordgo.Session) {
 			continue
 		}
 
+		for i := range accounts {
+			// Ensure LastStatus is properly initialized
+			if accounts[i].LastStatus.Games == nil {
+				accounts[i].LastStatus.Games = make(map[string]models.GameStatus)
+			}
+		}
+
 		var wg sync.WaitGroup
 		for _, account := range accounts {
 			wg.Add(1)
