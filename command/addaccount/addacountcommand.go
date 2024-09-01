@@ -133,13 +133,6 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, ins
 	respondToInteraction(s, i, fmt.Sprintf("Account added successfully! SSO cookie will expire in %s", formattedExpiration))
 }
 
-func determineInstallationType(guildID string) models.InstallationType {
-	if guildID == "" {
-		return models.InstallTypeUser
-	}
-	return models.InstallTypeGuild
-}
-
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
