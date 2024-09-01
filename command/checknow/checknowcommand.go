@@ -152,7 +152,7 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 			embeds = append(embeds, embed)
 			continue
 		}
-		status, err := services.CheckAccount(account.SSOCookie, account.UserID)
+		status, err := services.CheckAccount(account.SSOCookie, account.UserID, models.InstallTypeUser)
 		if err != nil {
 			logger.Log.WithError(err).Errorf("Error checking account status for %s: %v", account.Title, err)
 
