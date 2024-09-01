@@ -152,6 +152,7 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 			embeds = append(embeds, embed)
 			continue
 		}
+
 		status, err := services.CheckAccount(account.SSOCookie, account.UserID, models.InstallTypeUser)
 		if err != nil {
 			logger.Log.WithError(err).Errorf("Error checking account status for %s: %v", account.Title, err)
@@ -180,19 +181,7 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 			logger.Log.Infof("Updated LastCheck for account %s to %v", account.Title, account.LastCheck)
 		}
 
-		embed := &discordgo.MessageEmbed{
-			Title:       fmt.Sprintf("%s - %s", account.Title, status),
-			Description: fmt.Sprintf("Current status: %s", status),
-			Color:       services.GetColorForStatus(status, account.IsExpiredCookie),
-			Timestamp:   time.Now().Format(time.RFC3339),
-			Fields: []*discordgo.MessageEmbedField{
-				{
-					Name:   "Last Checked",
-					Value:  time.Unix(account.LastCheck, 0).Format(time.RFC1123),
-					Inline: true,
-				},
-			},
-		}
+		embed := createStatusEmbed(account.Title, status)
 		embeds = append(embeds, embed)
 	}
 
@@ -212,26 +201,49 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 	}
 }
 
-func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
-	var err error
-	if i.Type == discordgo.InteractionMessageComponent {
-		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseUpdateMessage,
-			Data: &discordgo.InteractionResponseData{
-				Content:    content,
-				Components: []discordgo.MessageComponent{},
-				Flags:      discordgo.MessageFlagsEphemeral,
-			},
-		})
-	} else {
-		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: content,
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
+func createStatusEmbed(accountTitle string, status models.AccountStatus) *discordgo.MessageEmbed {
+	embed := &discordgo.MessageEmbed{
+		Title:       fmt.Sprintf("%s - Account Status", accountTitle),
+		Description: fmt.Sprintf("Overall Status: %s", status.Overall),
+		Color:       services.GetColorForStatus(status.Overall),
+		Timestamp:   time.Now().Format(time.RFC3339),
+		Fields:      []*discordgo.MessageEmbedField{},
+	}
+
+	for game, gameStatus := range status.Games {
+		var statusDesc string
+		switch gameStatus.Status {
+		case models.StatusGood:
+			statusDesc = "Good Standing"
+		case models.StatusPermaban:
+			statusDesc = "Permanently Banned"
+		case models.StatusShadowban:
+			statusDesc = "Under Review"
+		case models.StatusTempban:
+			duration := services.FormatBanDuration(gameStatus.DurationSeconds)
+			statusDesc = fmt.Sprintf("Temporarily Banned (%s remaining)", duration)
+		default:
+			statusDesc = "Unknown Status"
+		}
+
+		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+			Name:   game,
+			Value:  statusDesc,
+			Inline: true,
 		})
 	}
+
+	return embed
+}
+
+func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: content,
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
+	})
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction")
 	}
