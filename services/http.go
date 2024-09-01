@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-var url1 = "https://support.activision.com/api/bans/v2/appeal?locale=en" // Replacement Endpoint for checking account bans
+var url1 = "https://support.activision.com/api/bans/v2/appeal?locale=en" // Replacement Endpoint for checking
 var url2 = "https://support.activision.com/api/profile?accts=false"      // Endpoint for retrieving profile information
 
 // VerifySSOCookie checks if the provided SSO cookie is valid.
@@ -51,7 +51,7 @@ func VerifySSOCookie(ssoCookie string) bool {
 }
 
 // CheckAccount checks the account status associated with the provided SSO cookie.
-func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
+func CheckAccount(ssoCookie string, userID string, installType models.InstallationType) (models.Status, error) {
 	logger.Log.Info("Starting CheckAccount function")
 
 	captchaAPIKey, err := GetUserCaptchaKey(userID)
@@ -199,12 +199,25 @@ func CheckAccountAge(ssoCookie string) (int, int, int, error) {
 		return 0, 0, 0, errors.New("failed to parse created date in check account age request")
 	}
 
-	now := time.Now()
-	age := now.Sub(created)
+	now := time.Now().UTC()
+	// age := now.Sub(created)
 
-	years := int(age.Hours() / 24 / 365.25)
-	months := int(age.Hours()/24/30.44) % 12
-	days := int(age.Hours()/24) % 30
+	years := now.Year() - created.Year()
+	months := int(now.Month() - created.Month())
+	days := now.Day() - created.Day()
+
+	if months < 0 || (months == 0 && days < 0) {
+		years--
+		months += 12
+	}
+
+	if days < 0 {
+		// Get the last day of the previous month
+		lastMonth := now.AddDate(0, -1, 0)
+		daysInLastMonth := time.Date(lastMonth.Year(), lastMonth.Month()+1, 0, 0, 0, 0, 0, time.UTC).Day()
+		days += daysInLastMonth
+		months--
+	}
 
 	logger.Log.Infof("Account age calculated: %d years, %d months, %d days", years, months, days)
 	return years, months, days, nil
