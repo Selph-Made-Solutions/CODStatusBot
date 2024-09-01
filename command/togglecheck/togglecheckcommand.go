@@ -38,7 +38,7 @@ func CommandToggleCheck(s *discordgo.Session, i *discordgo.InteractionCreate, in
 	// Create buttons for each account
 	var components []discordgo.MessageComponent
 	for _, account := range accounts {
-		label := fmt.Sprintf("%s (%s)", account.Title, getCheckStatus(account.IsCheckDisabled))
+		label := fmt.Sprintf("%s (%s - %s)", account.Title, getCheckStatus(account.IsCheckDisabled), account.LastStatus.Overall)
 		components = append(components, discordgo.Button{
 			Label:    label,
 			Style:    discordgo.PrimaryButton,
