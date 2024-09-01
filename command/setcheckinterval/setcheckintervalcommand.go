@@ -23,7 +23,8 @@ func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreat
 		return
 	}
 
-    userSettings, err := services.GetUserSettings(userID, installType)
+	userSettings, err := services.GetUserSettings(userID, installType)
+	if err != nil {
 		logger.Log.WithError(err).Error("Error fetching user settings")
 		respondToInteraction(s, i, "Error fetching your settings. Please try again.")
 		return
@@ -105,7 +106,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, ins
 		return
 	}
 
-    userSettings, err := services.GetUserSettings(userID, installType)
+	userSettings, err := services.GetUserSettings(userID, installType)
 	defaultSettings, err := services.GetDefaultSettings()
 	if err != nil {
 		logger.Log.WithError(err).Error("Error fetching default settings")
