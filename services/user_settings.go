@@ -52,7 +52,7 @@ func init() {
 		defaultSettings.CheckInterval, defaultSettings.NotificationInterval, defaultSettings.CooldownDuration, defaultSettings.StatusChangeCooldown)
 }
 
-func GetUserSettings(userID string) (models.UserSettings, error) {
+func GetUserSettings(userID string, installType models.InstallationType) (models.UserSettings, error) {
 	logger.Log.Infof("Getting user settings for user: %s", userID)
 	var settings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
@@ -61,21 +61,21 @@ func GetUserSettings(userID string) (models.UserSettings, error) {
 		return settings, result.Error
 	}
 
-	// If the user doesn't have custom settings, use default settings
-	if settings.CheckInterval == 0 {
+	// If the user doesn't have custom settings or doesn't have a custom API key, use default settings
+	if settings.CaptchaAPIKey == "" {
 		settings.CheckInterval = defaultSettings.CheckInterval
-	}
-	if settings.NotificationInterval == 0 {
 		settings.NotificationInterval = defaultSettings.NotificationInterval
-	}
-	if settings.CooldownDuration == 0 {
 		settings.CooldownDuration = defaultSettings.CooldownDuration
-	}
-	if settings.StatusChangeCooldown == 0 {
 		settings.StatusChangeCooldown = defaultSettings.StatusChangeCooldown
 	}
+
+	// Set notification type based on installation type if not already set
 	if settings.NotificationType == "" {
-		settings.NotificationType = defaultSettings.NotificationType
+		if installType == models.InstallTypeGuild {
+			settings.NotificationType = "channel"
+		} else {
+			settings.NotificationType = "dm"
+		}
 	}
 
 	logger.Log.Infof("Got user settings for user: %s", userID)
