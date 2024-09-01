@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func CommandGlobalAnnouncement(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func CommandGlobalAnnouncement(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	// Check if the user is the developer
 	developerID := os.Getenv("DEVELOPER_ID")
 	if developerID == "" {
