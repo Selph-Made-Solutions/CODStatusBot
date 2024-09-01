@@ -19,6 +19,7 @@ func sanitizeInput(input string) string {
 		return -1
 	}, input)
 }
+
 func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseModal,
@@ -115,7 +116,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, ins
 		GuildID:             guildID,
 		ChannelID:           i.ChannelID,
 		NotificationType:    notificationType,
-		InstallationType:    determineInstallationType(guildID),
+		InstallationType:    installType,
 	}
 
 	// Save to database
