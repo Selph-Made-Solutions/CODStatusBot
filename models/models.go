@@ -24,6 +24,18 @@ type Account struct {
 	LastStatusChange       int64            `gorm:"default:0"`       // The timestamp of the last status change
 	IsCheckDisabled        bool             `gorm:"default:false"`   // A flag indicating if checks are disabled for this account
 	InstallationType       InstallationType `gorm:"default:0"`
+	GameStatuses           []GameStatus     // The statuses for each game
+}
+
+type GameStatus struct {
+	gorm.Model
+	AccountID   uint
+	GameTitle   string
+	Status      Status
+	Enforcement string
+	CanAppeal   bool
+	CaseNumber  string
+	CaseStatus  string
 }
 
 type Ban struct {
@@ -61,4 +73,6 @@ const (
 	StatusShadowban     Status = "shadowban"      // The account has been shadowbanned.
 	StatusUnknown       Status = "unknown"        // The status of the account is unknown.
 	StatusInvalidCookie Status = "invalid_cookie" // The account has an invalid SSO cookie.
+	StatusOpen          Status = "open"           // The account has an open case.
+	StatusClosed        Status = "closed"         // The account has a closed case.
 )
