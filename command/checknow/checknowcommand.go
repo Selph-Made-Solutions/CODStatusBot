@@ -7,28 +7,10 @@ import (
 	"CODStatusBot/services"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
-	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
-
-var (
-	defaultKeyRateLimiter = make(map[string]time.Time)
-	defaultKeyRateLimit   = 5 * time.Minute
-	defaultKeyMutex       sync.Mutex
-)
-
-func init() {
-	rateLimitStr := os.Getenv("CHECK_NOW_RATE_LIMIT")
-	rateLimitSeconds, err := strconv.Atoi(rateLimitStr)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to parse CHECK_NOW_RATE_LIMIT, using default of 60 seconds")
-		rateLimitSeconds = 60
-	}
-	rateLimit = time.Duration(rateLimitSeconds) * time.Second
-}
 
 func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	var userID string
@@ -52,23 +34,14 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate, insta
 	logger.Log.Infof("User %s initiated a check. API Key set: %v", userID, userSettings.CaptchaAPIKey != "")
 
 	if userSettings.CaptchaAPIKey == "" {
-		if !checkDefaultKeyRateLimit(userID) {
-			respondToInteraction(s, i, fmt.Sprintf("You're using the default API key too frequently. Please wait %v before trying again, or set up your own API key for unlimited use.", defaultKeyRateLimit))
+		if !services.CheckDefaultKeyRateLimit(userID) {
+			respondToInteraction(s, i, fmt.Sprintf("You're using the default API key too frequently. Please wait before trying again, or set up your own API key for unlimited use."))
 			return
 		}
 	}
 
-	var accountTitle string
-	if len(i.ApplicationCommandData().Options) > 0 {
-		accountTitle = i.ApplicationCommandData().Options[0].StringValue()
-	}
-
 	var accounts []models.Account
-	query := database.DB.Where("user_id = ?", userID)
-	if accountTitle != "" {
-		query = query.Where("title = ?", accountTitle)
-	}
-	result := query.Find(&accounts)
+	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
 
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching accounts")
@@ -81,15 +54,10 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate, insta
 		return
 	}
 
-	if len(accounts) == 1 || accountTitle != "" {
-		// If only one account or a specific account was requested, check it immediately
-		checkAccounts(s, i, accounts)
-	} else {
-		// If multiple accounts and no specific account was requested, show buttons
-		showAccountButtons(s, i, accounts)
-	}
+	showAccountButtons(s, i, accounts)
 }
 
+// Update other functions to include installType where necessary
 func showAccountButtons(s *discordgo.Session, i *discordgo.InteractionCreate, accounts []models.Account) {
 	var components []discordgo.MessageComponent
 	for _, account := range accounts {
@@ -124,6 +92,7 @@ func showAccountButtons(s *discordgo.Session, i *discordgo.InteractionCreate, ac
 	}
 }
 
+// Update HandleAccountSelection to pass installType to checkAccounts
 func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	customID := i.MessageComponentData().CustomID
 
@@ -183,7 +152,7 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 			embeds = append(embeds, embed)
 			continue
 		}
-		status, err := services.CheckAccount(account.SSOCookie, account.UserID, account.InstallationType)
+		status, err := services.CheckAccount(account.SSOCookie, account.UserID)
 		if err != nil {
 			logger.Log.WithError(err).Errorf("Error checking account status for %s: %v", account.Title, err)
 
@@ -241,18 +210,6 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 			logger.Log.WithError(err).Error("Failed to send follow-up message")
 		}
 	}
-}
-
-func checkDefaultKeyRateLimit(userID string) bool {
-	defaultKeyMutex.Lock()
-	defer defaultKeyMutex.Unlock()
-
-	lastUse, exists := defaultKeyRateLimiter[userID]
-	if !exists || time.Since(lastUse) >= defaultKeyRateLimit {
-		defaultKeyRateLimiter[userID] = time.Now()
-		return true
-	}
-	return false
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
