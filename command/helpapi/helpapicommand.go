@@ -2,11 +2,12 @@ package helpapi
 
 import (
 	"CODStatusBot/logger"
+	"CODStatusBot/models"
 
 	"github.com/bwmarrin/discordgo"
 )
 
-func CommandHelpApi(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func CommandHelpApi(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	logger.Log.Info("Received help command")
 	helpApiGuide := []string{
 		"CODStatusBot Help Guide\n\n" +
