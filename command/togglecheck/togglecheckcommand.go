@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func CommandToggleCheck(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func CommandToggleCheck(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
@@ -64,7 +64,7 @@ func CommandToggleCheck(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 }
 
-func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	customID := i.MessageComponentData().CustomID
 	accountID, err := strconv.Atoi(strings.TrimPrefix(customID, "toggle_check_"))
 	if err != nil {
