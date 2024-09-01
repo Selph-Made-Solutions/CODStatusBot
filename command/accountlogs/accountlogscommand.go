@@ -4,6 +4,7 @@ import (
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
+	"CODStatusBot/services"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"strconv"
@@ -173,16 +174,26 @@ func createAccountLogEmbed(account models.Account) *discordgo.MessageEmbed {
 	embed := &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%s - Account Logs", account.Title),
 		Description: "The last 10 status changes for this account",
-		Color:       0x00ff00,
-		Fields:      make([]*discordgo.MessageEmbedField, len(logs)),
+		Color:       services.GetColorForStatus(account.LastStatus.Overall),
+		Fields:      make([]*discordgo.MessageEmbedField, 0),
 	}
 
+	// Add current status field
+	currentStatusField := &discordgo.MessageEmbedField{
+		Name:   "Current Status",
+		Value:  formatAccountStatus(account.LastStatus),
+		Inline: false,
+	}
+	embed.Fields = append(embed.Fields, currentStatusField)
+
+	// Add log entries
 	for i, log := range logs {
-		embed.Fields[i] = &discordgo.MessageEmbedField{
+		logEntry := &discordgo.MessageEmbedField{
 			Name:   fmt.Sprintf("Status Change %d", i+1),
 			Value:  fmt.Sprintf("Status: %s\nTime: %s", log.Status, log.CreatedAt.Format(time.RFC1123)),
 			Inline: false,
 		}
+		embed.Fields = append(embed.Fields, logEntry)
 	}
 
 	if len(logs) == 0 {
@@ -190,6 +201,31 @@ func createAccountLogEmbed(account models.Account) *discordgo.MessageEmbed {
 	}
 
 	return embed
+}
+
+func formatAccountStatus(status models.AccountStatus) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Overall: %s\n", status.Overall))
+
+	for game, gameStatus := range status.Games {
+		sb.WriteString(fmt.Sprintf("%s: ", game))
+		switch gameStatus.Status {
+		case models.StatusGood:
+			sb.WriteString("Good Standing")
+		case models.StatusPermaban:
+			sb.WriteString("Permanently Banned")
+		case models.StatusShadowban:
+			sb.WriteString("Under Review")
+		case models.StatusTempban:
+			duration := services.FormatBanDuration(gameStatus.DurationSeconds)
+			sb.WriteString(fmt.Sprintf("Temporarily Banned (%s remaining)", duration))
+		default:
+			sb.WriteString("Unknown Status")
+		}
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
