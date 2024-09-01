@@ -173,7 +173,8 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, ins
 	// Update the account
 	account.SSOCookie = newSSOCookie
 	account.SSOCookieExpiration = expirationTimestamp
-	account.IsExpiredCookie = false // Reset the expired cookie flag
+	account.IsExpiredCookie = false        // Reset the expired cookie flag
+	account.InstallationType = installType // Update installation type
 
 	services.DBMutex.Lock()
 	if err := database.DB.Save(&account).Error; err != nil {
