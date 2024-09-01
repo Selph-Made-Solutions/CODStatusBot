@@ -33,6 +33,18 @@ type Ban struct {
 	Status    Status  // The status of the ban.
 }
 
+type UserSettings struct {
+	gorm.Model
+	UserID               string  `gorm:"uniqueIndex"`
+	CaptchaAPIKey        string  // User's own API key, if provided
+	CheckInterval        int     // in minutes
+	NotificationInterval float64 // in hours
+	CooldownDuration     float64 // in hours
+	StatusChangeCooldown float64 // in hours
+	NotificationType     string  `gorm:"default:channel"` // User preference for location of notifications either channel or dm
+	HasSeenAnnouncement  bool    `gorm:"default:false"`   // Flag to track if the user has seen the global announcement
+}
+
 type InstallationType int
 
 const (
@@ -50,15 +62,3 @@ const (
 	StatusUnknown       Status = "unknown"        // The status of the account is unknown.
 	StatusInvalidCookie Status = "invalid_cookie" // The account has an invalid SSO cookie.
 )
-
-type UserSettings struct {
-	gorm.Model
-	UserID               string  `gorm:"uniqueIndex"`
-	CaptchaAPIKey        string  // User's own API key, if provided
-	CheckInterval        int     // in minutes
-	NotificationInterval float64 // in hours
-	CooldownDuration     float64 // in hours
-	StatusChangeCooldown float64 // in hours
-	NotificationType     string  `gorm:"default:channel"` // User preference for location of notifications either channel or dm
-	HasSeenAnnouncement  bool    `gorm:"default:false"`   // Flag to track if the user has seen the global announcement
-}
