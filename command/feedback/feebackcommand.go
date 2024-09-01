@@ -2,12 +2,13 @@ package feedback
 
 import (
 	"CODStatusBot/logger"
+	"CODStatusBot/models"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"os"
 )
 
-func CommandFeedback(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func CommandFeedback(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	feedbackMessage := i.ApplicationCommandData().Options[0].StringValue()
 	developerID := os.Getenv("DEVELOPER_ID")
 	if developerID == "" {
