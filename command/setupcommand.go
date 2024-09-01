@@ -21,56 +21,74 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-var Handlers = map[string]func(*discordgo.Session, *discordgo.InteractionCreate){}
+var Handlers = map[string]func(*discordgo.Session, *discordgo.InteractionCreate, models.InstallationType){}
 
 func RegisterCommands(s *discordgo.Session) {
 	logger.Log.Info("Registering global commands")
 
 	commands := []*discordgo.ApplicationCommand{
 		{
-			Name:         "globalannouncement",
-			Description:  "Send a global announcement to all users (Admin only)",
-			DMPermission: BoolPtr(false),
+			Name:             "globalannouncement",
+			Description:      "Send a global announcement to all users (Admin only)",
+			IntegrationTypes: []discordgo.IntegrationType{discordgo.UserInstallation, discordgo.GuildInstallation},
+			ContextTypes:     []discordgo.InteractionContextType{discordgo.GuildInteraction, discordgo.BotDMInteraction, discordgo.PrivateChannelInteraction},
+			DMPermission:     BoolPtr(false),
 		},
 		{
-			Name:         "setcaptchaservice",
-			Description:  "Set your EZ-Captcha API key",
-			DMPermission: BoolPtr(true),
+			Name:             "setcaptchaservice",
+			Description:      "Set your EZ-Captcha API key",
+			IntegrationTypes: []discordgo.IntegrationType{discordgo.UserInstallation, discordgo.GuildInstallation},
+			ContextTypes:     []discordgo.InteractionContextType{discordgo.GuildInteraction, discordgo.BotDMInteraction, discordgo.PrivateChannelInteraction},
+			DMPermission:     BoolPtr(true),
 		},
 		{
-			Name:         "setcheckinterval",
-			Description:  "Set check interval, notification interval, and notification type",
-			DMPermission: BoolPtr(true),
+			Name:             "setcheckinterval",
+			Description:      "Set check interval, notification interval, and notification type",
+			IntegrationTypes: []discordgo.IntegrationType{discordgo.UserInstallation, discordgo.GuildInstallation},
+			ContextTypes:     []discordgo.InteractionContextType{discordgo.GuildInteraction, discordgo.BotDMInteraction, discordgo.PrivateChannelInteraction},
+			DMPermission:     BoolPtr(true),
 		},
 		{
-			Name:         "addaccount",
-			Description:  "Add a new account to monitor",
-			DMPermission: BoolPtr(true),
+			Name:             "addaccount",
+			Description:      "Add a new account to monitor",
+			IntegrationTypes: []discordgo.IntegrationType{discordgo.UserInstallation, discordgo.GuildInstallation},
+			ContextTypes:     []discordgo.InteractionContextType{discordgo.GuildInteraction, discordgo.BotDMInteraction, discordgo.PrivateChannelInteraction},
+			DMPermission:     BoolPtr(true),
 		},
 		{
-			Name:         "helpapi",
-			Description:  "Get help on using the bot and setting up your API key",
-			DMPermission: BoolPtr(true),
+			Name:             "helpapi",
+			Description:      "Get help on using the bot and setting up your API key",
+			IntegrationTypes: []discordgo.IntegrationType{discordgo.UserInstallation, discordgo.GuildInstallation},
+			ContextTypes:     []discordgo.InteractionContextType{discordgo.GuildInteraction, discordgo.BotDMInteraction, discordgo.PrivateChannelInteraction},
+			DMPermission:     BoolPtr(true),
 		},
 		{
-			Name:         "helpcookie",
-			Description:  "Simple guide to getting your SSOCookie",
-			DMPermission: BoolPtr(true),
+			Name:             "helpcookie",
+			Description:      "Simple guide to getting your SSOCookie",
+			IntegrationTypes: []discordgo.IntegrationType{discordgo.UserInstallation, discordgo.GuildInstallation},
+			ContextTypes:     []discordgo.InteractionContextType{discordgo.GuildInteraction, discordgo.BotDMInteraction, discordgo.PrivateChannelInteraction},
+			DMPermission:     BoolPtr(true),
 		},
 		{
-			Name:         "accountage",
-			Description:  "Check the age of an account",
-			DMPermission: BoolPtr(true),
+			Name:             "accountage",
+			Description:      "Check the age of an account",
+			IntegrationTypes: []discordgo.IntegrationType{discordgo.UserInstallation, discordgo.GuildInstallation},
+			ContextTypes:     []discordgo.InteractionContextType{discordgo.GuildInteraction, discordgo.BotDMInteraction, discordgo.PrivateChannelInteraction},
+			DMPermission:     BoolPtr(true),
 		},
 		{
-			Name:         "accountlogs",
-			Description:  "View the logs for an account",
-			DMPermission: BoolPtr(true),
+			Name:             "accountlogs",
+			Description:      "View the logs for an account",
+			IntegrationTypes: []discordgo.IntegrationType{discordgo.UserInstallation, discordgo.GuildInstallation},
+			ContextTypes:     []discordgo.InteractionContextType{discordgo.GuildInteraction, discordgo.BotDMInteraction, discordgo.PrivateChannelInteraction},
+			DMPermission:     BoolPtr(true),
 		},
 		{
-			Name:         "checknow",
-			Description:  "Check account status now (rate limited for default API key)",
-			DMPermission: BoolPtr(true),
+			Name:             "checknow",
+			Description:      "Check account status now (rate limited for default API key)",
+			IntegrationTypes: []discordgo.IntegrationType{discordgo.UserInstallation, discordgo.GuildInstallation},
+			ContextTypes:     []discordgo.InteractionContextType{discordgo.GuildInteraction, discordgo.BotDMInteraction, discordgo.PrivateChannelInteraction},
+			DMPermission:     BoolPtr(true),
 			Options: []*discordgo.ApplicationCommandOption{
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
@@ -81,24 +99,32 @@ func RegisterCommands(s *discordgo.Session) {
 			},
 		},
 		{
-			Name:         "listaccounts",
-			Description:  "List all your monitored accounts",
-			DMPermission: BoolPtr(true),
+			Name:             "listaccounts",
+			Description:      "List all your monitored accounts",
+			IntegrationTypes: []discordgo.IntegrationType{discordgo.UserInstallation, discordgo.GuildInstallation},
+			ContextTypes:     []discordgo.InteractionContextType{discordgo.GuildInteraction, discordgo.BotDMInteraction, discordgo.PrivateChannelInteraction},
+			DMPermission:     BoolPtr(true),
 		},
 		{
-			Name:         "removeaccount",
-			Description:  "Remove a monitored account",
-			DMPermission: BoolPtr(true),
+			Name:             "removeaccount",
+			Description:      "Remove a monitored account",
+			IntegrationTypes: []discordgo.IntegrationType{discordgo.UserInstallation, discordgo.GuildInstallation},
+			ContextTypes:     []discordgo.InteractionContextType{discordgo.GuildInteraction, discordgo.BotDMInteraction, discordgo.PrivateChannelInteraction},
+			DMPermission:     BoolPtr(true),
 		},
 		{
-			Name:         "updateaccount",
-			Description:  "Update a monitored account's information",
-			DMPermission: BoolPtr(true),
+			Name:             "updateaccount",
+			Description:      "Update a monitored account's information",
+			IntegrationTypes: []discordgo.IntegrationType{discordgo.UserInstallation, discordgo.GuildInstallation},
+			ContextTypes:     []discordgo.InteractionContextType{discordgo.GuildInteraction, discordgo.BotDMInteraction, discordgo.PrivateChannelInteraction},
+			DMPermission:     BoolPtr(true),
 		},
 		{
-			Name:         "feedback",
-			Description:  "Send anonymous feedback to the bot developer",
-			DMPermission: BoolPtr(true),
+			Name:             "feedback",
+			Description:      "Send anonymous feedback to the bot developer",
+			IntegrationTypes: []discordgo.IntegrationType{discordgo.UserInstallation, discordgo.GuildInstallation},
+			ContextTypes:     []discordgo.InteractionContextType{discordgo.GuildInteraction, discordgo.BotDMInteraction, discordgo.PrivateChannelInteraction},
+			DMPermission:     BoolPtr(true),
 			Options: []*discordgo.ApplicationCommandOption{
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
@@ -109,9 +135,11 @@ func RegisterCommands(s *discordgo.Session) {
 			},
 		},
 		{
-			Name:         "togglecheck",
-			Description:  "Toggle checks on/off for a monitored account",
-			DMPermission: BoolPtr(true),
+			Name:             "togglecheck",
+			Description:      "Toggle checks on/off for a monitored account",
+			IntegrationTypes: []discordgo.IntegrationType{discordgo.UserInstallation, discordgo.GuildInstallation},
+			ContextTypes:     []discordgo.InteractionContextType{discordgo.GuildInteraction, discordgo.BotDMInteraction, discordgo.PrivateChannelInteraction},
+			DMPermission:     BoolPtr(true),
 		},
 	}
 
@@ -145,17 +173,14 @@ func RegisterCommands(s *discordgo.Session) {
 }
 
 // HandleCommand handles incoming commands and checks for announcements
-func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	// Check if the user has seen the announcement
 	var userID string
-	var installType models.InstallationType
 
 	if i.Member != nil {
 		userID = i.Member.User.ID
-		installType = models.InstallTypeGuild
 	} else if i.User != nil {
 		userID = i.User.ID
-		installType = models.InstallTypeUser
 	} else {
 		logger.Log.Error("Interaction doesn't have Member or User")
 		return
