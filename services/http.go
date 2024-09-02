@@ -117,7 +117,6 @@ func CheckAccount(ssoCookie string, userID string, installType models.Installati
 			} `json:"bar"`
 			Title string `json:"title"`
 		} `json:"bans"`
-		AppId string `json:"appId"`
 	}
 
 	if string(body) == "" {
@@ -130,6 +129,7 @@ func CheckAccount(ssoCookie string, userID string, installType models.Installati
 		logger.Log.WithError(err).Error("Failed to decode JSON response")
 		return models.AccountStatus{}, fmt.Errorf("failed to decode JSON response: %v", err)
 	}
+
 	logger.Log.WithField("data", data).Info("Parsed ban data")
 
 	accountStatus := models.AccountStatus{
