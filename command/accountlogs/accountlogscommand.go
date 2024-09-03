@@ -6,132 +6,108 @@ import (
 	"CODStatusBot/models"
 	"CODStatusBot/services"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
+	"github.com/disgoorg/disgo/bot"
+	"github.com/disgoorg/disgo/discord"
+	"github.com/disgoorg/disgo/events"
 	"strconv"
 	"strings"
 	"time"
 )
 
-func CommandAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
-	var userID string
-	if i.Member != nil {
-		userID = i.Member.User.ID
-	} else if i.User != nil {
-		userID = i.User.ID
-	} else {
-		logger.Log.Error("Interaction doesn't have Member or User")
-		respondToInteraction(s, i, "An error occurred while processing your request.")
-		return
-	}
+func CommandAccountLogs(client bot.Client, event *events.ApplicationCommandInteractionCreate, installType models.InstallationType) error {
+	userID := event.User().ID
 
 	var accounts []models.Account
 	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
-		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
-		return
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "Error fetching your accounts. Please try again.",
+			Flags:   discord.MessageFlagEphemeral,
+		})
 	}
 
 	if len(accounts) == 0 {
-		respondToInteraction(s, i, "You don't have any monitored accounts.")
-		return
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "You don't have any monitored accounts.",
+			Flags:   discord.MessageFlagEphemeral,
+		})
 	}
 
-	// Create buttons for each account
-	var components []discordgo.MessageComponent
+	var components []discord.MessageComponent
 	for _, account := range accounts {
-		components = append(components, discordgo.Button{
+		components = append(components, discord.ButtonComponent{
 			Label:    account.Title,
-			Style:    discordgo.PrimaryButton,
+			Style:    discord.ButtonStylePrimary,
 			CustomID: fmt.Sprintf("account_logs_%d", account.ID),
 		})
 	}
 
-	// Add "View All Logs" button
-	components = append(components, discordgo.Button{
+	components = append(components, discord.ButtonComponent{
 		Label:    "View All Logs",
-		Style:    discordgo.SuccessButton,
+		Style:    discord.ButtonStyleSuccess,
 		CustomID: "account_logs_all",
 	})
 
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: "Select an account to view its logs, or 'View All Logs' to see logs for all accounts:",
-			Flags:   discordgo.MessageFlagsEphemeral,
-			Components: []discordgo.MessageComponent{
-				discordgo.ActionsRow{
-					Components: components,
-				},
+	return event.CreateMessage(discord.MessageCreate{
+		Content: "Select an account to view its logs, or 'View All Logs' to see logs for all accounts:",
+		Flags:   discord.MessageFlagEphemeral,
+		Components: []discord.MessageComponent{
+			discord.ActionRowComponent{
+				Components: components,
 			},
 		},
 	})
-
-	if err != nil {
-		logger.Log.WithError(err).Error("Error responding with account selection")
-	}
 }
 
-func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
-	customID := i.MessageComponentData().CustomID
+func HandleAccountSelection(client bot.Client, event *events.ComponentInteractionCreate) error {
+	customID := event.Data.CustomID()
 
 	if customID == "account_logs_all" {
-		handleAllAccountLogs(s, i, installType)
-		return
+		return handleAllAccountLogs(client, event)
 	}
 
 	accountID, err := strconv.Atoi(strings.TrimPrefix(customID, "account_logs_"))
 	if err != nil {
 		logger.Log.WithError(err).Error("Error parsing account ID")
-		respondToInteraction(s, i, "Error processing your selection. Please try again.")
-		return
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "Error processing your selection. Please try again.",
+			Flags:   discord.MessageFlagEphemeral,
+		})
 	}
 
 	var account models.Account
 	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
-		respondToInteraction(s, i, "Error: Account not found or you don't have permission to view its logs.")
-		return
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "Error: Account not found or you don't have permission to view its logs.",
+			Flags:   discord.MessageFlagEphemeral,
+		})
 	}
 
 	embed := createAccountLogEmbed(account)
 
-	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseUpdateMessage,
-		Data: &discordgo.InteractionResponseData{
-			Embeds:     []*discordgo.MessageEmbed{embed},
-			Components: []discordgo.MessageComponent{},
-		},
+	return event.UpdateMessage(discord.MessageUpdate{
+		Embeds:     []*discord.Embed{embed},
+		Components: []discord.MessageComponent{},
 	})
-
-	if err != nil {
-		logger.Log.WithError(err).Error("Error responding to interaction with account logs")
-		respondToInteraction(s, i, "Error displaying account logs. Please try again.")
-	}
 }
 
-func handleAllAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
-	var userID string
-	if i.Member != nil {
-		userID = i.Member.User.ID
-	} else if i.User != nil {
-		userID = i.User.ID
-	} else {
-		logger.Log.Error("Interaction doesn't have Member or User")
-		respondToInteraction(s, i, "An error occurred while processing your request.")
-		return
-	}
+func handleAllAccountLogs(client bot.Client, event *events.ComponentInteractionCreate) error {
+	userID := event.User().ID
 
 	var accounts []models.Account
 	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
-		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
-		return
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "Error fetching your accounts. Please try again.",
+			Flags:   discord.MessageFlagEphemeral,
+		})
 	}
 
-	var embeds []*discordgo.MessageEmbed
+	var embeds []*discord.Embed
 	for _, account := range accounts {
 		embed := createAccountLogEmbed(account)
 		embeds = append(embeds, embed)
@@ -146,18 +122,15 @@ func handleAllAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate, 
 
 		var err error
 		if j == 0 {
-			err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseUpdateMessage,
-				Data: &discordgo.InteractionResponseData{
-					Content:    "",
-					Embeds:     embeds[j:end],
-					Components: []discordgo.MessageComponent{},
-				},
+			err = event.UpdateMessage(discord.MessageUpdate{
+				Content:    "",
+				Embeds:     embeds[j:end],
+				Components: []discord.MessageComponent{},
 			})
 		} else {
-			_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+			_, err = event.CreateFollowupMessage(discord.MessageCreate{
 				Embeds: embeds[j:end],
-				Flags:  discordgo.MessageFlagsEphemeral,
+				Flags:  discord.MessageFlagEphemeral,
 			})
 		}
 
@@ -165,42 +138,40 @@ func handleAllAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate, 
 			logger.Log.WithError(err).Error("Error sending account logs")
 		}
 	}
+
+	return nil
 }
 
-func createAccountLogEmbed(account models.Account) *discordgo.MessageEmbed {
+func createAccountLogEmbed(account models.Account) *discord.Embed {
 	var logs []models.Ban
 	database.DB.Where("account_id = ?", account.ID).Order("created_at desc").Limit(10).Find(&logs)
 
-	embed := &discordgo.MessageEmbed{
-		Title:       fmt.Sprintf("%s - Account Logs", account.Title),
-		Description: "The last 10 status changes for this account",
-		Color:       services.GetColorForStatus(account.LastStatus.Overall),
-		Fields:      make([]*discordgo.MessageEmbedField, 0),
-	}
+	embedBuilder := discord.NewEmbedBuilder().
+		SetTitle(fmt.Sprintf("%s - Account Logs", account.Title)).
+		SetDescription("The last 10 status changes for this account").
+		SetColor(services.GetColorForStatus(account.LastStatus.Overall))
 
-	// Add current status field
-	currentStatusField := &discordgo.MessageEmbedField{
+	currentStatusField := discord.EmbedField{
 		Name:   "Current Status",
 		Value:  formatAccountStatus(account.LastStatus),
 		Inline: false,
 	}
-	embed.Fields = append(embed.Fields, currentStatusField)
+	embedBuilder.AddField(currentStatusField)
 
-	// Add log entries
 	for i, log := range logs {
-		logEntry := &discordgo.MessageEmbedField{
+		logEntry := discord.EmbedField{
 			Name:   fmt.Sprintf("Status Change %d", i+1),
 			Value:  fmt.Sprintf("Status: %s\nTime: %s", log.Status, log.CreatedAt.Format(time.RFC1123)),
 			Inline: false,
 		}
-		embed.Fields = append(embed.Fields, logEntry)
+		embedBuilder.AddField(logEntry)
 	}
 
 	if len(logs) == 0 {
-		embed.Description = "No status changes logged for this account yet."
+		embedBuilder.SetDescription("No status changes logged for this account yet.")
 	}
 
-	return embed
+	return embedBuilder.Build()
 }
 
 func formatAccountStatus(status models.AccountStatus) string {
@@ -226,17 +197,4 @@ func formatAccountStatus(status models.AccountStatus) string {
 	}
 
 	return sb.String()
-}
-
-func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: content,
-			Flags:   discordgo.MessageFlagsEphemeral,
-		},
-	})
-	if err != nil {
-		logger.Log.WithError(err).Error("Error responding to interaction")
-	}
 }
