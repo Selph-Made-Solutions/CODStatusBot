@@ -6,37 +6,34 @@ import (
 	"CODStatusBot/models"
 	"CODStatusBot/services"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
+	"github.com/disgoorg/disgo/bot"
+	"github.com/disgoorg/disgo/discord"
+	"github.com/disgoorg/disgo/events"
 	"strconv"
 	"strings"
 	"time"
 )
 
-func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
-	var userID string
-	if i.Member != nil {
-		userID = i.Member.User.ID
-	} else if i.User != nil {
-		userID = i.User.ID
-	} else {
-		logger.Log.Error("Interaction doesn't have Member or User")
-		respondToInteraction(s, i, "An error occurred while processing your request.")
-		return
-	}
+func CommandCheckNow(client bot.Client, event *events.ApplicationCommandInteractionCreate, installType models.InstallationType) error {
+	userID := event.User().ID
 
-	userSettings, err := services.GetUserSettings(userID, installType)
+	userSettings, err := services.GetUserSettings(userID.String(), installType)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error fetching user settings")
-		respondToInteraction(s, i, "Error fetching user settings. Please try again later.")
-		return
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "Error fetching user settings. Please try again later.",
+			Flags:   discord.MessageFlagEphemeral,
+		})
 	}
 
 	logger.Log.Infof("User %s initiated a check. API Key set: %v", userID, userSettings.CaptchaAPIKey != "")
 
 	if userSettings.CaptchaAPIKey == "" {
-		if !services.CheckDefaultKeyRateLimit(userID) {
-			respondToInteraction(s, i, fmt.Sprintf("You're using the default API key too frequently. Please wait before trying again, or set up your own API key for unlimited use."))
-			return
+		if !services.CheckDefaultKeyRateLimit(userID.String()) {
+			return event.CreateMessage(discord.MessageCreate{
+				Content: "You're using the default API key too frequently. Please wait before trying again, or set up your own API key for unlimited use.",
+				Flags:   discord.MessageFlagEphemeral,
+			})
 		}
 	}
 
@@ -45,110 +42,105 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate, insta
 
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching accounts")
-		respondToInteraction(s, i, "Error fetching accounts. Please try again later.")
-		return
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "Error fetching accounts. Please try again later.",
+			Flags:   discord.MessageFlagEphemeral,
+		})
 	}
 
 	if len(accounts) == 0 {
-		respondToInteraction(s, i, "You don't have any monitored accounts.")
-		return
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "You don't have any monitored accounts.",
+			Flags:   discord.MessageFlagEphemeral,
+		})
 	}
 
-	showAccountButtons(s, i, accounts)
+	return showAccountButtons(event, accounts)
 }
 
-// Update other functions to include installType where necessary
-func showAccountButtons(s *discordgo.Session, i *discordgo.InteractionCreate, accounts []models.Account) {
-	var components []discordgo.MessageComponent
+func showAccountButtons(event *events.ApplicationCommandInteractionCreate, accounts []models.Account) error {
+	var components []discord.MessageComponent
 	for _, account := range accounts {
-		components = append(components, discordgo.Button{
+		components = append(components, discord.ButtonComponent{
 			Label:    account.Title,
-			Style:    discordgo.PrimaryButton,
+			Style:    discord.ButtonStylePrimary,
 			CustomID: fmt.Sprintf("check_now_%d", account.ID),
 		})
 	}
 
-	components = append(components, discordgo.Button{
+	components = append(components, discord.ButtonComponent{
 		Label:    "Check All",
-		Style:    discordgo.SuccessButton,
+		Style:    discord.ButtonStyleSuccess,
 		CustomID: "check_now_all",
 	})
 
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: "Select an account to check, or 'Check All' to check all accounts:",
-			Flags:   discordgo.MessageFlagsEphemeral,
-			Components: []discordgo.MessageComponent{
-				discordgo.ActionsRow{
-					Components: components,
-				},
+	return event.CreateMessage(discord.MessageCreate{
+		Content: "Select an account to check, or 'Check All' to check all accounts:",
+		Flags:   discord.MessageFlagEphemeral,
+		Components: []discord.MessageComponent{
+			discord.ActionRowComponent{
+				Components: components,
 			},
 		},
 	})
-
-	if err != nil {
-		logger.Log.WithError(err).Error("Error responding with account selection")
-	}
 }
 
-// Update HandleAccountSelection to pass installType to checkAccounts
-func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
-	customID := i.MessageComponentData().CustomID
+func HandleAccountSelection(client bot.Client, event *events.ComponentInteractionCreate) error {
+	customID := event.Data.CustomID()
 
 	if customID == "check_now_all" {
 		var accounts []models.Account
-		result := database.DB.Where("user_id = ?", i.Member.User.ID).Find(&accounts)
+		result := database.DB.Where("user_id = ?", event.User().ID).Find(&accounts)
 		if result.Error != nil {
 			logger.Log.WithError(result.Error).Error("Error fetching accounts")
-			respondToInteraction(s, i, "Error fetching accounts. Please try again later.")
-			return
+			return event.CreateMessage(discord.MessageCreate{
+				Content: "Error fetching accounts. Please try again later.",
+				Flags:   discord.MessageFlagEphemeral,
+			})
 		}
-		checkAccounts(s, i, accounts)
-		return
+		return checkAccounts(client, event, accounts)
 	}
 
 	accountID, err := strconv.Atoi(strings.TrimPrefix(customID, "check_now_"))
 	if err != nil {
 		logger.Log.WithError(err).Error("Error parsing account ID")
-		respondToInteraction(s, i, "Error processing your selection. Please try again.")
-		return
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "Error processing your selection. Please try again.",
+			Flags:   discord.MessageFlagEphemeral,
+		})
 	}
 
 	var account models.Account
 	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
-		respondToInteraction(s, i, "Error: Account not found or you don't have permission to check it.")
-		return
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "Error: Account not found or you don't have permission to check it.",
+			Flags:   discord.MessageFlagEphemeral,
+		})
 	}
 
-	checkAccounts(s, i, []models.Account{account})
+	return checkAccounts(client, event, []models.Account{account})
 }
 
-func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, accounts []models.Account) {
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Flags: discordgo.MessageFlagsEphemeral,
-		},
-	})
+func checkAccounts(client bot.Client, event *events.ComponentInteractionCreate, accounts []models.Account) error {
+	err := event.DeferResponse()
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to defer interaction response")
-		return
+		return err
 	}
 
-	var embeds []*discordgo.MessageEmbed
+	var embeds []*discord.Embed
 
 	for _, account := range accounts {
 		logger.Log.Infof("Checking account %s for user %s", account.Title, account.UserID)
 
 		if account.IsExpiredCookie {
-			embed := &discordgo.MessageEmbed{
-				Title:       fmt.Sprintf("%s - Expired Cookie", account.Title),
-				Description: "The SSO cookie for this account has expired. Please update it using the /updateaccount command.",
-				Color:       0xFF0000, // Red color for expired cookie
-			}
+			embed := discord.NewEmbedBuilder().
+				SetTitle(fmt.Sprintf("%s - Expired Cookie", account.Title)).
+				SetDescription("The SSO cookie for this account has expired. Please update it using the /updateaccount command.").
+				SetColor(0xFF0000).
+				Build()
 			embeds = append(embeds, embed)
 			continue
 		}
@@ -164,11 +156,11 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 				errorDescription += "Please try again later. If the problem continues, consider updating your account's SSO cookie."
 			}
 
-			embed := &discordgo.MessageEmbed{
-				Title:       fmt.Sprintf("%s - Error", account.Title),
-				Description: errorDescription,
-				Color:       0xFF0000, // Red color for error
-			}
+			embed := discord.NewEmbedBuilder().
+				SetTitle(fmt.Sprintf("%s - Error", account.Title)).
+				SetDescription(errorDescription).
+				SetColor(0xFF0000).
+				Build()
 			embeds = append(embeds, embed)
 			continue
 		}
@@ -191,24 +183,24 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 		if end > len(embeds) {
 			end = len(embeds)
 		}
-		_, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+		_, err := event.CreateFollowupMessage(discord.MessageCreate{
 			Embeds: embeds[j:end],
-			Flags:  discordgo.MessageFlagsEphemeral,
+			Flags:  discord.MessageFlagEphemeral,
 		})
 		if err != nil {
 			logger.Log.WithError(err).Error("Failed to send follow-up message")
 		}
 	}
+
+	return nil
 }
 
-func createStatusEmbed(accountTitle string, status models.AccountStatus) *discordgo.MessageEmbed {
-	embed := &discordgo.MessageEmbed{
-		Title:       fmt.Sprintf("%s - Account Status", accountTitle),
-		Description: fmt.Sprintf("Overall Status: %s", status.Overall),
-		Color:       services.GetColorForStatus(status.Overall),
-		Timestamp:   time.Now().Format(time.RFC3339),
-		Fields:      []*discordgo.MessageEmbedField{},
-	}
+func createStatusEmbed(accountTitle string, status models.AccountStatus) *discord.Embed {
+	embedBuilder := discord.NewEmbedBuilder().
+		SetTitle(fmt.Sprintf("%s - Account Status", accountTitle)).
+		SetDescription(fmt.Sprintf("Overall Status: %s", status.Overall)).
+		SetColor(services.GetColorForStatus(status.Overall)).
+		SetTimestamp(time.Now())
 
 	for game, gameStatus := range status.Games {
 		var statusDesc string
@@ -226,25 +218,8 @@ func createStatusEmbed(accountTitle string, status models.AccountStatus) *discor
 			statusDesc = "Unknown Status"
 		}
 
-		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-			Name:   game,
-			Value:  statusDesc,
-			Inline: true,
-		})
+		embedBuilder.AddField(game, statusDesc, true)
 	}
 
-	return embed
-}
-
-func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: content,
-			Flags:   discordgo.MessageFlagsEphemeral,
-		},
-	})
-	if err != nil {
-		logger.Log.WithError(err).Error("Error responding to interaction")
-	}
+	return embedBuilder.Build()
 }
