@@ -5,173 +5,140 @@ import (
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
+	"github.com/disgoorg/disgo/bot"
+	"github.com/disgoorg/disgo/discord"
+	"github.com/disgoorg/disgo/events"
 	"strconv"
 	"strings"
 )
 
-func CommandRemoveAccount(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
-	var userID string
-	if i.Member != nil {
-		userID = i.Member.User.ID
-	} else if i.User != nil {
-		userID = i.User.ID
-	} else {
-		logger.Log.Error("Interaction doesn't have Member or User")
-		respondToInteraction(s, i, "An error occurred while processing your request.")
-		return
-	}
+func CommandRemoveAccount(client bot.Client, event *events.ApplicationCommandInteractionCreate, installType models.InstallationType) error {
+	userID := event.User().ID
 
 	var accounts []models.Account
 	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
-		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
-		return
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "Error fetching your accounts. Please try again.",
+			Flags:   discord.MessageFlagEphemeral,
+		})
 	}
 
 	if len(accounts) == 0 {
-		respondToInteraction(s, i, "You don't have any monitored accounts to remove.")
-		return
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "You don't have any monitored accounts to remove.",
+			Flags:   discord.MessageFlagEphemeral,
+		})
 	}
 
-	// Create buttons for each account
-	var components []discordgo.MessageComponent
+	var components []discord.MessageComponent
 	for _, account := range accounts {
-		components = append(components, discordgo.Button{
+		components = append(components, discord.ButtonComponent{
 			Label:    account.Title,
-			Style:    discordgo.PrimaryButton,
+			Style:    discord.ButtonStylePrimary,
 			CustomID: fmt.Sprintf("remove_account_%d", account.ID),
 		})
 	}
 
-	// Send message with account buttons
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: "Select an account to remove:",
-			Flags:   discordgo.MessageFlagsEphemeral,
-			Components: []discordgo.MessageComponent{
-				discordgo.ActionsRow{
-					Components: components,
-				},
+	return event.CreateMessage(discord.MessageCreate{
+		Content: "Select an account to remove:",
+		Flags:   discord.MessageFlagEphemeral,
+		Components: []discord.MessageComponent{
+			discord.ActionRowComponent{
+				Components: components,
 			},
 		},
 	})
-
-	if err != nil {
-		logger.Log.WithError(err).Error("Error responding with account selection")
-	}
 }
 
-func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
-	customID := i.MessageComponentData().CustomID
+func HandleAccountSelection(client bot.Client, event *events.ComponentInteractionCreate) error {
+	customID := event.Data.CustomID()
 	accountID, err := strconv.Atoi(strings.TrimPrefix(customID, "remove_account_"))
 	if err != nil {
 		logger.Log.WithError(err).Error("Error parsing account ID")
-		respondToInteraction(s, i, "Error processing your selection. Please try again.")
-		return
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "Error processing your selection. Please try again.",
+			Flags:   discord.MessageFlagEphemeral,
+		})
 	}
 
 	var account models.Account
 	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
-		respondToInteraction(s, i, "Error: Account not found or you don't have permission to remove it.")
-		return
+		return event.CreateMessage(discord.MessageCreate{
+			Content: "Error: Account not found or you don't have permission to remove it.",
+			Flags:   discord.MessageFlagEphemeral,
+		})
 	}
 
-	// Show confirmation buttons
-	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseUpdateMessage,
-		Data: &discordgo.InteractionResponseData{
-			Content: fmt.Sprintf("Are you sure you want to remove the account '%s'? This action is permanent and cannot be undone.", account.Title),
-			Components: []discordgo.MessageComponent{
-				discordgo.ActionsRow{
-					Components: []discordgo.MessageComponent{
-						discordgo.Button{
-							Label:    "Delete",
-							Style:    discordgo.DangerButton,
-							CustomID: fmt.Sprintf("confirm_remove_%d", account.ID),
-						},
-						discordgo.Button{
-							Label:    "Cancel",
-							Style:    discordgo.SecondaryButton,
-							CustomID: "cancel_remove",
-						},
+	return event.UpdateMessage(discord.MessageUpdate{
+		Content: discord.NewValueOptional(fmt.Sprintf("Are you sure you want to remove the account '%s'? This action is permanent and cannot be undone.", account.Title)),
+		Components: []discord.MessageComponent{
+			discord.ActionRowComponent{
+				Components: []discord.MessageComponent{
+					discord.ButtonComponent{
+						Label:    "Delete",
+						Style:    discord.ButtonStyleDanger,
+						CustomID: fmt.Sprintf("confirm_remove_%d", account.ID),
+					},
+					discord.ButtonComponent{
+						Label:    "Cancel",
+						Style:    discord.ButtonStyleSecondary,
+						CustomID: "cancel_remove",
 					},
 				},
 			},
 		},
 	})
-
-	if err != nil {
-		logger.Log.WithError(err).Error("Error showing confirmation buttons")
-		respondToInteraction(s, i, "An error occurred. Please try again.")
-	}
 }
 
-func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
-	customID := i.MessageComponentData().CustomID
+func HandleConfirmation(client bot.Client, event *events.ComponentInteractionCreate) error {
+	customID := event.Data.CustomID()
 
 	if customID == "cancel_remove" {
-		respondToInteraction(s, i, "Account removal cancelled.")
-		return
+		return respondToInteraction(event, "Account removal cancelled.")
 	}
 
 	accountID, err := strconv.Atoi(strings.TrimPrefix(customID, "confirm_remove_"))
 	if err != nil {
 		logger.Log.WithError(err).Error("Error parsing account ID")
-		respondToInteraction(s, i, "Error processing your confirmation. Please try again.")
-		return
+		return respondToInteraction(event, "Error processing your confirmation. Please try again.")
 	}
 
 	var account models.Account
 	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
-		respondToInteraction(s, i, "Error: Account not found or you don't have permission to remove it.")
-		return
+		return respondToInteraction(event, "Error: Account not found or you don't have permission to remove it.")
 	}
 
-	// Start a transaction
 	tx := database.DB.Begin()
 
-	// Delete associated bans
 	if err := tx.Where("account_id = ?", account.ID).Delete(&models.Ban{}).Error; err != nil {
 		tx.Rollback()
 		logger.Log.WithError(err).Error("Error deleting associated bans")
-		respondToInteraction(s, i, "Error removing account. Please try again.")
-		return
+		return respondToInteraction(event, "Error removing account. Please try again.")
 	}
 
-	// Delete the account
 	if err := tx.Delete(&account).Error; err != nil {
 		tx.Rollback()
 		logger.Log.WithError(err).Error("Error deleting account")
-		respondToInteraction(s, i, "Error removing account. Please try again.")
-		return
+		return respondToInteraction(event, "Error removing account. Please try again.")
 	}
 
-	// Commit the transaction
 	if err := tx.Commit().Error; err != nil {
 		logger.Log.WithError(err).Error("Error committing transaction")
-		respondToInteraction(s, i, "Error removing account. Please try again.")
-		return
+		return respondToInteraction(event, "Error removing account. Please try again.")
 	}
 
-	respondToInteraction(s, i, fmt.Sprintf("Account '%s' has been successfully removed from the database.", account.Title))
+	return respondToInteraction(event, fmt.Sprintf("Account '%s' has been successfully removed from the database.", account.Title))
 }
 
-func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseUpdateMessage,
-		Data: &discordgo.InteractionResponseData{
-			Content:    message,
-			Components: []discordgo.MessageComponent{}, // Remove all components
-		},
+func respondToInteraction(event *events.ComponentInteractionCreate, message string) error {
+	return event.UpdateMessage(discord.MessageUpdate{
+		Content:    discord.NewValueOptional(message),
+		Components: []discord.MessageComponent{},
 	})
-	if err != nil {
-		logger.Log.WithError(err).Error("Error responding to interaction")
-	}
 }
