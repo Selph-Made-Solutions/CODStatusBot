@@ -3,11 +3,12 @@ package helpapi
 import (
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
-
-	"github.com/bwmarrin/discordgo"
+	"github.com/disgoorg/disgo/bot"
+	"github.com/disgoorg/disgo/discord"
+	"github.com/disgoorg/disgo/events"
 )
 
-func CommandHelpApi(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
+func CommandHelpApi(client bot.Client, event *events.ApplicationCommandInteractionCreate, installType models.InstallationType) error {
 	logger.Log.Info("Received help command")
 	helpApiGuide := []string{
 		"CODStatusBot Help Guide\n\n" +
@@ -55,23 +56,22 @@ func CommandHelpApi(s *discordgo.Session, i *discordgo.InteractionCreate, instal
 	for partIndex, part := range helpApiGuide {
 		var err error
 		if partIndex == 0 {
-			err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content: part,
-					Flags:   discordgo.MessageFlagsEphemeral,
-				},
-			})
+			err = event.CreateMessage(discord.NewMessageCreateBuilder().
+				SetContent(part).
+				SetFlags(discord.MessageFlagEphemeral).
+				Build())
 		} else {
-			_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
-				Content: part,
-				Flags:   discordgo.MessageFlagsEphemeral,
-			})
+			_, err = event.CreateFollowupMessage(discord.NewMessageCreateBuilder().
+				SetContent(part).
+				SetFlags(discord.MessageFlagEphemeral).
+				Build())
 		}
 
 		if err != nil {
 			logger.Log.WithError(err).Error("Error responding to help api command")
-			return
+			return err
 		}
 	}
+
+	return nil
 }
