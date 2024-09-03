@@ -3,13 +3,15 @@ package helpcookie
 import (
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
-
-	"github.com/bwmarrin/discordgo"
+	"github.com/disgoorg/disgo/bot"
+	"github.com/disgoorg/disgo/discord"
+	"github.com/disgoorg/disgo/events"
 )
 
-func CommandHelpCookie(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
+func CommandHelpCookie(client bot.Client, event *events.ApplicationCommandInteractionCreate, installType models.InstallationType) error {
 	logger.Log.Info("Received help command")
-	helpcookieGuide := "To obtain your SSO (Single Sign-On) cookie, follow these steps:\atusBot Help Guide\n\n" +
+	helpcookieGuide := "To obtain your SSO (Single Sign-On) cookie, follow these steps:\n\n" +
+		"CODStatusBot Help Guide\n\n" +
 		"To add your Call of Duty account to the bot, you'll need to obtain your SSO (Single Sign-On) cookie. Follow these steps:\n\n" +
 		"1. **Login to Your Activision Account:**\n" +
 		"   - Go to [Activision's website](https://www.activision.com/) and log in with the account you want to track.\n\n" +
@@ -42,15 +44,15 @@ func CommandHelpCookie(s *discordgo.Session, i *discordgo.InteractionCreate, ins
 		"  - Log in to Activision.\n" +
 		"  - Use the extension to find and copy the \"ACT_SSO_COOKIE\" value."
 
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: helpcookieGuide,
-			Flags:   discordgo.MessageFlagsEphemeral,
-		},
-	})
+	err := event.CreateMessage(discord.NewMessageCreateBuilder().
+		SetContent(helpcookieGuide).
+		SetFlags(discord.MessageFlagEphemeral).
+		Build())
 
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to help cookie command")
+		return err
 	}
+
+	return nil
 }
