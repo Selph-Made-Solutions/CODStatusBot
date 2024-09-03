@@ -4,81 +4,48 @@ import (
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
-	"github.com/bwmarrin/discordgo"
+	"github.com/disgoorg/disgo/bot"
+	"github.com/disgoorg/disgo/discord"
+	"github.com/disgoorg/disgo/events"
 	"strings"
 )
 
-func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseModal,
-		Data: &discordgo.InteractionResponseData{
-			CustomID: "set_captcha_service_modal",
-			Title:    "Set EZ-Captcha API Key",
-			Components: []discordgo.MessageComponent{
-				discordgo.ActionsRow{
-					Components: []discordgo.MessageComponent{
-						discordgo.TextInput{
-							CustomID:    "api_key",
-							Label:       "Enter your EZ-Captcha API key",
-							Style:       discordgo.TextInputShort,
-							Placeholder: "Leave blank to use bot's default key",
-							Required:    false,
-						},
-					},
-				},
-			},
-		},
-	})
-
-	if err != nil {
-		logger.Log.WithError(err).Error("Error responding with modal")
-	}
+func CommandSetCaptchaService(client bot.Client, event *events.ApplicationCommandInteractionCreate, installType models.InstallationType) error {
+	return event.CreateModal(discord.NewModalCreateBuilder().
+		SetCustomID("set_captcha_service_modal").
+		SetTitle("Set EZ-Captcha API Key").
+		AddActionRow(discord.TextInputComponent{
+			CustomID:    "api_key",
+			Label:       "Enter your EZ-Captcha API key",
+			Style:       discord.TextInputStyleShort,
+			Placeholder: "Leave blank to use bot's default key",
+			Required:    false,
+		}).
+		Build())
 }
 
-func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
-	data := i.ModalSubmitData()
+func HandleModalSubmit(client bot.Client, event *events.ModalSubmitInteractionCreate) error {
+	data := event.Data
 
-	var apiKey string
-	for _, comp := range data.Components {
-		if row, ok := comp.(*discordgo.ActionsRow); ok {
-			for _, rowComp := range row.Components {
-				if textInput, ok := rowComp.(*discordgo.TextInput); ok && textInput.CustomID == "api_key" {
-					apiKey = strings.TrimSpace(textInput.Value)
-				}
-			}
-		}
-	}
+	apiKey := strings.TrimSpace(data.Text("api_key"))
 
-	var userID string
-	if i.Member != nil {
-		userID = i.Member.User.ID
-	} else if i.User != nil {
-		userID = i.User.ID
-	} else {
-		logger.Log.Error("Interaction doesn't have Member or User")
-		respondToInteraction(s, i, "An error occurred while processing your request.")
-		return
-	}
+	userID := event.User().ID
 
-	// Validate the API key
 	if apiKey != "" {
 		isValid, err := services.ValidateCaptchaKey(apiKey)
 		if err != nil {
 			logger.Log.WithError(err).Error("Error validating captcha key")
-			respondToInteraction(s, i, "Error validating the EZ-Captcha API key. Please try again.")
-			return
+			return respondToInteraction(event, "Error validating the EZ-Captcha API key. Please try again.")
 		}
 		if !isValid {
-			respondToInteraction(s, i, "The provided EZ-Captcha API key is invalid. Please check and try again.")
-			return
+			return respondToInteraction(event, "The provided EZ-Captcha API key is invalid. Please check and try again.")
 		}
 	}
 
-	err := services.SetUserCaptchaKey(userID, apiKey)
+	err := services.SetUserCaptchaKey(userID.String(), apiKey)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error setting user captcha key")
-		respondToInteraction(s, i, "Error setting EZ-Captcha API key. Please try again.")
-		return
+		return respondToInteraction(event, "Error setting EZ-Captcha API key. Please try again.")
 	}
 
 	message := "Your EZ-Captcha API key has been updated for all your accounts."
@@ -88,18 +55,12 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, ins
 		message += " Your custom API key has been set. You now have access to more frequent checks and notifications."
 	}
 
-	respondToInteraction(s, i, message)
+	return respondToInteraction(event, message)
 }
 
-func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: message,
-			Flags:   discordgo.MessageFlagsEphemeral,
-		},
+func respondToInteraction(event *events.ModalSubmitInteractionCreate, message string) error {
+	return event.CreateMessage(discord.MessageCreate{
+		Content: message,
+		Flags:   discord.MessageFlagEphemeral,
 	})
-	if err != nil {
-		logger.Log.WithError(err).Error("Error responding to interaction")
-	}
 }
