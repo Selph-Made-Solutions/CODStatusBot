@@ -18,104 +18,83 @@ import (
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
-	"github.com/bwmarrin/discordgo"
+	"github.com/disgoorg/disgo/bot"
+	"github.com/disgoorg/disgo/discord"
+	"github.com/disgoorg/disgo/events"
 )
 
-var Handlers = map[string]func(*discordgo.Session, *discordgo.InteractionCreate, models.InstallationType){}
+var Handlers = map[string]func(bot.Client, *events.ApplicationCommandInteractionCreate, models.InstallationType) error{}
 
-func RegisterCommands(s *discordgo.Session) {
+func RegisterCommands(client bot.Client) {
 	logger.Log.Info("Registering global commands")
 
-	commands := []*discordgo.ApplicationCommand{
-		{
-			Name:         "globalannouncement",
-			Description:  "Send a global announcement to all users (Admin only)",
-			DMPermission: BoolPtr(false),
+	commands := []discord.ApplicationCommandCreate{
+		discord.SlashCommandCreate{
+			Name:        "globalannouncement",
+			Description: "Send a global announcement to all users (Admin only)",
 		},
-		{
-			Name:         "setcaptchaservice",
-			Description:  "Set your EZ-Captcha API key",
-			DMPermission: BoolPtr(true),
+		discord.SlashCommandCreate{
+			Name:        "setcaptchaservice",
+			Description: "Set your EZ-Captcha API key",
 		},
-		{
-			Name:         "setcheckinterval",
-			Description:  "Set check interval, notification interval, and notification type",
-			DMPermission: BoolPtr(true),
+		discord.SlashCommandCreate{
+			Name:        "setcheckinterval",
+			Description: "Set check interval, notification interval, and notification type",
 		},
-		{
-			Name:         "addaccount",
-			Description:  "Add a new account to monitor",
-			DMPermission: BoolPtr(true),
+		discord.SlashCommandCreate{
+			Name:        "addaccount",
+			Description: "Add a new account to monitor",
 		},
-		{
-			Name:         "helpapi",
-			Description:  "Get help on using the bot and setting up your API key",
-			DMPermission: BoolPtr(true),
+		discord.SlashCommandCreate{
+			Name:        "helpapi",
+			Description: "Get help on using the bot and setting up your API key",
 		},
-		{
-			Name:         "helpcookie",
-			Description:  "Simple guide to getting your SSOCookie",
-			DMPermission: BoolPtr(true),
+		discord.SlashCommandCreate{
+			Name:        "helpcookie",
+			Description: "Simple guide to getting your SSOCookie",
 		},
-		{
-			Name:         "accountage",
-			Description:  "Check the age of an account",
-			DMPermission: BoolPtr(true),
+		discord.SlashCommandCreate{
+			Name:        "accountage",
+			Description: "Check the age of an account",
 		},
-		{
-			Name:         "accountlogs",
-			Description:  "View the logs for an account",
-			DMPermission: BoolPtr(true),
+		discord.SlashCommandCreate{
+			Name:        "accountlogs",
+			Description: "View the logs for an account",
 		},
-		{
-			Name:         "checknow",
-			Description:  "Check account status now (rate limited for default API key)",
-			DMPermission: BoolPtr(true),
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "account_title",
-					Description: "The title of the specific account to check (optional)",
-					Required:    false,
-				},
-			},
+		discord.SlashCommandCreate{
+			Name:        "checknow",
+			Description: "Check account status now (rate limited for default API key)",
 		},
-		{
-			Name:         "listaccounts",
-			Description:  "List all your monitored accounts",
-			DMPermission: BoolPtr(true),
+		discord.SlashCommandCreate{
+			Name:        "listaccounts",
+			Description: "List all your monitored accounts",
 		},
-		{
-			Name:         "removeaccount",
-			Description:  "Remove a monitored account",
-			DMPermission: BoolPtr(true),
+		discord.SlashCommandCreate{
+			Name:        "removeaccount",
+			Description: "Remove a monitored account",
 		},
-		{
-			Name:         "updateaccount",
-			Description:  "Update a monitored account's information",
-			DMPermission: BoolPtr(true),
+		discord.SlashCommandCreate{
+			Name:        "updateaccount",
+			Description: "Update a monitored account's information",
 		},
-		{
-			Name:         "feedback",
-			Description:  "Send anonymous feedback to the bot developer",
-			DMPermission: BoolPtr(true),
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionString,
+		discord.SlashCommandCreate{
+			Name:        "feedback",
+			Description: "Send anonymous feedback to the bot developer",
+			Options: []discord.ApplicationCommandOption{
+				discord.ApplicationCommandOptionString{
 					Name:        "message",
 					Description: "Your feedback or suggestion",
 					Required:    true,
 				},
 			},
 		},
-		{
-			Name:         "togglecheck",
-			Description:  "Toggle checks on/off for a monitored account",
-			DMPermission: BoolPtr(true),
+		discord.SlashCommandCreate{
+			Name:        "togglecheck",
+			Description: "Toggle checks on/off for a monitored account",
 		},
 	}
 
-	_, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, "", commands)
+	_, err := client.Rest().SetGlobalCommands(client.ApplicationID(), commands)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error registering global commands")
 		return
@@ -126,7 +105,6 @@ func RegisterCommands(s *discordgo.Session) {
 	Handlers["setcaptchaservice"] = setcaptchaservice.CommandSetCaptchaService
 	Handlers["setcheckinterval"] = setcheckinterval.CommandSetCheckInterval
 	Handlers["addaccount"] = addaccount.CommandAddAccount
-	Handlers["add_account_modal"] = addaccount.HandleModalSubmit
 	Handlers["helpcookie"] = helpcookie.CommandHelpCookie
 	Handlers["helpapi"] = helpapi.CommandHelpApi
 	Handlers["feedback"] = feedback.CommandFeedback
@@ -135,28 +113,16 @@ func RegisterCommands(s *discordgo.Session) {
 	Handlers["checknow"] = checknow.CommandCheckNow
 	Handlers["listaccounts"] = listaccounts.CommandListAccounts
 	Handlers["removeaccount"] = removeaccount.CommandRemoveAccount
-	Handlers["remove_account_select"] = removeaccount.HandleAccountSelection
 	Handlers["updateaccount"] = updateaccount.CommandUpdateAccount
-	Handlers["update_account_modal"] = updateaccount.HandleModalSubmit
-	Handlers["set_check_interval_modal"] = setcheckinterval.HandleModalSubmit
 	Handlers["togglecheck"] = togglecheck.CommandToggleCheck
 
 	logger.Log.Info("Global commands registered and handlers set up")
 }
 
 // HandleCommand handles incoming commands and checks for announcements
-func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
+func HandleCommand(client bot.Client, event *events.ApplicationCommandInteractionCreate, installType models.InstallationType) {
 	// Check if the user has seen the announcement
-	var userID string
-
-	if i.Member != nil {
-		userID = i.Member.User.ID
-	} else if i.User != nil {
-		userID = i.User.ID
-	} else {
-		logger.Log.Error("Interaction doesn't have Member or User")
-		return
-	}
+	userID := event.User().ID.String()
 
 	// Check if the user has seen the announcement
 	var userSettings models.UserSettings
@@ -165,7 +131,7 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate, install
 		logger.Log.WithError(result.Error).Error("Error getting user settings")
 	} else if !userSettings.HasSeenAnnouncement {
 		// Send the announcement to the user
-		if err := globalannouncement.SendGlobalAnnouncement(s, userID); err != nil {
+		if err := globalannouncement.SendGlobalAnnouncement(client, userID); err != nil {
 			logger.Log.WithError(err).Error("Error sending announcement to user")
 		} else {
 			// Update the user's settings to mark the announcement as seen
@@ -177,12 +143,20 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate, install
 	}
 
 	// Continue with regular command handling
-	if h, ok := Handlers[i.ApplicationCommandData().Name]; ok {
-		h(s, i, models.InstallTypeGuild)
+	if handler, ok := Handlers[event.Data.CommandName()]; ok {
+		err := handler(client, event, installType)
+		if err != nil {
+			logger.Log.WithError(err).Errorf("Error handling command: %s", event.Data.CommandName())
+			event.CreateMessage(discord.MessageCreate{
+				Content: "An error occurred while processing your request. Please try again later.",
+				Flags:   discord.MessageFlagEphemeral,
+			})
+		}
+	} else {
+		logger.Log.Errorf("Unknown command: %s", event.Data.CommandName())
+		event.CreateMessage(discord.MessageCreate{
+			Content: "Unknown command. Please try again.",
+			Flags:   discord.MessageFlagEphemeral,
+		})
 	}
-}
-
-// BoolPtr Helper function to create a pointer to a bool
-func BoolPtr(b bool) *bool {
-	return &b
 }
