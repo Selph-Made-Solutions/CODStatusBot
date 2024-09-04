@@ -55,7 +55,7 @@ func Databaselogin() error {
 	// SetConnMaxLifetime sets the maximum amount of time a connection may be reused.
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
-	err = DB.AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{})
+	err = GetDB().AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{})
 	if err != nil {
 		logger.Log.WithError(err).WithField("Bot Startup ", "Database Models Problem ").Error()
 		return err

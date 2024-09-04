@@ -153,7 +153,7 @@ func updateAccountTimestamps(account *models.Account) {
 
 	account.LastCheck = time.Now().Unix()
 	account.LastNotification = time.Now().Unix()
-	if err := database.DB.Save(account).Error; err != nil {
+	if err := database.GetDB().Save(account).Error; err != nil {
 		logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
 	}
 }
@@ -163,7 +163,7 @@ func CheckAccounts(s *discordgo.Session) {
 	for {
 		logger.Log.Info("Starting periodic account check")
 		var accounts []models.Account
-		if err := database.DB.Find(&accounts).Error; err != nil {
+		if err := database.GetDB().Find(&accounts).Error; err != nil {
 			logger.Log.WithError(err).Error("Failed to fetch accounts from the database")
 			time.Sleep(time.Duration(sleepDuration) * time.Minute)
 			continue
@@ -247,13 +247,13 @@ func handlePermabannedAccount(account *models.Account, s *discordgo.Session) {
 	if time.Since(lastCookieCheck).Hours() > cookieCheckIntervalPermaban {
 		if !VerifySSOCookie(account.SSOCookie) {
 			account.IsExpiredCookie = true
-			if err := database.DB.Save(account).Error; err != nil {
+			if err := database.GetDB().Save(account).Error; err != nil {
 				logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
 			}
 			go sendDailyUpdate(*account, s)
 		}
 		account.LastCookieCheck = time.Now().Unix()
-		if err := database.DB.Save(account).Error; err != nil {
+		if err := database.GetDB().Save(account).Error; err != nil {
 			logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
 		}
 	}
@@ -330,7 +330,7 @@ func updateAccountStatus(account *models.Account, result models.AccountStatus) {
 	account.LastStatus = result
 	account.LastCheck = time.Now().Unix()
 	account.IsExpiredCookie = false
-	if err := database.DB.Save(account).Error; err != nil {
+	if err := database.GetDB().Save(account).Error; err != nil {
 		logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
 	}
 }
@@ -368,7 +368,7 @@ func updateInvalidCookieStatus(account *models.Account) {
 
 	account.LastCookieNotification = time.Now().Unix()
 	account.IsExpiredCookie = true
-	if err := database.DB.Save(account).Error; err != nil {
+	if err := database.GetDB().Save(account).Error; err != nil {
 		logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
 	}
 }
@@ -395,7 +395,7 @@ func updateAccountStatusChange(account *models.Account, newStatus models.Account
 	account.LastStatus = newStatus
 	account.LastStatusChange = time.Now().Unix()
 	account.IsPermabanned = newStatus.Overall == models.StatusPermaban
-	if err := database.DB.Save(account).Error; err != nil {
+	if err := database.GetDB().Save(account).Error; err != nil {
 		logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
 	}
 }
@@ -407,7 +407,7 @@ func createBanRecord(account models.Account, newStatus models.AccountStatus) {
 		Status:    newStatus.Overall,
 		AccountID: account.ID,
 	}
-	if err := database.DB.Create(&ban).Error; err != nil {
+	if err := database.GetDB().Create(&ban).Error; err != nil {
 		logger.Log.WithError(err).Errorf("Failed to create new ban record for account %s", account.Title)
 	}
 }
@@ -485,7 +485,7 @@ func FormatBanDuration(seconds int) string {
 
 func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 	var userSettings models.UserSettings
-	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings)
+	result := database.GetDB().Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error getting user settings for global announcement")
 		return result.Error
@@ -507,7 +507,7 @@ func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 		}
 
 		userSettings.HasSeenAnnouncement = true
-		if err := database.DB.Save(&userSettings).Error; err != nil {
+		if err := database.GetDB().Save(&userSettings).Error; err != nil {
 			logger.Log.WithError(err).Error("Error updating user settings after sending global announcement")
 			return err
 		}
@@ -529,7 +529,7 @@ func getAnnouncementChannel(s *discordgo.Session, userSettings models.UserSettin
 	}
 
 	var account models.Account
-	if err := database.DB.Where("user_id = ?", userSettings.UserID).Order("updated_at DESC").First(&account).Error; err != nil {
+	if err := database.GetDB().Where("user_id = ?", userSettings.UserID).Order("updated_at DESC").First(&account).Error; err != nil {
 		logger.Log.WithError(err).Error("Error finding recent channel for user")
 		return "", err
 	}

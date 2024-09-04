@@ -23,7 +23,7 @@ func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, i
 	}
 
 	var accounts []models.Account
-	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
+	result := database.GetDB().Where("user_id = ?", userID).Find(&accounts)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
 		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")

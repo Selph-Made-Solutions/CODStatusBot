@@ -95,7 +95,7 @@ func initializeDatabase() error {
 	}
 
 	// Create or update necessary tables
-	err = database.DB.AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{})
+	err = database.GetDB().AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{})
 	if err != nil {
 		return fmt.Errorf("failed to migrate database tables: %w", err)
 	}
@@ -116,7 +116,7 @@ func init() {
 	}
 
 	// Create or update the UserSettings table
-	err = database.DB.AutoMigrate(&models.UserSettings{})
+	err = database.GetDB().AutoMigrate(&models.UserSettings{})
 	if err != nil {
 		logger.Log.WithError(err).Fatal("Failed to create or update UserSettings table")
 	}

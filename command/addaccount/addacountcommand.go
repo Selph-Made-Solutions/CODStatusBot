@@ -100,7 +100,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, ins
 
 	// Get the user's current notification preference
 	var existingAccount models.Account
-	result := database.DB.Where("user_id = ?", userID).First(&existingAccount)
+	result := database.GetDB().Where("user_id = ?", userID).First(&existingAccount)
 
 	notificationType := "channel" // Default to channel if no existing preference
 	if result.Error == nil {
@@ -120,7 +120,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, ins
 	}
 
 	// Save to database
-	result = database.DB.Create(&account)
+	result = database.GetDB().Create(&account)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error creating account")
 		respondToInteraction(s, i, "Error creating account. Please try again.")

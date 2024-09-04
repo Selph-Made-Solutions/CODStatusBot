@@ -63,7 +63,7 @@ func HandlePreferenceSelection(s *discordgo.Session, i *discordgo.InteractionCre
 	}
 
 	// Update all existing accounts for this user
-	result := database.DB.Model(&models.Account{}).
+	result := database.GetDB().Model(&models.Account{}).
 		Where("user_id = ?", userID).
 		Update("notification_type", preferenceType)
 

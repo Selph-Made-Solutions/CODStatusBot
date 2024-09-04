@@ -95,7 +95,7 @@ func getUserSettingsFromCache(userID string) (models.UserSettings, bool) {
 
 func getUserSettingsFromDB(userID string) (models.UserSettings, error) {
 	var settings models.UserSettings
-	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
+	result := database.GetDB().Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error getting user settings from database")
 		return settings, result.Error
@@ -181,7 +181,7 @@ func resetToDefaultSettings(settings *models.UserSettings) {
 }
 
 func saveUserSettings(settings *models.UserSettings) error {
-	if err := database.DB.Save(settings).Error; err != nil {
+	if err := database.GetDB().Save(settings).Error; err != nil {
 		logger.Log.WithError(err).Error("Error saving user settings")
 		return err
 	}

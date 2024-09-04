@@ -7,15 +7,14 @@ import (
 	"CODStatusBot/models"
 	"CODStatusBot/services"
 	"errors"
-	"github.com/bwmarrin/discordgo"
 	"os"
 	"strings"
-	"sync"
+
+	"github.com/bwmarrin/discordgo"
 )
 
 var (
 	discord *discordgo.Session
-	dbMutex sync.Mutex
 )
 
 func StartBot() (*discordgo.Session, error) {
@@ -58,6 +57,8 @@ func StartBot() (*discordgo.Session, error) {
 }
 
 func handleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	logger.Log.Infof("Received interaction: Type=%v, CustomID=%s", i.Type, i.MessageComponentData().CustomID)
+
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Log.Errorf("Panic recovered in handleInteraction: %v", r)
@@ -86,18 +87,21 @@ func handleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	switch i.Type {
 	case discordgo.InteractionApplicationCommand:
+		logger.Log.Infof("Handling application command: %s", i.ApplicationCommandData().Name)
 		command.HandleCommand(s, i, installType)
 	case discordgo.InteractionModalSubmit:
+		logger.Log.Infof("Handling modal submit: %s", i.ModalSubmitData().CustomID)
 		handleModalSubmit(s, i, installType)
 	case discordgo.InteractionMessageComponent:
+		logger.Log.Infof("Handling message component: %s", i.MessageComponentData().CustomID)
 		handleMessageComponent(s, i, installType)
+	default:
+		logger.Log.Warnf("Unknown interaction type: %v", i.Type)
+		sendErrorResponse(s, i, "Unknown interaction type.")
 	}
 }
 
 func checkAndSendAnnouncement(userID string) error {
-	dbMutex.Lock()
-	defer dbMutex.Unlock()
-
 	var userSettings models.UserSettings
 	db := database.GetDB()
 	err := db.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings).Error
@@ -120,63 +124,95 @@ func checkAndSendAnnouncement(userID string) error {
 
 func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	customID := i.ModalSubmitData().CustomID
+	logger.Log.Infof("Handling modal submit: %s", customID)
+
+	var handler func(*discordgo.Session, *discordgo.InteractionCreate, models.InstallationType)
+
 	switch {
 	case customID == "set_captcha_service_modal":
-		command.Handlers["set_captcha_service_modal"](s, i, installType)
+		handler = command.Handlers["set_captcha_service_modal"]
 	case customID == "add_account_modal":
-		command.Handlers["add_account_modal"](s, i, installType)
+		handler = command.Handlers["add_account_modal"]
 	case strings.HasPrefix(customID, "update_account_modal_"):
-		command.Handlers["update_account_modal"](s, i, installType)
+		handler = command.Handlers["update_account_modal"]
 	case customID == "set_check_interval_modal":
-		command.Handlers["set_check_interval_modal"](s, i, installType)
+		handler = command.Handlers["set_check_interval_modal"]
 	default:
 		logger.Log.WithField("customID", customID).Error("Unknown modal submission")
+		sendErrorResponse(s, i, "Unknown modal submission.")
+		return
 	}
+
+	if handler == nil {
+		logger.Log.Errorf("No handler found for modal: %s", customID)
+		sendErrorResponse(s, i, "An error occurred while processing your request.")
+		return
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Log.Errorf("Panic in modal handler for %s: %v", customID, r)
+			sendErrorResponse(s, i, "An unexpected error occurred. Please try again later.")
+		}
+	}()
+
+	handler(s, i, installType)
 }
 
 func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
 	customID := i.MessageComponentData().CustomID
+	logger.Log.Infof("Handling message component: %s", customID)
+
+	var handler func(*discordgo.Session, *discordgo.InteractionCreate, models.InstallationType)
+
 	switch {
 	case strings.HasPrefix(customID, "account_age_"):
 		logger.Log.Info("Handling account age selection")
-		command.Handlers["account_age"](s, i, installType)
+		handler = command.Handlers["account_age"]
 	case strings.HasPrefix(customID, "account_logs_"):
 		logger.Log.Info("Handling account logs selection")
-		command.Handlers["account_logs"](s, i, installType)
+		handler = command.Handlers["account_logs"]
 	case customID == "account_logs_select":
 		logger.Log.Info("Handling selected account log")
-		command.Handlers["account_logs"](s, i, installType)
+		handler = command.Handlers["account_logs"]
 	case strings.HasPrefix(customID, "update_account_"):
 		logger.Log.Info("Handling update account selection")
-		command.Handlers["update_account"](s, i, installType)
+		handler = command.Handlers["update_account"]
 	case customID == "update_account_select":
 		logger.Log.Info("Handling update account selection")
-		command.Handlers["update_account"](s, i, installType)
+		handler = command.Handlers["update_account"]
 	case strings.HasPrefix(customID, "remove_account_"):
 		logger.Log.Info("Handling remove account selection")
-		command.Handlers["remove_account"](s, i, installType)
+		handler = command.Handlers["remove_account"]
 	case customID == "cancel_remove" || strings.HasPrefix(customID, "confirm_remove_"):
 		logger.Log.Info("Handling remove account confirmation")
-		command.Handlers["remove_account"](s, i, installType)
+		handler = command.Handlers["remove_account"]
 	case strings.HasPrefix(customID, "check_now_"):
 		logger.Log.Info("Handling check now selection")
-		command.Handlers["check_now"](s, i, installType)
+		handler = command.Handlers["check_now"]
 	case strings.HasPrefix(customID, "toggle_check_"):
 		logger.Log.Info("Handling toggle check selection")
-		command.Handlers["toggle_check"](s, i, installType)
+		handler = command.Handlers["toggle_check"]
 	default:
 		logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
+		sendErrorResponse(s, i, "Unknown message component interaction.")
+		return
 	}
-}
 
-func getUserID(i *discordgo.InteractionCreate) string {
-	if i.Member != nil {
-		return i.Member.User.ID
+	if handler == nil {
+		logger.Log.Errorf("No handler found for component: %s", customID)
+		sendErrorResponse(s, i, "An error occurred while processing your request.")
+		return
 	}
-	if i.User != nil {
-		return i.User.ID
-	}
-	return ""
+
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Log.Errorf("Panic in component handler for %s: %v", customID, r)
+			sendErrorResponse(s, i, "An unexpected error occurred. Please try again later.")
+		}
+	}()
+
+	handler(s, i, installType)
 }
 
 func sendErrorResponse(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
@@ -192,6 +228,15 @@ func sendErrorResponse(s *discordgo.Session, i *discordgo.InteractionCreate, mes
 	}
 }
 
+func getUserID(i *discordgo.InteractionCreate) string {
+	if i.Member != nil {
+		return i.Member.User.ID
+	} else if i.User != nil {
+		return i.User.ID
+	}
+	return ""
+}
+
 func init() {
 	// Initialize the database connection
 	err := database.Databaselogin()
@@ -200,7 +245,7 @@ func init() {
 	}
 
 	// Create or update the UserSettings table
-	err = database.DB.AutoMigrate(&models.UserSettings{})
+	err = database.GetDB().AutoMigrate(&models.UserSettings{})
 	if err != nil {
 		logger.Log.WithError(err).Fatal("Failed to create or update UserSettings table")
 	}

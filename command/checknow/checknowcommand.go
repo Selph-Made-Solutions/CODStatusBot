@@ -41,7 +41,7 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate, insta
 	}
 
 	var accounts []models.Account
-	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
+	result := database.GetDB().Where("user_id = ?", userID).Find(&accounts)
 
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching accounts")
@@ -98,7 +98,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 
 	if customID == "check_now_all" {
 		var accounts []models.Account
-		result := database.DB.Where("user_id = ?", i.Member.User.ID).Find(&accounts)
+		result := database.GetDB().Where("user_id = ?", i.Member.User.ID).Find(&accounts)
 		if result.Error != nil {
 			logger.Log.WithError(result.Error).Error("Error fetching accounts")
 			respondToInteraction(s, i, "Error fetching accounts. Please try again later.")
@@ -116,7 +116,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 
 	var account models.Account
-	result := database.DB.First(&account, accountID)
+	result := database.GetDB().First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
 		respondToInteraction(s, i, "Error: Account not found or you don't have permission to check it.")
@@ -175,7 +175,7 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 
 		account.LastStatus = status
 		account.LastCheck = time.Now().Unix()
-		if err := database.DB.Save(&account).Error; err != nil {
+		if err := database.GetDB().Save(&account).Error; err != nil {
 			logger.Log.WithError(err).Errorf("Failed to update account %s after check", account.Title)
 		} else {
 			logger.Log.Infof("Updated LastCheck for account %s to %v", account.Title, account.LastCheck)

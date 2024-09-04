@@ -24,7 +24,7 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	}
 
 	var accounts []models.Account
-	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
+	result := database.GetDB().Where("user_id = ?", userID).Find(&accounts)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
 		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
@@ -137,7 +137,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, ins
 	}
 
 	var account models.Account
-	result := database.DB.First(&account, accountID)
+	result := database.GetDB().First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
 		respondToInteraction(s, i, "Error: Account not found or you don't have permission to update it.")
@@ -178,7 +178,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, ins
 	account.LastStatus = models.AccountStatus{Overall: models.StatusUnknown, Games: make(map[string]models.GameStatus)}
 
 	services.DBMutex.Lock()
-	if err := database.DB.Save(&account).Error; err != nil {
+	if err := database.GetDB().Save(&account).Error; err != nil {
 		services.DBMutex.Unlock()
 		logger.Log.WithError(err).Error("Error updating account")
 		respondToInteraction(s, i, "Error updating account. Please try again.")

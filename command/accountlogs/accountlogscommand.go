@@ -25,7 +25,7 @@ func CommandAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate, in
 	}
 
 	var accounts []models.Account
-	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
+	result := database.GetDB().Where("user_id = ?", userID).Find(&accounts)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
 		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
@@ -88,7 +88,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 
 	var account models.Account
-	result := database.DB.First(&account, accountID)
+	result := database.GetDB().First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
 		respondToInteraction(s, i, "Error: Account not found or you don't have permission to view its logs.")
@@ -124,7 +124,7 @@ func handleAllAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	}
 
 	var accounts []models.Account
-	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
+	result := database.GetDB().Where("user_id = ?", userID).Find(&accounts)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
 		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
@@ -169,7 +169,7 @@ func handleAllAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate, 
 
 func createAccountLogEmbed(account models.Account) *discordgo.MessageEmbed {
 	var logs []models.Ban
-	database.DB.Where("account_id = ?", account.ID).Order("created_at desc").Limit(10).Find(&logs)
+	database.GetDB().Where("account_id = ?", account.ID).Order("created_at desc").Limit(10).Find(&logs)
 
 	embed := &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%s - Account Logs", account.Title),

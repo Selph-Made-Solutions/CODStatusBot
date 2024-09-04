@@ -25,7 +25,7 @@ func CommandAccountAge(s *discordgo.Session, i *discordgo.InteractionCreate, ins
 	}
 
 	var accounts []models.Account
-	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
+	result := database.GetDB().Where("user_id = ?", userID).Find(&accounts)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
 		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
@@ -75,7 +75,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 
 	var account models.Account
-	result := database.DB.First(&account, accountID)
+	result := database.GetDB().First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
 		respondToInteraction(s, i, "Error: Account not found or you don't have permission to check its age.")
@@ -84,7 +84,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 
 	if !services.VerifySSOCookie(account.SSOCookie) {
 		account.IsExpiredCookie = true // Update account's IsExpiredCookie flag
-		database.DB.Save(&account)
+		database.GetDB().Save(&account)
 
 		respondToInteraction(s, i, "Invalid SSOCookie. Account's cookie status updated.")
 		return
