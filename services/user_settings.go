@@ -204,7 +204,20 @@ func GetUserCaptchaKey(userID string) (string, error) {
 	}
 
 	if settings.CaptchaAPIKey != "" {
-		return settings.CaptchaAPIKey, nil
+		// Check if the key is valid
+		isValid, _, err := CheckCaptchaKeyValidity(settings.CaptchaAPIKey)
+		if err != nil {
+			logger.Log.WithError(err).Error("Error checking captcha key validity")
+		} else if !isValid {
+			logger.Log.Warn("User's captcha key is invalid, falling back to default key")
+			// Reset the user's API key
+			settings.CaptchaAPIKey = ""
+			if err := saveUserSettings(&settings); err != nil {
+				logger.Log.WithError(err).Error("Failed to reset user's invalid API key")
+			}
+		} else {
+			return settings.CaptchaAPIKey, nil
+		}
 	}
 
 	defaultKey := os.Getenv("EZCAPTCHA_CLIENT_KEY")
