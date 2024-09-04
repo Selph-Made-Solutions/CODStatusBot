@@ -15,40 +15,26 @@ import (
 	"time"
 )
 
-var defaultSettings models.UserSettings
-var userRateLimiters = make(map[string]*time.Time)
-var rateLimitMutex sync.Mutex
+var (
+	defaultSettings       models.UserSettings
+	userSettingsCache     = make(map[string]models.UserSettings)
+	userSettingsCacheMu   sync.RWMutex
+	userSettingsCacheTTL  = 5 * time.Minute
+	userSettingsCacheTime = make(map[string]time.Time)
+	userRateLimiters      = make(map[string]*time.Time)
+	rateLimitMutex        sync.Mutex
+)
 
 func init() {
-	checkInterval, err := strconv.Atoi(os.Getenv("CHECK_INTERVAL"))
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to parse CHECK_INTERVAL, using default of 15 minutes")
-		checkInterval = 15
-	}
+	loadDefaultSettings()
+}
 
-	notificationInterval, err := strconv.ParseFloat(os.Getenv("NOTIFICATION_INTERVAL"), 64)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to parse NOTIFICATION_INTERVAL, using default of 24 hours")
-		notificationInterval = 24
-	}
-
-	cooldownDuration, err := strconv.ParseFloat(os.Getenv("COOLDOWN_DURATION"), 64)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to parse COOLDOWN_DURATION, using default of 6 hours")
-		cooldownDuration = 6
-	}
-
-	statusChangeCooldown, err := strconv.ParseFloat(os.Getenv("STATUS_CHANGE_COOLDOWN"), 64)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to parse STATUS_CHANGE_COOLDOWN, using default of 1 hour")
-		statusChangeCooldown = 1
-	}
-
+func loadDefaultSettings() {
 	defaultSettings = models.UserSettings{
-		CheckInterval:        checkInterval,
-		NotificationInterval: notificationInterval,
-		CooldownDuration:     cooldownDuration,
-		StatusChangeCooldown: statusChangeCooldown,
+		CheckInterval:        getEnvAsInt("CHECK_INTERVAL", 15),
+		NotificationInterval: getEnvAsFloat("NOTIFICATION_INTERVAL", 24),
+		CooldownDuration:     getEnvAsFloat("COOLDOWN_DURATION", 6),
+		StatusChangeCooldown: getEnvAsFloat("STATUS_CHANGE_COOLDOWN", 1),
 		NotificationType:     "channel",
 	}
 
@@ -56,24 +42,77 @@ func init() {
 		defaultSettings.CheckInterval, defaultSettings.NotificationInterval, defaultSettings.CooldownDuration, defaultSettings.StatusChangeCooldown)
 }
 
+func getEnvAsInt(key string, fallback int) int {
+	if value, exists := os.LookupEnv(key); exists {
+		if intValue, err := strconv.Atoi(value); err == nil {
+			return intValue
+		}
+	}
+	return fallback
+}
+
+func getEnvAsFloat(key string, fallback float64) float64 {
+	if value, exists := os.LookupEnv(key); exists {
+		if floatValue, err := strconv.ParseFloat(value, 64); err == nil {
+			return floatValue
+		}
+	}
+	return fallback
+}
+
 func GetUserSettings(userID string, installType models.InstallationType) (models.UserSettings, error) {
 	logger.Log.Infof("Getting user settings for user: %s, installation type: %d", userID, installType)
+
+	if settings, ok := getUserSettingsFromCache(userID); ok {
+		return settings, nil
+	}
+
+	settings, err := getUserSettingsFromDB(userID)
+	if err != nil {
+		return settings, err
+	}
+
+	applyDefaultSettingsIfNeeded(&settings)
+	setNotificationTypeBasedOnInstallType(&settings, installType)
+
+	updateUserSettingsCache(userID, settings)
+
+	logger.Log.Infof("Got user settings for user: %s", userID)
+	return settings, nil
+}
+
+func getUserSettingsFromCache(userID string) (models.UserSettings, bool) {
+	userSettingsCacheMu.RLock()
+	defer userSettingsCacheMu.RUnlock()
+
+	settings, ok := userSettingsCache[userID]
+	if ok && time.Since(userSettingsCacheTime[userID]) < userSettingsCacheTTL {
+		return settings, true
+	}
+
+	return models.UserSettings{}, false
+}
+
+func getUserSettingsFromDB(userID string) (models.UserSettings, error) {
 	var settings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
 	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error getting user settings")
+		logger.Log.WithError(result.Error).Error("Error getting user settings from database")
 		return settings, result.Error
 	}
+	return settings, nil
+}
 
-	// If the user doesn't have custom settings or doesn't have a custom API key, use default settings
+func applyDefaultSettingsIfNeeded(settings *models.UserSettings) {
 	if settings.CaptchaAPIKey == "" {
 		settings.CheckInterval = defaultSettings.CheckInterval
 		settings.NotificationInterval = defaultSettings.NotificationInterval
 		settings.CooldownDuration = defaultSettings.CooldownDuration
 		settings.StatusChangeCooldown = defaultSettings.StatusChangeCooldown
 	}
+}
 
-	// Set notification type based on installation type if not already set
+func setNotificationTypeBasedOnInstallType(settings *models.UserSettings, installType models.InstallationType) {
 	if settings.NotificationType == "" {
 		if installType == models.InstallTypeGuild {
 			settings.NotificationType = "channel"
@@ -81,27 +120,28 @@ func GetUserSettings(userID string, installType models.InstallationType) (models
 			settings.NotificationType = "dm"
 		}
 	}
+}
 
-	logger.Log.Infof("Got user settings for user: %s", userID)
-	return settings, nil
+func updateUserSettingsCache(userID string, settings models.UserSettings) {
+	userSettingsCacheMu.Lock()
+	defer userSettingsCacheMu.Unlock()
+
+	userSettingsCache[userID] = settings
+	userSettingsCacheTime[userID] = time.Now()
 }
 
 func SetUserCaptchaKey(userID string, captchaKey string) error {
-	// Check if userID is not an API key
-	if len(userID) > 20 || !isValidUserID(userID) {
+	if !isValidUserID(userID) {
 		logger.Log.Error("Invalid userID provided")
 		return fmt.Errorf("invalid userID")
 	}
 
-	var settings models.UserSettings
-	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
-	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error setting user settings")
-		return result.Error
+	settings, err := getUserSettingsFromDB(userID)
+	if err != nil {
+		return err
 	}
 
 	if captchaKey != "" {
-		// Validate the captcha key before setting it and get balance
 		isValid, balance, err := CheckCaptchaKeyValidity(captchaKey)
 		if err != nil {
 			logger.Log.WithError(err).Error("Error validating captcha key")
@@ -113,35 +153,42 @@ func SetUserCaptchaKey(userID string, captchaKey string) error {
 		}
 
 		settings.CaptchaAPIKey = captchaKey
-		// Enable custom settings when user sets their own valid API key
-		settings.CheckInterval = 15        // Allow more frequent checks, e.g., every 15 minutes
-		settings.NotificationInterval = 12 // Allow more frequent notifications, e.g., every 12 hours
+		settings.CheckInterval = 15
+		settings.NotificationInterval = 12
 
 		logger.Log.Infof("Valid captcha key set for user: %s. Balance: %.2f points", userID, balance)
 	} else {
-		// Reset to default settings when API key is removed
-		settings.CaptchaAPIKey = ""
-		settings.CheckInterval = defaultSettings.CheckInterval
-		settings.NotificationInterval = defaultSettings.NotificationInterval
-		settings.CooldownDuration = defaultSettings.CooldownDuration
-		settings.StatusChangeCooldown = defaultSettings.StatusChangeCooldown
-		// Keep the user's notification type preference
-
+		resetToDefaultSettings(&settings)
 		logger.Log.Infof("Captcha key removed for user: %s. Reset to default settings", userID)
 	}
 
-	if err := database.DB.Save(&settings).Error; err != nil {
-		logger.Log.WithError(err).Error("Error saving user settings")
+	if err := saveUserSettings(&settings); err != nil {
 		return err
 	}
+
+	updateUserSettingsCache(userID, settings)
 
 	logger.Log.Infof("Updated captcha key and settings for user: %s", userID)
 	return nil
 }
 
-// Add this helper function to validate userID
+func resetToDefaultSettings(settings *models.UserSettings) {
+	settings.CaptchaAPIKey = ""
+	settings.CheckInterval = defaultSettings.CheckInterval
+	settings.NotificationInterval = defaultSettings.NotificationInterval
+	settings.CooldownDuration = defaultSettings.CooldownDuration
+	settings.StatusChangeCooldown = defaultSettings.StatusChangeCooldown
+}
+
+func saveUserSettings(settings *models.UserSettings) error {
+	if err := database.DB.Save(settings).Error; err != nil {
+		logger.Log.WithError(err).Error("Error saving user settings")
+		return err
+	}
+	return nil
+}
+
 func isValidUserID(userID string) bool {
-	// Check if userID consists only of digits (Discord user IDs are numeric)
 	for _, char := range userID {
 		if char < '0' || char > '9' {
 			return false
@@ -151,19 +198,15 @@ func isValidUserID(userID string) bool {
 }
 
 func GetUserCaptchaKey(userID string) (string, error) {
-	var settings models.UserSettings
-	result := database.DB.Where(models.UserSettings{UserID: userID}).First(&settings)
-	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error getting user settings")
-		return "", result.Error
+	settings, err := GetUserSettings(userID, models.InstallTypeUser)
+	if err != nil {
+		return "", err
 	}
 
-	// If the user has a custom API key, return it
 	if settings.CaptchaAPIKey != "" {
 		return settings.CaptchaAPIKey, nil
 	}
 
-	// If the user doesn't have a custom API key, return the default key
 	defaultKey := os.Getenv("EZCAPTCHA_CLIENT_KEY")
 	if defaultKey == "" {
 		return "", fmt.Errorf("default EZCAPTCHA_CLIENT_KEY not set in environment")
@@ -176,65 +219,59 @@ func GetDefaultSettings() (models.UserSettings, error) {
 }
 
 func RemoveCaptchaKey(userID string) error {
-	var settings models.UserSettings
-	result := database.DB.Where(models.UserSettings{UserID: userID}).First(&settings)
-	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error removing apikey in settings")
-		return result.Error
-	}
-
-	settings.CaptchaAPIKey = ""
-	settings.CheckInterval = defaultSettings.CheckInterval
-	settings.NotificationInterval = defaultSettings.NotificationInterval
-	settings.CooldownDuration = defaultSettings.CooldownDuration
-	settings.StatusChangeCooldown = defaultSettings.StatusChangeCooldown
-	// Keep the user's notification type preference
-
-	if err := database.DB.Save(&settings).Error; err != nil {
-		logger.Log.WithError(err).Error("Error saving user settings")
+	settings, err := getUserSettingsFromDB(userID)
+	if err != nil {
 		return err
 	}
+
+	resetToDefaultSettings(&settings)
+
+	if err := saveUserSettings(&settings); err != nil {
+		return err
+	}
+
+	updateUserSettingsCache(userID, settings)
 
 	logger.Log.Infof("Removed captcha key and reset settings for user: %s", userID)
 	return nil
 }
 
 func UpdateUserSettings(userID string, newSettings models.UserSettings) error {
-	var settings models.UserSettings
-	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
-	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error updating user settings")
-		return result.Error
+	settings, err := getUserSettingsFromDB(userID)
+	if err != nil {
+		return err
 	}
 
 	// Only allow updating settings if the user has a valid API key
 	if settings.CaptchaAPIKey != "" {
-		if newSettings.CheckInterval != 0 {
-			settings.CheckInterval = newSettings.CheckInterval
-		}
-		if newSettings.NotificationInterval != 0 {
-			settings.NotificationInterval = newSettings.NotificationInterval
-		}
-		if newSettings.CooldownDuration != 0 {
-			settings.CooldownDuration = newSettings.CooldownDuration
-		}
-		if newSettings.StatusChangeCooldown != 0 {
-			settings.StatusChangeCooldown = newSettings.StatusChangeCooldown
-		}
+		updateSettingsIfValid(&settings, newSettings)
 	}
 
-	// Allow updating notification type regardless of API key
-	if newSettings.NotificationType != "" {
-		settings.NotificationType = newSettings.NotificationType
-	}
+	settings.NotificationType = newSettings.NotificationType
 
-	if err := database.DB.Save(&settings).Error; err != nil {
-		logger.Log.WithError(err).Error("Error updating user settings")
+	if err := saveUserSettings(&settings); err != nil {
 		return err
 	}
 
+	updateUserSettingsCache(userID, settings)
+
 	logger.Log.Infof("Updated settings for user: %s", userID)
 	return nil
+}
+
+func updateSettingsIfValid(settings *models.UserSettings, newSettings models.UserSettings) {
+	if newSettings.CheckInterval != 0 {
+		settings.CheckInterval = newSettings.CheckInterval
+	}
+	if newSettings.NotificationInterval != 0 {
+		settings.NotificationInterval = newSettings.NotificationInterval
+	}
+	if newSettings.CooldownDuration != 0 {
+		settings.CooldownDuration = newSettings.CooldownDuration
+	}
+	if newSettings.StatusChangeCooldown != 0 {
+		settings.StatusChangeCooldown = newSettings.StatusChangeCooldown
+	}
 }
 
 func CheckCaptchaKeyValidity(captchaKey string) (bool, float64, error) {
