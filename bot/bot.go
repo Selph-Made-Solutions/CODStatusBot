@@ -58,10 +58,22 @@ func StartBot() (*discordgo.Session, error) {
 	initializeCommandQueue()
 	initializeWorkerPool()
 	discord.AddHandler(handleInteraction)
+	go handleCommands()
 	go services.CheckAccounts(discord)
+
 	return discord, nil
 }
 
+func handleCommands() {
+	for {
+		select {
+		case i := <-commandQueue:
+			go processCommand(i)
+		default:
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+}
 func initializeCommandQueue() {
 	logger.Log.Info("Initializing command queue")
 	commandQueue = make(chan *discordgo.InteractionCreate, maxQueueSize)
