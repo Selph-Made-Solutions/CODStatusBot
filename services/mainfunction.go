@@ -95,7 +95,7 @@ func initializeQueues() {
 
 func accountCheckWorker() {
 	for account := range accountCheckQueue {
-		CheckSingleAccount(account, nil) // We'll update this function to not require a discord session
+		CheckSingleAccount(account, nil)
 	}
 }
 
@@ -179,7 +179,6 @@ func notifyCookieExpiration(account models.Account, s *discordgo.Session, timeUn
 }
 
 func updateAccountStatus(account models.Account, result models.Status, s *discordgo.Session) {
-
 	DBMutex.Lock()
 	defer DBMutex.Unlock()
 
@@ -217,9 +216,9 @@ func updateAccountStatus(account models.Account, result models.Status, s *discor
 
 func notifyStatusChange(account models.Account, result models.Status, s *discordgo.Session) {
 	embed := &discordgo.MessageEmbed{
-		Title:       fmt.Sprintf("%s - %s", account.Title, EmbedTitleFromStatus(result)),
+		Title:       fmt.Sprintf("%s - %s", account.Title, embedTitleFromStatus(result)),
 		Description: fmt.Sprintf("The status of account %s has changed to %s", account.Title, result),
-		Color:       GetColorForStatus(result, account.IsExpiredCookie),
+		Color:       getColorForStatus(result, account.IsExpiredCookie),
 		Timestamp:   time.Now().Format(time.RFC3339),
 	}
 	err := sendNotification(s, account, embed, fmt.Sprintf("<@%s>", account.UserID))
@@ -228,7 +227,169 @@ func notifyStatusChange(account models.Account, result models.Status, s *discord
 	}
 }
 
-func SendGlobalAnnouncement(s *discordgo.Session, users []models.User) error {
+func sendDailyUpdate(account models.Account, s *discordgo.Session) {
+	logger.Log.Infof("Sending daily update for account %s", account.Title)
+
+	var description string
+	if account.IsExpiredCookie {
+		description = fmt.Sprintf("The SSO cookie for account %s has expired. Please update the cookie using the /updateaccount command or delete the account using the /removeaccount command.", account.Title)
+	} else {
+		timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
+		if err != nil {
+			logger.Log.WithError(err).Errorf("Error checking SSO cookie expiration for account %s", account.Title)
+			description = fmt.Sprintf("An error occurred while checking the SSO cookie expiration for account %s. Please check the account status manually.", account.Title)
+		} else if timeUntilExpiration > 0 {
+			description = fmt.Sprintf("The last status of account %s was %s. SSO cookie will expire in %s.", account.Title, account.LastStatus, FormatExpirationTime(account.SSOCookieExpiration))
+		} else {
+			description = fmt.Sprintf("The SSO cookie for account %s has expired. Please update the cookie using the /updateaccount command or delete the account using the /removeaccount command.", account.Title)
+		}
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title:       fmt.Sprintf("%.2f Hour Update - %s", notificationInterval, account.Title),
+		Description: description,
+		Color:       getColorForStatus(account.LastStatus, account.IsExpiredCookie),
+		Timestamp:   time.Now().Format(time.RFC3339),
+	}
+
+	err := sendNotification(s, account, embed, "")
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to send scheduled update message for account %s", account.Title)
+	}
+
+	account.LastCheck = time.Now().Unix()
+	account.LastNotification = time.Now().Unix()
+	if err := database.DB.Save(&account).Error; err != nil {
+		logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
+	}
+}
+
+func sendNotification(s *discordgo.Session, account models.Account, embed *discordgo.MessageEmbed, content string) error {
+	if !canSendNotification(account.UserID) {
+		logger.Log.Infof("Skipping notification for user %s (global cooldown)", account.UserID)
+		return nil
+	}
+
+	var channelID string
+	if account.NotificationType == "dm" {
+		channel, err := s.UserChannelCreate(account.UserID)
+		if err != nil {
+			return fmt.Errorf("failed to create DM channel: %v", err)
+		}
+		channelID = channel.ID
+	} else {
+		channelID = account.ChannelID
+	}
+
+	_, err := s.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
+		Embed:   embed,
+		Content: content,
+	})
+	return err
+}
+
+func canSendNotification(userID string) bool {
+	userNotificationMutex.Lock()
+	defer userNotificationMutex.Unlock()
+
+	lastNotification, exists := userNotificationTimestamps[userID]
+	if !exists || time.Since(lastNotification).Hours() >= globalNotificationCooldown {
+		userNotificationTimestamps[userID] = time.Now()
+		return true
+	}
+	return false
+}
+
+func embedTitleFromStatus(status models.Status) string {
+	switch status {
+	case models.StatusPermaban:
+		return "PERMANENT BAN DETECTED"
+	case models.StatusShadowban:
+		return "SHADOWBAN DETECTED"
+	case models.StatusTempban:
+		return "TEMPORARY BAN DETECTED"
+	case models.StatusUnderInvestigation:
+		return "ACCOUNT UNDER INVESTIGATION"
+	case models.StatusBanFinal:
+		return "BAN FINAL"
+	default:
+		return "ACCOUNT STATUS CHANGED"
+	}
+}
+
+func getColorForStatus(status models.Status, isExpiredCookie bool) int {
+	if isExpiredCookie {
+		return 0xff9900 // Orange for expired cookie
+	}
+	switch status {
+	case models.StatusPermaban:
+		return 0xff0000 // Red for permanent ban
+	case models.StatusShadowban:
+		return 0xffff00 // Yellow for shadowban
+	case models.StatusTempban:
+		return 0xffa500 // Orange for temporary ban
+	case models.StatusUnderInvestigation:
+		return 0x0000ff // Blue for under investigation
+	case models.StatusBanFinal:
+		return 0x800080 // Purple for ban final
+	default:
+		return 0x00ff00 // Green for no ban or unknown status
+	}
+}
+
+func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
+	var userSettings models.UserSettings
+	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings)
+	if result.Error != nil {
+		logger.Log.WithError(result.Error).Error("Error getting user settings for global announcement")
+		return result.Error
+	}
+
+	if !userSettings.HasSeenAnnouncement {
+		var channelID string
+		var err error
+
+		if userSettings.NotificationType == "dm" {
+			channel, err := s.UserChannelCreate(userID)
+			if err != nil {
+				logger.Log.WithError(err).Error("Error creating DM channel for global announcement")
+				return err
+			}
+			channelID = channel.ID
+		} else {
+			var account models.Account
+			if err := database.DB.Where("user_id = ?", userID).Order("updated_at DESC").First(&account).Error; err != nil {
+				logger.Log.WithError(err).Error("Error finding recent channel for user")
+				return err
+			}
+			channelID = account.ChannelID
+		}
+
+		announcementEmbed := createAnnouncementEmbed()
+
+		_, err = s.ChannelMessageSendEmbed(channelID, announcementEmbed)
+		if err != nil {
+			logger.Log.WithError(err).Error("Error sending global announcement")
+			return err
+		}
+
+		userSettings.HasSeenAnnouncement = true
+		if err := database.DB.Save(&userSettings).Error; err != nil {
+			logger.Log.WithError(err).Error("Error updating user settings after sending global announcement")
+			return err
+		}
+	}
+
+	return nil
+}
+
+func SendAnnouncementToAllUsers(s *discordgo.Session) error {
+	var users []models.UserSettings
+	if err := database.DB.Find(&users).Error; err != nil {
+		logger.Log.WithError(err).Error("Error fetching all users")
+		return err
+	}
+
 	for _, user := range users {
 		if err := SendGlobalAnnouncement(s, user.UserID); err != nil {
 			logger.Log.WithError(err).Errorf("Failed to send announcement to user %s", user.UserID)
@@ -250,23 +411,22 @@ func createAnnouncementEmbed() *discordgo.MessageEmbed {
 				Name: "How to Get Your Own API Key",
 				Value: "1. Visit our [referral link](https://dashboard.ez-captcha.com/#/register?inviteCode=uyNrRgWlEKy) to sign up for EZCaptcha\n" +
 					"2. Request a free trial of 10,000 tokens\n" +
-					"3. Use the `/setcaptchaservice` command to set your API key\n",
-				Inline: false,
+					"3. Use the `/setcaptchaservice` command to set your API key in the bot",
 			},
 			{
-				Name:   "Who Is Affected?",
-				Value:  "All users of the COD Status Bot who wish to use the check ban feature.",
-				Inline: false,
+				Name: "Benefits of Using Your Own API Key",
+				Value: "• Continue using the check ban feature\n" +
+					"• Customize your check intervals\n" +
+					"• Support the bot indirectly through our referral program",
 			},
 			{
-				Name:   "Why the Change?",
-				Value:  "The bot has grown significantly, and we need to ensure the service remains sustainable.",
-				Inline: false,
+				Name:  "Our Commitment",
+				Value: "We're working on ways to maintain a free tier for all users. Your support by using our referral link helps us achieve this goal.",
 			},
 		},
 		Footer: &discordgo.MessageEmbedFooter{
-			Text:    "Thank you for your understanding and continued support.",
-			IconURL: "https://i.imgur.com/sHsCkjZ.png", // Placeholder icon URL
+			Text: "Thank you for your understanding and continued support!",
 		},
+		Timestamp: time.Now().Format(time.RFC3339),
 	}
 }
