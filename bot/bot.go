@@ -42,6 +42,9 @@ func StartBot() (*discordgo.Session, error) {
 		return nil, err
 	}
 
+	discord.AddHandler(handleInteraction)
+	discord.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsDirectMessages
+
 	err = discord.Open()
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to open Discord connection")
@@ -57,7 +60,14 @@ func StartBot() (*discordgo.Session, error) {
 	// Initialize command queue and worker pool
 	initializeCommandQueue()
 	initializeWorkerPool()
-	discord.AddHandler(handleInteraction)
+
+	// Register commands
+	err = command.RegisterCommands(discord)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to register commands")
+		return nil, err
+	}
+
 	go handleCommands()
 	go services.CheckAccounts(discord)
 
@@ -74,6 +84,7 @@ func handleCommands() {
 		}
 	}
 }
+
 func initializeCommandQueue() {
 	logger.Log.Info("Initializing command queue")
 	commandQueue = make(chan *discordgo.InteractionCreate, maxQueueSize)
