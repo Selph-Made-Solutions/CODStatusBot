@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func CommandGlobalAnnouncement(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
+func CommandGlobalAnnouncement(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Check if the user is the developer
 	developerID := os.Getenv("DEVELOPER_ID")
 	if developerID == "" {
@@ -49,7 +49,7 @@ func CommandGlobalAnnouncement(s *discordgo.Session, i *discordgo.InteractionCre
 
 func SendAnnouncementToAllUsers(s *discordgo.Session) (int, int, error) {
 	var users []models.UserSettings
-	if err := database.GetDB().Find(&users).Error; err != nil {
+	if err := database.DB.Find(&users).Error; err != nil {
 		logger.Log.WithError(err).Error("Error fetching all users")
 		return 0, 0, err
 	}
@@ -72,7 +72,7 @@ func SendAnnouncementToAllUsers(s *discordgo.Session) (int, int, error) {
 
 func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 	var userSettings models.UserSettings
-	result := database.GetDB().Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings)
+	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error getting user settings for global announcement")
 		return result.Error
@@ -92,7 +92,7 @@ func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 		} else {
 			// Find the most recent channel used by the user
 			var account models.Account
-			if err := database.GetDB().Where("user_id = ?", userID).Order("updated_at DESC").First(&account).Error; err != nil {
+			if err := database.DB.Where("user_id = ?", userID).Order("updated_at DESC").First(&account).Error; err != nil {
 				logger.Log.WithError(err).Error("Error finding recent channel for user")
 				return err
 			}
@@ -108,7 +108,7 @@ func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 		}
 
 		userSettings.HasSeenAnnouncement = true
-		if err := database.GetDB().Save(&userSettings).Error; err != nil {
+		if err := database.DB.Save(&userSettings).Error; err != nil {
 			logger.Log.WithError(err).Error("Error updating user settings after sending global announcement")
 			return err
 		}

@@ -4,7 +4,6 @@ import (
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
-	"CODStatusBot/services"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"strconv"
@@ -12,7 +11,7 @@ import (
 	"time"
 )
 
-func CommandAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
+func CommandAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
@@ -25,7 +24,7 @@ func CommandAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate, in
 	}
 
 	var accounts []models.Account
-	result := database.GetDB().Where("user_id = ?", userID).Find(&accounts)
+	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
 		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
@@ -72,11 +71,11 @@ func CommandAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate, in
 	}
 }
 
-func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
+func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
 
 	if customID == "account_logs_all" {
-		handleAllAccountLogs(s, i, installType)
+		handleAllAccountLogs(s, i)
 		return
 	}
 
@@ -88,7 +87,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 
 	var account models.Account
-	result := database.GetDB().First(&account, accountID)
+	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
 		respondToInteraction(s, i, "Error: Account not found or you don't have permission to view its logs.")
@@ -111,7 +110,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 }
 
-func handleAllAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
+func handleAllAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
@@ -124,7 +123,7 @@ func handleAllAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	}
 
 	var accounts []models.Account
-	result := database.GetDB().Where("user_id = ?", userID).Find(&accounts)
+	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
 		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
@@ -169,31 +168,21 @@ func handleAllAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate, 
 
 func createAccountLogEmbed(account models.Account) *discordgo.MessageEmbed {
 	var logs []models.Ban
-	database.GetDB().Where("account_id = ?", account.ID).Order("created_at desc").Limit(10).Find(&logs)
+	database.DB.Where("account_id = ?", account.ID).Order("created_at desc").Limit(10).Find(&logs)
 
 	embed := &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%s - Account Logs", account.Title),
 		Description: "The last 10 status changes for this account",
-		Color:       services.GetColorForStatus(account.LastStatus.Overall),
-		Fields:      make([]*discordgo.MessageEmbedField, 0),
+		Color:       0x00ff00,
+		Fields:      make([]*discordgo.MessageEmbedField, len(logs)),
 	}
 
-	// Add current status field
-	currentStatusField := &discordgo.MessageEmbedField{
-		Name:   "Current Status",
-		Value:  formatAccountStatus(account.LastStatus),
-		Inline: false,
-	}
-	embed.Fields = append(embed.Fields, currentStatusField)
-
-	// Add log entries
 	for i, log := range logs {
-		logEntry := &discordgo.MessageEmbedField{
+		embed.Fields[i] = &discordgo.MessageEmbedField{
 			Name:   fmt.Sprintf("Status Change %d", i+1),
 			Value:  fmt.Sprintf("Status: %s\nTime: %s", log.Status, log.CreatedAt.Format(time.RFC1123)),
 			Inline: false,
 		}
-		embed.Fields = append(embed.Fields, logEntry)
 	}
 
 	if len(logs) == 0 {
@@ -201,31 +190,6 @@ func createAccountLogEmbed(account models.Account) *discordgo.MessageEmbed {
 	}
 
 	return embed
-}
-
-func formatAccountStatus(status models.AccountStatus) string {
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Overall: %s\n", status.Overall))
-
-	for game, gameStatus := range status.Games {
-		sb.WriteString(fmt.Sprintf("%s: ", game))
-		switch gameStatus.Status {
-		case models.StatusGood:
-			sb.WriteString("Good Standing")
-		case models.StatusPermaban:
-			sb.WriteString("Permanently Banned")
-		case models.StatusShadowban:
-			sb.WriteString("Under Review")
-		case models.StatusTempban:
-			duration := services.FormatBanDuration(gameStatus.DurationSeconds)
-			sb.WriteString(fmt.Sprintf("Temporarily Banned (%s remaining)", duration))
-		default:
-			sb.WriteString("Unknown Status")
-		}
-		sb.WriteString("\n")
-	}
-
-	return sb.String()
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {

@@ -4,38 +4,47 @@ import (
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
 )
 
-var httpClient = &http.Client{Timeout: 30 * time.Second}
+var (
+	url1 = "https://support.activision.com/api/bans/v2/appeal?locale=en" // Replacement Endpoint for checking account bans
+	url2 = "https://support.activision.com/api/profile?accts=false"      // Endpoint for retrieving profile information
+)
 
-const (
-	banAppealURL = "https://support.activision.com/api/bans/v2/appeal?locale=en" // Replacement Endpoint for checking
-	profileURL   = "https://support.activision.com/api/profile?accts=false"      // Endpoint for retrieving profile information
+var (
+	httpClient = &http.Client{Timeout: 30 * time.Second}
+	maxRetries = 3
 )
 
 // VerifySSOCookie checks if the provided SSO cookie is valid.
 func VerifySSOCookie(ssoCookie string) bool {
 	logger.Log.Infof("Verifying SSO cookie: %s", ssoCookie)
-	req, err := createRequest("GET", profileURL, ssoCookie)
+	req, err := http.NewRequest("GET", url2, nil)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error creating verification request")
 		return false
 	}
-
+	headers := GenerateHeaders(ssoCookie)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error sending verification request")
 		return false
 	}
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		logger.Log.Errorf("Invalid SSOCookie, status code: %d", resp.StatusCode)
 		return false
 	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error reading verification response body")
@@ -49,56 +58,98 @@ func VerifySSOCookie(ssoCookie string) bool {
 	return true
 }
 
-// CheckAccount checks the account status associated with the provided SSO cookie.
-func CheckAccount(ssoCookie string, userID string, installType models.InstallationType) (models.AccountStatus, error) {
+func CheckAccount(ssoCookie, userID string) (models.Status, error) {
 	logger.Log.Info("Starting CheckAccount function")
 
-	gRecaptchaResponse, err := SolveReCaptchaV2(userID)
+	captchaAPIKey, err := GetUserCaptchaKey(userID)
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to solve reCAPTCHA")
-		return models.AccountStatus{}, fmt.Errorf("failed to solve reCAPTCHA: %v", err)
+		logger.Log.WithError(err).Error("Failed to get user's captcha API key")
+		return models.StatusUnknown, fmt.Errorf("failed to get user's captcha API key: %v", err)
 	}
 
-	if gRecaptchaResponse == "" {
-		logger.Log.Error("Received empty reCAPTCHA response")
-		return models.AccountStatus{}, fmt.Errorf("received empty reCAPTCHA response")
+	gRecaptchaResponse, err := SolveReCaptchaV2WithKey(captchaAPIKey)
+	if err != nil {
+		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %v", err)
 	}
 
+	// Further processing of gRecaptchaResponse can be done here
 	logger.Log.Info("Successfully solved reCAPTCHA")
 
-	banAppealURLWithCaptcha := fmt.Sprintf("%s&g-cc=%s", banAppealURL, gRecaptchaResponse)
-	logger.Log.WithField("url", banAppealURLWithCaptcha).Info("Constructed ban appeal URL")
+	// Construct the ban appeal URL with the reCAPTCHA response
+	banAppealUrl := fmt.Sprintf("%s&g-cc=%s", url1, gRecaptchaResponse)
+	logger.Log.WithField("url", banAppealUrl).Info("Constructed ban appeal URL")
 
-	req, err := createRequest("GET", banAppealURLWithCaptcha, ssoCookie)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to create HTTP request")
-		return models.AccountStatus{}, fmt.Errorf("failed to create HTTP request to check account: %v", err)
+	var resp *http.Response
+	var body []byte
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		resp, body, err = makeRequest("GET", banAppealUrl, ssoCookie)
+		if err == nil {
+			break
+		}
+		logger.Log.WithError(err).Errorf("Attempt %d failed to check account status", attempt+1)
+		time.Sleep(time.Duration(attempt+1) * time.Second)
 	}
 
-	resp, err := httpClient.Do(req)
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to send HTTP request")
-		return models.AccountStatus{}, fmt.Errorf("failed to send HTTP request to check account: %v", err)
+		return models.StatusUnknown, fmt.Errorf("failed to check account status after %d attempts: %v", maxRetries, err)
 	}
-	defer resp.Body.Close()
-
-	logger.Log.WithField("status", resp.Status).Info("Received response")
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to read response body")
-		return models.AccountStatus{}, fmt.Errorf("failed to read response body from check account request: %v", err)
-	}
-
-	logger.Log.WithField("body", string(body)).Info("Read response body")
 
 	return parseAccountStatus(body)
 }
 
-func createRequest(method, url, ssoCookie string) (*http.Request, error) {
+func parseAccountStatus(body []byte) (models.Status, error) {
+	if len(body) == 0 {
+		return models.StatusInvalidCookie, nil
+	}
+
+	var data struct {
+		Error     string `json:"error"`
+		Success   string `json:"success"`
+		CanAppeal bool   `json:"canAppeal"`
+		Bans      []struct {
+			Enforcement string `json:"enforcement"`
+			Title       string `json:"title"`
+			CanAppeal   bool   `json:"canAppeal"`
+			Bar         struct {
+				CaseNumber string `json:"CaseNumber"`
+				Status     string `json:"Status"`
+			} `json:"bar"`
+		} `json:"bans"`
+	}
+
+	err := json.Unmarshal(body, &data)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to decode JSON response")
+		return models.StatusUnknown, fmt.Errorf("failed to decode JSON response: %v", err)
+	}
+
+	if data.Error != "" {
+		return models.StatusUnknown, fmt.Errorf("API error: %s", data.Error)
+	}
+
+	if len(data.Bans) == 0 {
+		return models.StatusGood, nil
+	}
+
+	for _, ban := range data.Bans {
+		switch ban.Enforcement {
+		case "PERMANENT":
+			return models.StatusPermaban, nil
+		case "UNDER_REVIEW":
+			return models.StatusShadowban, nil
+		case "TEMPORARY":
+			return models.StatusTempban, nil
+		}
+	}
+
+	return models.StatusUnknown, nil
+}
+
+func makeRequest(method, url, ssoCookie string) (*http.Response, []byte, error) {
 	req, err := http.NewRequest(method, url, nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, fmt.Errorf("failed to create HTTP request: %v", err)
 	}
 
 	headers := GenerateHeaders(ssoCookie)
@@ -106,120 +157,35 @@ func createRequest(method, url, ssoCookie string) (*http.Request, error) {
 		req.Header.Set(k, v)
 	}
 
-	return req, nil
-}
-
-func parseAccountStatus(body []byte) (models.AccountStatus, error) {
-	var data struct {
-		Error     string `json:"error"`
-		Success   string `json:"success"`
-		CanAppeal bool   `json:"canAppeal"`
-		Bans      []struct {
-			Enforcement     string `json:"enforcement"`
-			DurationSeconds int    `json:"durationSeconds"`
-			CanAppeal       bool   `json:"canAppeal"`
-			Bar             struct {
-				CaseNumber string `json:"CaseNumber"`
-				Status     string `json:"Status"`
-			} `json:"bar"`
-			Title string `json:"title"`
-		} `json:"bans"`
-	}
-
-	if string(body) == "" {
-		logger.Log.Info("Empty response body, treating as invalid cookie")
-		return models.AccountStatus{Overall: models.StatusInvalidCookie}, nil
-	}
-
-	err := json.Unmarshal(body, &data)
+	resp, err := httpClient.Do(req)
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to decode JSON response")
-		return models.AccountStatus{}, fmt.Errorf("failed to decode JSON response: %v", err)
+		return nil, nil, fmt.Errorf("failed to send HTTP request: %v", err)
 	}
+	defer resp.Body.Close()
 
-	logger.Log.WithField("data", data).Info("Parsed ban data")
-
-	return processAccountStatus(data)
-}
-
-func processAccountStatus(data struct {
-	Error     string `json:"error"`
-	Success   string `json:"success"`
-	CanAppeal bool   `json:"canAppeal"`
-	Bans      []struct {
-		Enforcement     string `json:"enforcement"`
-		DurationSeconds int    `json:"durationSeconds"`
-		CanAppeal       bool   `json:"canAppeal"`
-		Bar             struct {
-			CaseNumber string `json:"CaseNumber"`
-			Status     string `json:"Status"`
-		} `json:"bar"`
-		Title string `json:"title"`
-	} `json:"bans"`
-}) (models.AccountStatus, error) {
-	accountStatus := models.AccountStatus{
-		Overall: models.StatusGood,
-		Games:   make(map[string]models.GameStatus),
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read response body: %v", err)
 	}
+	logger.Log.WithField("body", string(body)).Info("Read response body")
 
-	for _, ban := range data.Bans {
-		gameStatus := models.GameStatus{
-			Title:           ban.Title,
-			Enforcement:     ban.Enforcement,
-			CanAppeal:       ban.CanAppeal,
-			CaseNumber:      ban.Bar.CaseNumber,
-			CaseStatus:      ban.Bar.Status,
-			DurationSeconds: ban.DurationSeconds,
-		}
-
-		gameStatus.Status = determineGameStatus(ban.Enforcement)
-		accountStatus.Overall = updateOverallStatus(accountStatus.Overall, gameStatus.Status)
-
-		accountStatus.Games[ban.Title] = gameStatus
-	}
-
-	logger.Log.WithField("accountStatus", accountStatus).Info("Processed account status")
-	return accountStatus, nil
-}
-
-func determineGameStatus(enforcement string) models.Status {
-	switch enforcement {
-	case "PERMANENT":
-		return models.StatusPermaban
-	case "TEMPORARY":
-		return models.StatusTempban
-	case "UNDER_REVIEW":
-		return models.StatusShadowban
-	case "":
-		return models.StatusGood
-	default:
-		return models.StatusUnknown
-	}
-}
-
-func updateOverallStatus(currentOverall, newStatus models.Status) models.Status {
-	if newStatus == models.StatusPermaban {
-		return models.StatusPermaban
-	}
-	if newStatus == models.StatusTempban && currentOverall != models.StatusPermaban {
-		return models.StatusTempban
-	}
-	if newStatus == models.StatusShadowban && (currentOverall != models.StatusPermaban && currentOverall != models.StatusTempban) {
-		return models.StatusShadowban
-	}
-	return currentOverall
+	return resp, body, nil
 }
 
 // CheckAccountAge retrieves the age of the account associated with the provided SSO cookie.
 func CheckAccountAge(ssoCookie string) (int, int, int, error) {
 	logger.Log.Info("Starting CheckAccountAge function")
-	req, err := createRequest("GET", profileURL, ssoCookie)
+	req, err := http.NewRequest("GET", url2, nil)
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("failed to create HTTP request to check account age: %v", err)
+		return 0, 0, 0, errors.New("failed to create HTTP request to check account age")
+	}
+	headers := GenerateHeaders(ssoCookie)
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("failed to send HTTP request to check account age: %v", err)
+		return 0, 0, 0, errors.New("failed to send HTTP request to check account age")
 	}
 	defer resp.Body.Close()
 
@@ -228,40 +194,23 @@ func CheckAccountAge(ssoCookie string) (int, int, int, error) {
 	}
 	err = json.NewDecoder(resp.Body).Decode(&data)
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("failed to decode JSON response from check account age request: %v", err)
+		return 0, 0, 0, errors.New("failed to decode JSON response from check account age request")
 	}
 
 	logger.Log.Infof("Account created date: %s", data.Created)
 
 	created, err := time.Parse(time.RFC3339, data.Created)
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("failed to parse created date in check account age request: %v", err)
+		return 0, 0, 0, errors.New("failed to parse created date in check account age request")
 	}
 
-	years, months, days := calculateAge(created)
+	now := time.Now()
+	age := now.Sub(created)
+
+	years := int(age.Hours() / 24 / 365.25)
+	months := int(age.Hours()/24/30.44) % 12
+	days := int(age.Hours()/24) % 30
 
 	logger.Log.Infof("Account age calculated: %d years, %d months, %d days", years, months, days)
 	return years, months, days, nil
-}
-
-func calculateAge(created time.Time) (int, int, int) {
-	now := time.Now().UTC()
-	years := now.Year() - created.Year()
-	months := int(now.Month() - created.Month())
-	days := now.Day() - created.Day()
-
-	if months < 0 || (months == 0 && days < 0) {
-		years--
-		months += 12
-	}
-
-	if days < 0 {
-		// Get the last day of the previous month
-		lastMonth := now.AddDate(0, -1, 0)
-		daysInLastMonth := time.Date(lastMonth.Year(), lastMonth.Month()+1, 0, 0, 0, 0, 0, time.UTC).Day()
-		days += daysInLastMonth
-		months--
-	}
-
-	return years, months, days
 }

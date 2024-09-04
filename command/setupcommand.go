@@ -18,18 +18,12 @@ import (
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
-	"fmt"
 	"github.com/bwmarrin/discordgo"
 )
 
-// BoolPtr Helper function to create a pointer to a bool
-func BoolPtr(b bool) *bool {
-	return &b
-}
+var Handlers = map[string]func(*discordgo.Session, *discordgo.InteractionCreate){}
 
-var Handlers = map[string]func(*discordgo.Session, *discordgo.InteractionCreate, models.InstallationType){}
-
-func RegisterCommands(s *discordgo.Session) error {
+func RegisterCommands(s *discordgo.Session) {
 	logger.Log.Info("Registering global commands")
 
 	commands := []*discordgo.ApplicationCommand{
@@ -77,6 +71,14 @@ func RegisterCommands(s *discordgo.Session) error {
 			Name:         "checknow",
 			Description:  "Check account status now (rate limited for default API key)",
 			DMPermission: BoolPtr(true),
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "account_title",
+					Description: "The title of the specific account to check (optional)",
+					Required:    false,
+				},
+			},
 		},
 		{
 			Name:         "listaccounts",
@@ -116,7 +118,7 @@ func RegisterCommands(s *discordgo.Session) error {
 	_, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, "", commands)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error registering global commands")
-		return err // Or return an error if something goes wrong
+		return
 	}
 
 	// Set up command handlers
@@ -140,29 +142,11 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["togglecheck"] = togglecheck.CommandToggleCheck
 
 	logger.Log.Info("Global commands registered and handlers set up")
-	return nil
 }
 
 // HandleCommand handles incoming commands and checks for announcements
-func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
-	logger.Log.Infof("Received command: %s", i.ApplicationCommandData().Name)
-
-	if h, ok := Handlers[i.ApplicationCommandData().Name]; ok {
-		logger.Log.Infof("Executing handler for command: %s", i.ApplicationCommandData().Name)
-
-		defer func() {
-			if r := recover(); r != nil {
-				logger.Log.Errorf("Panic recovered in command handler for %s: %v", i.ApplicationCommandData().Name, r)
-				sendErrorResponse(s, i, "An unexpected error occurred. Please try again later.")
-			}
-		}()
-
-		h(s, i, installType)
-		logger.Log.Infof("Finished executing handler for command: %s", i.ApplicationCommandData().Name)
-	} else {
-		logger.Log.Warnf("Unknown command: %s", i.ApplicationCommandData().Name)
-		sendErrorResponse(s, i, fmt.Sprintf("Unknown command: %s", i.ApplicationCommandData().Name))
-	}
+func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// Check if the user has seen the announcement
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
@@ -172,25 +156,31 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate, install
 		logger.Log.Error("Interaction doesn't have Member or User")
 		return
 	}
-	// Check if the user has seen the announcement
+
 	var userSettings models.UserSettings
-	result := database.GetDB().Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings)
+	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error getting user settings")
 	} else if !userSettings.HasSeenAnnouncement {
 		// Send the announcement to the user
+		if err := globalannouncement.SendGlobalAnnouncement(s, userID); err != nil {
+			logger.Log.WithError(err).Error("Error sending announcement to user")
+		} else {
+			// Update the user's settings to mark the announcement as seen
+			userSettings.HasSeenAnnouncement = true
+			if err := database.DB.Save(&userSettings).Error; err != nil {
+				logger.Log.WithError(err).Error("Error updating user settings after sending announcement")
+			}
+		}
+	}
+
+	// Continue with regular command handling
+	if h, ok := Handlers[i.ApplicationCommandData().Name]; ok {
+		h(s, i)
 	}
 }
-func sendErrorResponse(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: message,
-			Flags:   discordgo.MessageFlagsEphemeral,
-		},
-	})
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to send error response")
 
-	}
+// BoolPtr Helper function to create a pointer to a bool
+func BoolPtr(b bool) *bool {
+	return &b
 }

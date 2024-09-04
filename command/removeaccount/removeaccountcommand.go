@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func CommandRemoveAccount(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
+func CommandRemoveAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
@@ -23,7 +23,7 @@ func CommandRemoveAccount(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	}
 
 	var accounts []models.Account
-	result := database.GetDB().Where("user_id = ?", userID).Find(&accounts)
+	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
 		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
@@ -64,7 +64,7 @@ func CommandRemoveAccount(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	}
 }
 
-func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
+func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
 	accountID, err := strconv.Atoi(strings.TrimPrefix(customID, "remove_account_"))
 	if err != nil {
@@ -74,7 +74,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 
 	var account models.Account
-	result := database.GetDB().First(&account, accountID)
+	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
 		respondToInteraction(s, i, "Error: Account not found or you don't have permission to remove it.")
@@ -111,7 +111,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 }
 
-func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
+func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
 
 	if customID == "cancel_remove" {
@@ -127,7 +127,7 @@ func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate, in
 	}
 
 	var account models.Account
-	result := database.GetDB().First(&account, accountID)
+	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
 		respondToInteraction(s, i, "Error: Account not found or you don't have permission to remove it.")
@@ -135,7 +135,7 @@ func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate, in
 	}
 
 	// Start a transaction
-	tx := database.GetDB().Begin()
+	tx := database.DB.Begin()
 
 	// Delete associated bans
 	if err := tx.Where("account_id = ?", account.ID).Delete(&models.Ban{}).Error; err != nil {

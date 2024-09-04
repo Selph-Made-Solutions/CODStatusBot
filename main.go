@@ -10,38 +10,36 @@ import (
 	"github.com/joho/godotenv"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 )
 
 func main() {
-	logger.Log.Info("Bot starting...") // Log that the bot is starting up.
-	err := loadEnvironmentVariables()  // Load environment variables from .env file.
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Log.Errorf("Recovered from panic: %v\nStack trace:\n%s", r, debug.Stack())
+		}
+	}()
+
+	logger.Log.Info("Bot starting...")
+	err := loadEnvironmentVariables()
 	if err != nil {
-		logger.Log.WithError(err).WithField("Bot Startup", "Environment Variables").Error()
-		os.Exit(1)
+		logger.Log.WithError(err).Fatal("Failed to load environment variables")
 	}
 
-	err = services.LoadEnvironmentVariables() // Initialize EZ-Captcha service
+	err = initializeDatabase()
 	if err != nil {
-		logger.Log.WithError(err).WithField("Bot Startup", "EZ-Captcha Initialization").Error()
-		os.Exit(1)
+		logger.Log.WithError(err).Fatal("Failed to initialize database")
 	}
 
-	err = database.Databaselogin()
+	err = services.InitializeServices()
 	if err != nil {
-		logger.Log.WithError(err).WithField("Bot Startup", "Database login").Error()
-		os.Exit(1)
+		logger.Log.WithError(err).Fatal("Failed to initialize services")
 	}
 
-	err = services.LoadEnvironmentVariables() // Initialize EZ-Captcha service
+	discord, err := bot.StartBot()
 	if err != nil {
-		logger.Log.WithError(err).WithField("Bot Startup", "EZ-Captcha Initialization").Error()
-		os.Exit(1)
-	}
-	discord, err := bot.StartBot() // Start the Discord bot.
-	if err != nil {
-		logger.Log.WithError(err).WithField("Bot Startup", "Discord login").Error()
-		os.Exit(1)
+		logger.Log.WithError(err).Fatal("Failed to start bot")
 	}
 
 	logger.Log.Info("Bot is running")                                // Log that the bot is running.
@@ -49,7 +47,7 @@ func main() {
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt) // Notify the channel when a SIGINT, SIGTERM, or Interrupt signal is received.
 	<-sc                                                             // Block until a signal is received.
 
-	// Gracefully close the Discord session
+	logger.Log.Info("Shutting down...")
 	err = discord.Close()
 	if err != nil {
 		logger.Log.WithError(err).Error("Error closing Discord session")
@@ -58,10 +56,9 @@ func main() {
 
 // loadEnvironmentVariables loads environment variables from a .env file.
 func loadEnvironmentVariables() error {
-	logger.Log.Info("Loading environment variables...") // Log that environment variables are being loaded.
-	err := godotenv.Load()                              // Load environment variables from .env file.
+	logger.Log.Info("Loading environment variables...")
+	err := godotenv.Load()
 	if err != nil {
-		logger.Log.WithError(err).Error("Error loading .env file")
 		return fmt.Errorf("error loading .env file: %w", err)
 	}
 
@@ -80,7 +77,6 @@ func loadEnvironmentVariables() error {
 
 	for _, envVar := range requiredEnvVars {
 		if os.Getenv(envVar) == "" {
-			logger.Log.Errorf("%s is not set in the environment", envVar)
 			return fmt.Errorf("%s is not set in the environment", envVar)
 		}
 	}
@@ -89,13 +85,12 @@ func loadEnvironmentVariables() error {
 }
 
 func initializeDatabase() error {
-	err := database.Databaselogin()
+	err := database.Connect()
 	if err != nil {
-		return fmt.Errorf("failed to initialize database connection: %w", err)
+		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	// Create or update necessary tables
-	err = database.GetDB().AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{})
+	err = database.DB.AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{})
 	if err != nil {
 		return fmt.Errorf("failed to migrate database tables: %w", err)
 	}
@@ -116,7 +111,7 @@ func init() {
 	}
 
 	// Create or update the UserSettings table
-	err = database.GetDB().AutoMigrate(&models.UserSettings{})
+	err = database.DB.AutoMigrate(&models.UserSettings{})
 	if err != nil {
 		logger.Log.WithError(err).Fatal("Failed to create or update UserSettings table")
 	}

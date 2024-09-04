@@ -2,12 +2,11 @@ package helpcookie
 
 import (
 	"CODStatusBot/logger"
-	"CODStatusBot/models"
 
 	"github.com/bwmarrin/discordgo"
 )
 
-func CommandHelpCookie(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
+func CommandHelpCookie(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	logger.Log.Info("Received help command")
 	helpcookieGuide := "To obtain your SSO (Single Sign-On) cookie, follow these steps:\atusBot Help Guide\n\n" +
 		"To add your Call of Duty account to the bot, you'll need to obtain your SSO (Single Sign-On) cookie. Follow these steps:\n\n" +

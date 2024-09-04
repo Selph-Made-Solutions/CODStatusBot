@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
+func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
@@ -23,7 +23,7 @@ func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreat
 		return
 	}
 
-	userSettings, err := services.GetUserSettings(userID, installType)
+	userSettings, err := services.GetUserSettings(userID)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error fetching user settings")
 		respondToInteraction(s, i, "Error fetching your settings. Please try again.")
@@ -92,7 +92,7 @@ func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreat
 	}
 }
 
-func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
+func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
 
 	var userID string
@@ -106,7 +106,13 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, ins
 		return
 	}
 
-	userSettings, err := services.GetUserSettings(userID, installType)
+	userSettings, err := services.GetUserSettings(userID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error fetching user settings")
+		respondToInteraction(s, i, "Error fetching your settings. Please try again.")
+		return
+	}
+
 	defaultSettings, err := services.GetDefaultSettings()
 	if err != nil {
 		logger.Log.WithError(err).Error("Error fetching default settings")
@@ -158,14 +164,14 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, ins
 		}
 	}
 
-	if err := database.GetDB().Save(&userSettings).Error; err != nil {
+	if err := database.DB.Save(&userSettings).Error; err != nil {
 		logger.Log.WithError(err).Error("Error saving user settings")
 		respondToInteraction(s, i, "Error updating your settings. Please try again.")
 		return
 	}
 
 	// Update all accounts for this user with the new settings
-	result := database.GetDB().Model(&models.Account{}).
+	result := database.DB.Model(&models.Account{}).
 		Where("user_id = ?", userID).
 		Updates(map[string]interface{}{
 			"notification_type": userSettings.NotificationType,

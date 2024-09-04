@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func CommandToggleCheck(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
+func CommandToggleCheck(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
@@ -23,7 +23,7 @@ func CommandToggleCheck(s *discordgo.Session, i *discordgo.InteractionCreate, in
 	}
 
 	var accounts []models.Account
-	result := database.GetDB().Where("user_id = ?", userID).Find(&accounts)
+	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
 		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
@@ -38,7 +38,7 @@ func CommandToggleCheck(s *discordgo.Session, i *discordgo.InteractionCreate, in
 	// Create buttons for each account
 	var components []discordgo.MessageComponent
 	for _, account := range accounts {
-		label := fmt.Sprintf("%s (%s - %s)", account.Title, getCheckStatus(account.IsCheckDisabled), account.LastStatus.Overall)
+		label := fmt.Sprintf("%s (%s)", account.Title, getCheckStatus(account.IsCheckDisabled))
 		components = append(components, discordgo.Button{
 			Label:    label,
 			Style:    discordgo.PrimaryButton,
@@ -64,7 +64,7 @@ func CommandToggleCheck(s *discordgo.Session, i *discordgo.InteractionCreate, in
 	}
 }
 
-func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
+func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
 	accountID, err := strconv.Atoi(strings.TrimPrefix(customID, "toggle_check_"))
 	if err != nil {
@@ -74,7 +74,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 
 	var account models.Account
-	result := database.GetDB().First(&account, accountID)
+	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
 		respondToInteraction(s, i, "Error: Account not found")
@@ -84,7 +84,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	// Toggle the IsCheckDisabled field
 	account.IsCheckDisabled = !account.IsCheckDisabled
 
-	if err := database.GetDB().Save(&account).Error; err != nil {
+	if err := database.DB.Save(&account).Error; err != nil {
 		logger.Log.WithError(err).Error("Error saving account changes")
 		respondToInteraction(s, i, "Error toggling account checks. Please try again.")
 		return

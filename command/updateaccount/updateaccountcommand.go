@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
+func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
@@ -24,7 +24,7 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	}
 
 	var accounts []models.Account
-	result := database.GetDB().Where("user_id = ?", userID).Find(&accounts)
+	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
 		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
@@ -65,7 +65,7 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	}
 }
 
-func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
+func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
 	accountID, err := strconv.Atoi(strings.TrimPrefix(customID, "update_account_"))
 	if err != nil {
@@ -102,7 +102,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 }
 
-func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
+func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
 
 	accountIDStr := strings.TrimPrefix(data.CustomID, "update_account_modal_")
@@ -137,7 +137,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, ins
 	}
 
 	var account models.Account
-	result := database.GetDB().First(&account, accountID)
+	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
 		respondToInteraction(s, i, "Error: Account not found or you don't have permission to update it.")
@@ -173,12 +173,10 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, ins
 	// Update the account
 	account.SSOCookie = newSSOCookie
 	account.SSOCookieExpiration = expirationTimestamp
-	account.IsExpiredCookie = false        // Reset the expired cookie flag
-	account.InstallationType = installType // Update installation type
-	account.LastStatus = models.AccountStatus{Overall: models.StatusUnknown, Games: make(map[string]models.GameStatus)}
+	account.IsExpiredCookie = false // Reset the expired cookie flag
 
 	services.DBMutex.Lock()
-	if err := database.GetDB().Save(&account).Error; err != nil {
+	if err := database.DB.Save(&account).Error; err != nil {
 		services.DBMutex.Unlock()
 		logger.Log.WithError(err).Error("Error updating account")
 		respondToInteraction(s, i, "Error updating account. Please try again.")

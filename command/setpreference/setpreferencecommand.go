@@ -7,7 +7,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-func CommandSetPreference(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
+func CommandSetPreference(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
@@ -37,7 +37,7 @@ func CommandSetPreference(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	}
 }
 
-func HandlePreferenceSelection(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
+func HandlePreferenceSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
 	var preferenceType string
 
@@ -63,7 +63,7 @@ func HandlePreferenceSelection(s *discordgo.Session, i *discordgo.InteractionCre
 	}
 
 	// Update all existing accounts for this user
-	result := database.GetDB().Model(&models.Account{}).
+	result := database.DB.Model(&models.Account{}).
 		Where("user_id = ?", userID).
 		Update("notification_type", preferenceType)
 

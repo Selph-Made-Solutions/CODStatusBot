@@ -20,7 +20,7 @@ func sanitizeInput(input string) string {
 	}, input)
 }
 
-func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
+func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseModal,
 		Data: &discordgo.InteractionResponseData{
@@ -62,7 +62,7 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate, ins
 	}
 }
 
-func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
+func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
 
 	title := sanitizeInput(strings.TrimSpace(data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value))
@@ -100,7 +100,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, ins
 
 	// Get the user's current notification preference
 	var existingAccount models.Account
-	result := database.GetDB().Where("user_id = ?", userID).First(&existingAccount)
+	result := database.DB.Where("user_id = ?", userID).First(&existingAccount)
 
 	notificationType := "channel" // Default to channel if no existing preference
 	if result.Error == nil {
@@ -116,11 +116,10 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, ins
 		GuildID:             guildID,
 		ChannelID:           i.ChannelID,
 		NotificationType:    notificationType,
-		InstallationType:    installType,
 	}
 
 	// Save to database
-	result = database.GetDB().Create(&account)
+	result = database.DB.Create(&account)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error creating account")
 		respondToInteraction(s, i, "Error creating account. Please try again.")
