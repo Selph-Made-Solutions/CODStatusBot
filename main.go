@@ -102,17 +102,3 @@ func initializeDatabase() error {
 func BoolPtr(b bool) *bool {
 	return &b
 }
-
-func init() {
-	// Initialize the database connection
-	err := database.Databaselogin()
-	if err != nil {
-		logger.Log.WithError(err).Fatal("Failed to initialize database connection")
-	}
-
-	// Create or update the UserSettings table
-	err = database.DB.AutoMigrate(&models.UserSettings{})
-	if err != nil {
-		logger.Log.WithError(err).Fatal("Failed to create or update UserSettings table")
-	}
-}
