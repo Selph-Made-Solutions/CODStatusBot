@@ -39,12 +39,10 @@ func VerifySSOCookie(ssoCookie string) bool {
 		return false
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
 		logger.Log.Errorf("Invalid SSOCookie, status code: %d", resp.StatusCode)
 		return false
 	}
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error reading verification response body")
@@ -58,7 +56,8 @@ func VerifySSOCookie(ssoCookie string) bool {
 	return true
 }
 
-func CheckAccount(ssoCookie, userID string) (models.Status, error) {
+// CheckAccount checks the account status associated with the provided SSO cookie.
+func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 	logger.Log.Info("Starting CheckAccount function")
 
 	captchaAPIKey, err := GetUserCaptchaKey(userID)
@@ -69,6 +68,7 @@ func CheckAccount(ssoCookie, userID string) (models.Status, error) {
 
 	gRecaptchaResponse, err := SolveReCaptchaV2WithKey(captchaAPIKey)
 	if err != nil {
+		logger.Log.WithError(err).Error("Failed to solve reCAPTCHA")
 		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %v", err)
 	}
 
@@ -79,11 +79,10 @@ func CheckAccount(ssoCookie, userID string) (models.Status, error) {
 	banAppealUrl := fmt.Sprintf("%s&g-cc=%s", url1, gRecaptchaResponse)
 	logger.Log.WithField("url", banAppealUrl).Info("Constructed ban appeal URL")
 
-	var resp *http.Response
 	var body []byte
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		resp, body, err = makeRequest("GET", banAppealUrl, ssoCookie)
+		_, body, err = makeRequest("GET", banAppealUrl, ssoCookie)
 		if err == nil {
 			break
 		}
@@ -96,6 +95,32 @@ func CheckAccount(ssoCookie, userID string) (models.Status, error) {
 	}
 
 	return parseAccountStatus(body)
+}
+
+func makeRequest(method, url, ssoCookie string) (*http.Response, []byte, error) {
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create HTTP request: %v", err)
+	}
+
+	headers := GenerateHeaders(ssoCookie)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to send HTTP request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read response body: %v", err)
+	}
+	logger.Log.WithField("body", string(body)).Info("Read response body")
+
+	return resp, body, nil
 }
 
 func parseAccountStatus(body []byte) (models.Status, error) {
@@ -129,47 +154,37 @@ func parseAccountStatus(body []byte) (models.Status, error) {
 	}
 
 	if len(data.Bans) == 0 {
+		logger.Log.Info("No bans found, account status is good")
 		return models.StatusGood, nil
 	}
 
 	for _, ban := range data.Bans {
+		logger.Log.WithField("ban", ban).Info("Processing ban")
 		switch ban.Enforcement {
 		case "PERMANENT":
+			logger.Log.Info("Permanent ban detected")
 			return models.StatusPermaban, nil
 		case "UNDER_REVIEW":
+			logger.Log.Info("Shadowban detected")
 			return models.StatusShadowban, nil
 		case "TEMPORARY":
+			logger.Log.Info("Temporary ban detected")
 			return models.StatusTempban, nil
+		}
+
+		if ban.Bar.Status == "Open" {
+			logger.Log.Info("Account under investigation")
+			return models.StatusUnderInvestigation, nil
+		}
+
+		if ban.Bar.Status == "Closed" {
+			logger.Log.Info("Ban final")
+			return models.StatusBanFinal, nil
 		}
 	}
 
+	logger.Log.Info("Unknown account status")
 	return models.StatusUnknown, nil
-}
-
-func makeRequest(method, url, ssoCookie string) (*http.Response, []byte, error) {
-	req, err := http.NewRequest(method, url, nil)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create HTTP request: %v", err)
-	}
-
-	headers := GenerateHeaders(ssoCookie)
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to send HTTP request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read response body: %v", err)
-	}
-	logger.Log.WithField("body", string(body)).Info("Read response body")
-
-	return resp, body, nil
 }
 
 // CheckAccountAge retrieves the age of the account associated with the provided SSO cookie.
