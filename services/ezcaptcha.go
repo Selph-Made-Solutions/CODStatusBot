@@ -3,28 +3,34 @@ package services
 import (
 	"CODStatusBot/logger"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"sync"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
 const (
 	EZCaptchaAPIURL     = "https://api.ez-captcha.com/createTask"
 	EZCaptchaResultURL  = "https://api.ez-captcha.com/getTaskResult"
 	EZCaptchaBalanceURL = "https://api.ez-captcha.com/getBalance"
-	MaxRetries          = 6
+	MaxRetries          = 5
 	RetryInterval       = 10 * time.Second
 )
 
 var (
-	clientKey string
-	ezappID   string
-	siteKey   string
-	pageURL   string
+	clientKey        string
+	ezappID          string
+	siteKey          string
+	pageURL          string
+	ezCaptchaLimiter *rate.Limiter
+	ezCaptchaMu      sync.Mutex
 )
 
 type createTaskRequest struct {
@@ -74,78 +80,40 @@ func LoadEnvironmentVariables() error {
 	return nil
 }
 
-func SolveReCaptchaV2() (string, error) {
+func init() {
+	// Allow 10 requests per second with a burst of 50
+	ezCaptchaLimiter = rate.NewLimiter(rate.Every(100*time.Millisecond), 50)
+}
+
+func SolveReCaptchaV2(userID string) (string, error) {
 	logger.Log.Info("Starting to solve ReCaptcha V2 using EZ-Captcha")
-
-	taskID, err := createTask()
+	ezCaptchaMu.Lock()
+	err := ezCaptchaLimiter.Wait(context.Background())
+	ezCaptchaMu.Unlock()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("rate limit exceeded: %v", err)
 	}
 
-	solution, err := getTaskResult(taskID)
+	apiKey, err := GetUserCaptchaKey(userID)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to get captcha key: %v", err)
 	}
 
-	logger.Log.Info("Successfully solved ReCaptcha V2")
-	return solution, nil
-}
-
-func createTask() (string, error) {
-	payload := createTaskRequest{
-		ClientKey: clientKey,
-		EzAppID:   ezappID,
-		Task: task{
-			Type:        "ReCaptchaV2TaskProxyless",
-			WebsiteURL:  pageURL,
-			WebsiteKey:  siteKey,
-			IsInvisible: false,
-		},
-	}
-
-	jsonPayload, err := json.Marshal(payload)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal JSON payload: %v", err)
-	}
-
-	resp, err := http.Post(EZCaptchaAPIURL, "application/json", bytes.NewBuffer(jsonPayload))
-	if err != nil {
-		return "", fmt.Errorf("failed to send createTask request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %v", err)
-	}
-
-	var result createTaskResponse
-	err = json.Unmarshal(body, &result)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse JSON response: %v", err)
-	}
-
-	if result.ErrorID != 0 {
-		return "", fmt.Errorf("EZ-Captcha error: %s", result.ErrorDescription)
-	}
-
-	return result.TaskID, nil
-}
-
-func SolveReCaptchaV2WithKey(apiKey string) (string, error) {
-	logger.Log.Info("Starting to solve ReCaptcha V2 using EZ-Captcha with custom API key")
+	logger.Log.Infof("Using API key: %s", apiKey)
 
 	taskID, err := createTaskWithKey(apiKey)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create task: %v", err)
 	}
+
+	logger.Log.Infof("Task created with ID: %s", taskID)
 
 	solution, err := getTaskResultWithKey(taskID, apiKey)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to get task result: %v", err)
 	}
 
-	logger.Log.Info("Successfully solved ReCaptcha V2 with custom API key")
+	logger.Log.Info("Successfully solved ReCaptcha V2")
 	return solution, nil
 }
 
@@ -184,7 +152,7 @@ func createTaskWithKey(apiKey string) (string, error) {
 	}
 
 	if result.ErrorID != 0 {
-		return "", fmt.Errorf("EZ-Captcha error: %s", result.ErrorDescription)
+		return "", fmt.Errorf("EZ-Captcha error: %s (Error ID: %d, Error Code: %s)", result.ErrorDescription, result.ErrorID, result.ErrorCode)
 	}
 
 	return result.TaskID, nil
@@ -224,52 +192,10 @@ func getTaskResultWithKey(taskID string, apiKey string) (string, error) {
 		}
 
 		if result.ErrorID != 0 {
-			return "", fmt.Errorf("EZ-Captcha error: %s", result.ErrorDescription)
+			return "", fmt.Errorf("EZ-Captcha error: %s (Error ID: %d, Error Code: %s)", result.ErrorDescription, result.ErrorID, result.ErrorCode)
 		}
 
-		time.Sleep(RetryInterval)
-	}
-
-	return "", errors.New("max retries reached, captcha solving timed out")
-}
-
-func getTaskResult(taskID string) (string, error) {
-	for i := 0; i < MaxRetries; i++ {
-		payload := getTaskResultRequest{
-			ClientKey: clientKey,
-			TaskID:    taskID,
-		}
-
-		jsonPayload, err := json.Marshal(payload)
-		if err != nil {
-			return "", fmt.Errorf("failed to marshal JSON payload: %v", err)
-		}
-
-		resp, err := http.Post(EZCaptchaResultURL, "application/json", bytes.NewBuffer(jsonPayload))
-		if err != nil {
-			return "", fmt.Errorf("failed to send getTaskResult request: %v", err)
-		}
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return "", fmt.Errorf("failed to read response body: %v", err)
-		}
-
-		var result getTaskResultResponse
-		err = json.Unmarshal(body, &result)
-		if err != nil {
-			return "", fmt.Errorf("failed to parse JSON response: %v", err)
-		}
-
-		if result.Status == "ready" {
-			return result.Solution.GRecaptchaResponse, nil
-		}
-
-		if result.ErrorID != 0 {
-			return "", fmt.Errorf("EZ-Captcha error: %s", result.ErrorDescription)
-		}
-
+		logger.Log.Infof("Task not ready, retrying in %v (Attempt %d/%d)", RetryInterval, i+1, MaxRetries)
 		time.Sleep(RetryInterval)
 	}
 
