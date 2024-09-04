@@ -1,18 +1,21 @@
 package database
 
 import (
+	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"errors"
 	"fmt"
 	"os"
-
-	"CODStatusBot/logger"
+	"time"
 
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
-var DB *gorm.DB
+var (
+	DB  *gorm.DB
+	dsn string
+)
 
 func Databaselogin() error {
 	logger.Log.Info("Connecting to database...")
@@ -23,26 +26,44 @@ func Databaselogin() error {
 	dbName := os.Getenv("DB_NAME")
 	dbVar := os.Getenv("DB_VAR")
 
-	var err error
-
 	if dbUser == "" || dbPassword == "" || dbHost == "" || dbPort == "" || dbName == "" || dbVar == "" {
-		err = errors.New("one or more environment variables for database not set or missing")
+		err := errors.New("one or more environment variables for database not set or missing")
 		logger.Log.WithError(err).WithField("Bot Startup ", "database variables ").Error()
 		return err
 	}
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s%s", dbUser, dbPassword, dbHost, dbPort, dbName, dbVar)
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+
+	dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s%s", dbUser, dbPassword, dbHost, dbPort, dbName, dbVar)
+	var err error
+	DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
 		logger.Log.WithError(err).WithField("Bot Startup ", "Mysql Config ").Error()
 		return err
 	}
 
-	DB = db
+	sqlDB, err := DB.DB()
+	if err != nil {
+		logger.Log.WithError(err).WithField("Bot Startup ", "Get underlying SQL DB ").Error()
+		return err
+	}
 
-	err = DB.AutoMigrate(&models.Account{}, &models.Ban{})
+	// SetMaxIdleConns sets the maximum number of connections in the idle connection pool.
+	sqlDB.SetMaxIdleConns(10)
+
+	// SetMaxOpenConns sets the maximum number of open connections to the database.
+	sqlDB.SetMaxOpenConns(100)
+
+	// SetConnMaxLifetime sets the maximum amount of time a connection may be reused.
+	sqlDB.SetConnMaxLifetime(time.Hour)
+
+	err = DB.AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{})
 	if err != nil {
 		logger.Log.WithError(err).WithField("Bot Startup ", "Database Models Problem ").Error()
 		return err
 	}
+
 	return nil
+}
+
+func GetDB() *gorm.DB {
+	return DB
 }
