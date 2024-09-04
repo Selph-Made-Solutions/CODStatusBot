@@ -169,7 +169,20 @@ func CheckAccounts(s *discordgo.Session) {
 			continue
 		}
 
-		checkAccountsBatch(accounts, s)
+		for _, account := range accounts {
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						logger.Log.Errorf("Recovered from panic in CheckAccounts: %v", r)
+					}
+				}()
+				checkSingleAccount(account, s)
+			}()
+			// Add a small delay between account checks
+			time.Sleep(5 * time.Second)
+		}
+
+		logger.Log.Info("Finished periodic account check")
 		time.Sleep(time.Duration(sleepDuration) * time.Minute)
 	}
 }
