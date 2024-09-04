@@ -13,16 +13,21 @@ import (
 )
 
 func CommandAccountAge(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	userID := getUserID(i)
-	if userID == "" {
-		logger.Log.Error("Failed to get user ID")
+	var userID string
+	if i.Member != nil {
+		userID = i.Member.User.ID
+	} else if i.User != nil {
+		userID = i.User.ID
+	} else {
+		logger.Log.Error("Interaction doesn't have Member or User")
 		respondToInteraction(s, i, "An error occurred while processing your request.")
 		return
 	}
 
-	accounts, err := getAccounts(userID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error fetching user accounts")
+	var accounts []models.Account
+	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
+	if result.Error != nil {
+		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
 		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
 		return
 	}
@@ -33,9 +38,16 @@ func CommandAccountAge(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	// Create buttons for each account
-	components := createAccountButtons(accounts)
+	var components []discordgo.MessageComponent
+	for _, account := range accounts {
+		components = append(components, discordgo.Button{
+			Label:    account.Title,
+			Style:    discordgo.PrimaryButton,
+			CustomID: fmt.Sprintf("account_age_%d", account.ID),
+		})
+	}
 
-	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: "Select an account to check its age:",
@@ -51,9 +63,6 @@ func CommandAccountAge(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding with account selection")
 	}
-
-	// Log command usage for admin monitoring
-	services.IncrementCommandUsage("account_age")
 }
 
 func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -65,19 +74,18 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		return
 	}
 
-	account, err := getAccount(accountID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error fetching account")
+	var account models.Account
+	result := database.DB.First(&account, accountID)
+	if result.Error != nil {
+		logger.Log.WithError(result.Error).Error("Error fetching account")
 		respondToInteraction(s, i, "Error: Account not found or you don't have permission to check its age.")
 		return
 	}
 
 	if !services.VerifySSOCookie(account.SSOCookie) {
-		account.IsExpiredCookie = true
-		err = database.DB.Save(&account).Error
-		if err != nil {
-			logger.Log.WithError(err).Error("Error updating account's cookie status")
-		}
+		account.IsExpiredCookie = true // Update account's IsExpiredCookie flag
+		database.DB.Save(&account)
+
 		respondToInteraction(s, i, "Invalid SSOCookie. Account's cookie status updated.")
 		return
 	}
@@ -89,61 +97,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		return
 	}
 
-	embed := createAccountAgeEmbed(account, years, months, days)
-
-	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseUpdateMessage,
-		Data: &discordgo.InteractionResponseData{
-			Embeds:     []*discordgo.MessageEmbed{embed},
-			Components: []discordgo.MessageComponent{},
-		},
-	})
-
-	if err != nil {
-		logger.Log.WithError(err).Error("Error responding to interaction with account age")
-		respondToInteraction(s, i, "Error displaying account age. Please try again.")
-	}
-
-	// Log successful age check for admin monitoring
-	services.IncrementSuccessfulAgeChecks()
-}
-
-func getUserID(i *discordgo.InteractionCreate) string {
-	if i.Member != nil {
-		return i.Member.User.ID
-	}
-	if i.User != nil {
-		return i.User.ID
-	}
-	return ""
-}
-
-func getAccounts(userID string) ([]models.Account, error) {
-	var accounts []models.Account
-	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
-	return accounts, result.Error
-}
-
-func getAccount(accountID int) (models.Account, error) {
-	var account models.Account
-	result := database.DB.First(&account, accountID)
-	return account, result.Error
-}
-
-func createAccountButtons(accounts []models.Account) []discordgo.MessageComponent {
-	var components []discordgo.MessageComponent
-	for _, account := range accounts {
-		components = append(components, discordgo.Button{
-			Label:    account.Title,
-			Style:    discordgo.PrimaryButton,
-			CustomID: fmt.Sprintf("account_age_%d", account.ID),
-		})
-	}
-	return components
-}
-
-func createAccountAgeEmbed(account models.Account, years, months, days int) *discordgo.MessageEmbed {
-	return &discordgo.MessageEmbed{
+	embed := &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%s - Account Age", account.Title),
 		Description: fmt.Sprintf("The account is %d years, %d months, and %d days old.", years, months, days),
 		Color:       0x00ff00,
@@ -160,6 +114,19 @@ func createAccountAgeEmbed(account models.Account, years, months, days int) *dis
 				Inline: true,
 			},
 		},
+	}
+
+	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseUpdateMessage,
+		Data: &discordgo.InteractionResponseData{
+			Embeds:     []*discordgo.MessageEmbed{embed},
+			Components: []discordgo.MessageComponent{},
+		},
+	})
+
+	if err != nil {
+		logger.Log.WithError(err).Error("Error responding to interaction with account age")
+		respondToInteraction(s, i, "Error displaying account age. Please try again.")
 	}
 }
 
