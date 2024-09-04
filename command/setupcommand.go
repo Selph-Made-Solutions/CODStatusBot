@@ -21,9 +21,14 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+// BoolPtr Helper function to create a pointer to a bool
+func BoolPtr(b bool) *bool {
+	return &b
+}
+
 var Handlers = map[string]func(*discordgo.Session, *discordgo.InteractionCreate, models.InstallationType){}
 
-func RegisterCommands(s *discordgo.Session) {
+func RegisterCommands(s *discordgo.Session) error {
 	logger.Log.Info("Registering global commands")
 
 	commands := []*discordgo.ApplicationCommand{
@@ -71,14 +76,6 @@ func RegisterCommands(s *discordgo.Session) {
 			Name:         "checknow",
 			Description:  "Check account status now (rate limited for default API key)",
 			DMPermission: BoolPtr(true),
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "account_title",
-					Description: "The title of the specific account to check (optional)",
-					Required:    false,
-				},
-			},
 		},
 		{
 			Name:         "listaccounts",
@@ -118,7 +115,7 @@ func RegisterCommands(s *discordgo.Session) {
 	_, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, "", commands)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error registering global commands")
-		return
+		return err // Or return an error if something goes wrong
 	}
 
 	// Set up command handlers
@@ -142,13 +139,17 @@ func RegisterCommands(s *discordgo.Session) {
 	Handlers["togglecheck"] = togglecheck.CommandToggleCheck
 
 	logger.Log.Info("Global commands registered and handlers set up")
+	return nil
 }
 
 // HandleCommand handles incoming commands and checks for announcements
 func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate, installType models.InstallationType) {
-	// Check if the user has seen the announcement
+	if h, ok := Handlers[i.ApplicationCommandData().Name]; ok {
+		h(s, i, installType)
+	} else {
+		logger.Log.Warnf("Unknown command: %s", i.ApplicationCommandData().Name)
+	}
 	var userID string
-
 	if i.Member != nil {
 		userID = i.Member.User.ID
 	} else if i.User != nil {
@@ -157,7 +158,6 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate, install
 		logger.Log.Error("Interaction doesn't have Member or User")
 		return
 	}
-
 	// Check if the user has seen the announcement
 	var userSettings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings)
@@ -175,14 +175,4 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate, install
 			}
 		}
 	}
-
-	// Continue with regular command handling
-	if h, ok := Handlers[i.ApplicationCommandData().Name]; ok {
-		h(s, i, models.InstallTypeGuild)
-	}
-}
-
-// BoolPtr Helper function to create a pointer to a bool
-func BoolPtr(b bool) *bool {
-	return &b
 }
