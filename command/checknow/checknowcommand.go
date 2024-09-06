@@ -215,7 +215,7 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 		embed := &discordgo.MessageEmbed{
 			Title:       fmt.Sprintf("%s - %s", account.Title, status),
 			Description: fmt.Sprintf("Current status: %s", status),
-			Color:       getColorForStatus(status, account.IsExpiredCookie),
+			Color:       services.GetColorForStatus(status, account.IsExpiredCookie),
 			Timestamp:   time.Now().Format(time.RFC3339),
 			Fields: []*discordgo.MessageEmbedField{
 				{
@@ -278,25 +278,5 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	}
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction")
-	}
-}
-
-func getColorForStatus(status models.Status, isExpiredCookie bool) int {
-	if isExpiredCookie {
-		return 0xff9900 // Orange for expired cookie
-	}
-	switch status {
-	case models.StatusPermaban:
-		return 0xff0000 // Red for permanent ban
-	case models.StatusShadowban:
-		return 0xffff00 // Yellow for shadowban
-	case models.StatusTempban:
-		return 0xffa500 // Orange for temporary ban
-	case models.StatusUnderInvestigation:
-		return 0x0000ff // Blue for under investigation
-	case models.StatusBanFinal:
-		return 0x800080 // Purple for ban final
-	default:
-		return 0x00ff00 // Green for no ban or unknown status
 	}
 }

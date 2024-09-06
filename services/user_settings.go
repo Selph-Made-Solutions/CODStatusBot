@@ -145,7 +145,6 @@ func isValidUserID(userID string) bool {
 	}
 	return true
 }
-
 func GetUserCaptchaKey(userID string) (string, error) {
 	var settings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).First(&settings)

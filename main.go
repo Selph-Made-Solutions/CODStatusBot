@@ -10,36 +10,38 @@ import (
 	"github.com/joho/godotenv"
 	"os"
 	"os/signal"
-	"runtime/debug"
 	"syscall"
 )
 
 func main() {
-	defer func() {
-		if r := recover(); r != nil {
-			logger.Log.Errorf("Recovered from panic: %v\nStack trace:\n%s", r, debug.Stack())
-		}
-	}()
-
-	logger.Log.Info("Bot starting...")
-	err := loadEnvironmentVariables()
+	logger.Log.Info("Bot starting...") // Log that the bot is starting up.
+	err := loadEnvironmentVariables()  // Load environment variables from .env file.
 	if err != nil {
-		logger.Log.WithError(err).Fatal("Failed to load environment variables")
+		logger.Log.WithError(err).WithField("Bot Startup", "Environment Variables").Error()
+		os.Exit(1)
 	}
 
-	err = initializeDatabase()
+	err = services.LoadEnvironmentVariables() // Initialize EZ-Captcha service
 	if err != nil {
-		logger.Log.WithError(err).Fatal("Failed to initialize database")
+		logger.Log.WithError(err).WithField("Bot Startup", "EZ-Captcha Initialization").Error()
+		os.Exit(1)
 	}
 
-	err = services.InitializeServices()
+	err = database.Databaselogin()
 	if err != nil {
-		logger.Log.WithError(err).Fatal("Failed to initialize services")
+		logger.Log.WithError(err).WithField("Bot Startup", "Database login").Error()
+		os.Exit(1)
 	}
 
-	discord, err := bot.StartBot()
+	err = services.LoadEnvironmentVariables() // Initialize EZ-Captcha service
 	if err != nil {
-		logger.Log.WithError(err).Fatal("Failed to start bot")
+		logger.Log.WithError(err).WithField("Bot Startup", "EZ-Captcha Initialization").Error()
+		os.Exit(1)
+	}
+	discord, err := bot.StartBot() // Start the Discord bot.
+	if err != nil {
+		logger.Log.WithError(err).WithField("Bot Startup", "Discord login").Error()
+		os.Exit(1)
 	}
 
 	logger.Log.Info("Bot is running")                                // Log that the bot is running.
@@ -47,7 +49,7 @@ func main() {
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt) // Notify the channel when a SIGINT, SIGTERM, or Interrupt signal is received.
 	<-sc                                                             // Block until a signal is received.
 
-	logger.Log.Info("Shutting down...")
+	// Gracefully close the Discord session
 	err = discord.Close()
 	if err != nil {
 		logger.Log.WithError(err).Error("Error closing Discord session")
@@ -56,9 +58,10 @@ func main() {
 
 // loadEnvironmentVariables loads environment variables from a .env file.
 func loadEnvironmentVariables() error {
-	logger.Log.Info("Loading environment variables...")
-	err := godotenv.Load()
+	logger.Log.Info("Loading environment variables...") // Log that environment variables are being loaded.
+	err := godotenv.Load()                              // Load environment variables from .env file.
 	if err != nil {
+		logger.Log.WithError(err).Error("Error loading .env file")
 		return fmt.Errorf("error loading .env file: %w", err)
 	}
 
@@ -77,6 +80,7 @@ func loadEnvironmentVariables() error {
 
 	for _, envVar := range requiredEnvVars {
 		if os.Getenv(envVar) == "" {
+			logger.Log.Errorf("%s is not set in the environment", envVar)
 			return fmt.Errorf("%s is not set in the environment", envVar)
 		}
 	}
@@ -85,11 +89,12 @@ func loadEnvironmentVariables() error {
 }
 
 func initializeDatabase() error {
-	err := database.Connect()
+	err := database.Databaselogin()
 	if err != nil {
-		return fmt.Errorf("failed to connect to database: %w", err)
+		return fmt.Errorf("failed to initialize database connection: %w", err)
 	}
 
+	// Create or update necessary tables
 	err = database.DB.AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{})
 	if err != nil {
 		return fmt.Errorf("failed to migrate database tables: %w", err)
@@ -101,4 +106,18 @@ func initializeDatabase() error {
 // Helper function to create a pointer to a bool
 func BoolPtr(b bool) *bool {
 	return &b
+}
+
+func init() {
+	// Initialize the database connection
+	err := database.Databaselogin()
+	if err != nil {
+		logger.Log.WithError(err).Fatal("Failed to initialize database connection")
+	}
+
+	// Create or update the UserSettings table
+	err = database.DB.AutoMigrate(&models.UserSettings{})
+	if err != nil {
+		logger.Log.WithError(err).Fatal("Failed to create or update UserSettings table")
+	}
 }
