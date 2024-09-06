@@ -72,31 +72,60 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %v", err)
 	}
 
-	// Further processing of gRecaptchaResponse can be done here
-	logger.Log.Info("Successfully solved reCAPTCHA")
-
-	// Construct the ban appeal URL with the reCAPTCHA response
 	banAppealUrl := fmt.Sprintf("%s&g-cc=%s", url1, gRecaptchaResponse)
-	logger.Log.WithField("url", banAppealUrl).Info("Constructed ban appeal URL")
 
-	var body []byte
-
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		_, body, err = makeRequest("GET", banAppealUrl, ssoCookie)
-		if err == nil {
-			break
-		}
-		logger.Log.WithError(err).Errorf("Attempt %d failed to check account status", attempt+1)
-		time.Sleep(time.Duration(attempt+1) * time.Second)
-	}
-
+	req, err := http.NewRequest("GET", banAppealUrl, nil)
 	if err != nil {
-		return models.StatusUnknown, fmt.Errorf("failed to check account status after %d attempts: %v", maxRetries, err)
+		return models.StatusUnknown, fmt.Errorf("failed to create HTTP request: %v", err)
 	}
 
-	return parseAccountStatus(body)
-}
+	headers := GenerateHeaders(ssoCookie)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
 
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return models.StatusUnknown, fmt.Errorf("failed to send HTTP request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return models.StatusUnknown, fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	if len(body) == 0 {
+		return models.StatusInvalidCookie, nil
+	}
+
+	var data struct {
+		Bans []struct {
+			Enforcement string `json:"enforcement"`
+		} `json:"bans"`
+	}
+
+	err = json.Unmarshal(body, &data)
+	if err != nil {
+		return models.StatusUnknown, fmt.Errorf("failed to decode JSON response: %v", err)
+	}
+
+	if len(data.Bans) == 0 {
+		return models.StatusGood, nil
+	}
+
+	for _, ban := range data.Bans {
+		switch ban.Enforcement {
+		case "PERMANENT":
+			return models.StatusPermaban, nil
+		case "UNDER_REVIEW":
+			return models.StatusShadowban, nil
+		}
+	}
+
+	return models.StatusUnknown, nil
+}
 func makeRequest(method, url, ssoCookie string) (*http.Response, []byte, error) {
 	req, err := http.NewRequest(method, url, nil)
 	if err != nil {
