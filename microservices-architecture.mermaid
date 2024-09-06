@@ -1,0 +1,8 @@
+graph TD
+    A[Discord Gateway Service] --> B[Command Processing Service]
+    A --> C[Status Checking Service]
+    A --> D[Notification Service]
+    B --> E[Database Service]
+    C --> E
+    D --> E
+    C --> D
