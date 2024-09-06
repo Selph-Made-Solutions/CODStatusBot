@@ -47,9 +47,10 @@ type Ban struct {
 type Status string
 
 const (
-	StatusGood          Status = "good"           // The account is in good standing.
-	StatusPermaban      Status = "permaban"       // The account has been permanently banned.
-	StatusShadowban     Status = "shadowban"      // The account has been shadowbanned.
-	StatusUnknown       Status = "unknown"        // The status of the account is unknown.
-	StatusInvalidCookie Status = "invalid_cookie" // The account has an invalid SSO cookie.
+	StatusGood          Status = "good"
+	StatusPermaban      Status = "permaban"
+	StatusShadowban     Status = "shadowban"
+	StatusUnknown       Status = "unknown"
+	StatusInvalidCookie Status = "invalid_cookie"
+	StatusTempban       Status = "temporary"
 )
