@@ -1,6 +1,7 @@
 package main
 
 import (
+	"CODStatusBot/admin"
 	"CODStatusBot/bot"
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
@@ -33,23 +34,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = services.LoadEnvironmentVariables() // Initialize EZ-Captcha service
-	if err != nil {
-		logger.Log.WithError(err).WithField("Bot Startup", "EZ-Captcha Initialization").Error()
-		os.Exit(1)
-	}
 	discord, err := bot.StartBot() // Start the Discord bot.
 	if err != nil {
 		logger.Log.WithError(err).WithField("Bot Startup", "Discord login").Error()
 		os.Exit(1)
 	}
 
-	logger.Log.Info("Bot is running")                                // Log that the bot is running.
-	sc := make(chan os.Signal, 1)                                    // Set up a channel to receive system signals.
-	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt) // Notify the channel when a SIGINT, SIGTERM, or Interrupt signal is received.
-	<-sc                                                             // Block until a signal is received.
+	// Start the admin panel
+	go admin.StartAdminPanel()
 
-	// Gracefully close the Discord session
+	logger.Log.Info("Bot is running")
+	sc := make(chan os.Signal, 1)
+	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
+	<-sc
+
 	err = discord.Close()
 	if err != nil {
 		logger.Log.WithError(err).Error("Error closing Discord session")
@@ -76,6 +74,8 @@ func loadEnvironmentVariables() error {
 		"DB_PORT",
 		"DB_NAME",
 		"DB_VAR",
+		"ADMIN_USERNAME",
+		"ADMIN_PASSWORD",
 	}
 
 	for _, envVar := range requiredEnvVars {
@@ -103,7 +103,7 @@ func initializeDatabase() error {
 	return nil
 }
 
-// Helper function to create a pointer to a bool
+// BoolPtr Helper function to create a pointer to a bool
 func BoolPtr(b bool) *bool {
 	return &b
 }
