@@ -12,9 +12,8 @@ import (
 )
 
 var (
-	discord  *discordgo.Session
-	cmdQueue = make(chan *discordgo.InteractionCreate, 100)
-	wg       sync.WaitGroup
+	discord *discordgo.Session
+	wg      sync.WaitGroup
 )
 
 func StartBot() (*discordgo.Session, error) {
@@ -45,13 +44,9 @@ func StartBot() (*discordgo.Session, error) {
 
 	discord.AddHandler(handleInteraction)
 
-	// Start command processing workers
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go commandProcessor()
-	}
-
+	// Start the account checking service
 	go services.CheckAccounts(discord)
+
 	return discord, nil
 }
 
@@ -65,7 +60,7 @@ func handleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	switch i.Type {
 	case discordgo.InteractionApplicationCommand:
-		cmdQueue <- i
+		handleCommand(s, i)
 	case discordgo.InteractionModalSubmit:
 		handleModalSubmit(s, i)
 	case discordgo.InteractionMessageComponent:
@@ -73,36 +68,31 @@ func handleInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 }
 
-func commandProcessor() {
-	defer wg.Done()
-
-	for i := range cmdQueue {
-		func() {
+func handleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	commandName := i.ApplicationCommandData().Name
+	if handler, ok := command.Handlers[commandName]; ok {
+		go func() {
 			defer func() {
 				if r := recover(); r != nil {
-					logger.Log.Errorf("Recovered from panic in command processor: %v\nStack trace:\n%s", r, debug.Stack())
-					respondToInteraction(discord, i, "An internal error occurred. Please try again later.")
+					logger.Log.Errorf("Recovered from panic in command handler: %v\nStack trace:\n%s", r, debug.Stack())
+					respondToInteraction(s, i, "An internal error occurred. Please try again later.")
 				}
 			}()
-
-			command.HandleCommand(discord, i)
+			handler(s, i)
 		}()
+	} else {
+		logger.Log.Errorf("No handler found for command: %s", commandName)
+		respondToInteraction(s, i, "Unknown command. Please try again.")
 	}
 }
 
 func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.ModalSubmitData().CustomID
-	switch customID {
-	case "set_captcha_service_modal":
-		command.Handlers["setcaptchaservice"](s, i)
-	case "add_account_modal":
-		command.Handlers["addaccount"](s, i)
-	default:
-		if command.Handlers[customID] != nil {
-			command.Handlers[customID](s, i)
-		} else {
-			logger.Log.WithField("customID", customID).Error("Unknown modal submission")
-		}
+	if handler, ok := command.Handlers[customID]; ok {
+		handler(s, i)
+	} else {
+		logger.Log.WithField("customID", customID).Error("Unknown modal submission")
+		respondToInteraction(s, i, "An error occurred processing your input. Please try again.")
 	}
 }
 
@@ -115,6 +105,7 @@ func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate
 		}
 	}
 	logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
+	respondToInteraction(s, i, "An error occurred processing your input. Please try again.")
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
@@ -127,12 +118,5 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	})
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction")
-	}
-}
-
-func init() {
-	err := services.InitializeServices()
-	if err != nil {
-		logger.Log.WithError(err).Fatal("Failed to initialize services")
 	}
 }
