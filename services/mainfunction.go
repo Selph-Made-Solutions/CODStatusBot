@@ -4,12 +4,9 @@ import (
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
-	"encoding/json"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
-	"io/ioutil"
-	"net/http"
 	"os"
 	"strconv"
 	"sync"
@@ -497,56 +494,4 @@ func formatBanDuration(duration int) string {
 		return fmt.Sprintf("%d minutes", duration/60)
 	}
 	return fmt.Sprintf("%d hours", duration/3600)
-}
-
-func CheckAccount(ssoCookie string, userID string) (models.Status, int, error) {
-	url := "https://support.activision.com/api/bans/v2/appeal?locale=en"
-	client := &http.Client{}
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return models.StatusUnknown, 0, fmt.Errorf("error creating request: %v", err)
-	}
-
-	req.Header.Set("Cookie", fmt.Sprintf("ACT_SSO_COOKIE=%s", ssoCookie))
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return models.StatusUnknown, 0, fmt.Errorf("error sending request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return models.StatusUnknown, 0, fmt.Errorf("error reading response body: %v", err)
-	}
-
-	var response struct {
-		Bans []struct {
-			Enforcement string `json:"enforcement"`
-			Duration    int    `json:"duration"`
-		} `json:"bans"`
-	}
-
-	err = json.Unmarshal(body, &response)
-	if err != nil {
-		return models.StatusUnknown, 0, fmt.Errorf("failed to parse response: %v", err)
-	}
-
-	if len(response.Bans) == 0 {
-		return models.StatusGood, 0, nil
-	}
-
-	for _, ban := range response.Bans {
-		switch ban.Enforcement {
-		case "PERMANENT":
-			return models.StatusPermaban, 0, nil
-		case "TEMPORARY":
-			return models.StatusTempban, ban.Duration, nil
-		case "UNDER_REVIEW":
-			return models.StatusShadowban, 0, nil
-		}
-	}
-
-	return models.StatusUnknown, 0, nil
 }
