@@ -51,19 +51,19 @@ func VerifySSOCookie(ssoCookie string) bool {
 }
 
 // CheckAccount checks the account status associated with the provided SSO cookie.
-func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
+func CheckAccount(ssoCookie string, userID string) (models.Status, int, error) {
 	logger.Log.Info("Starting CheckAccount function")
 
 	captchaAPIKey, err := GetUserCaptchaKey(userID)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to get user's captcha API key")
-		return models.StatusUnknown, fmt.Errorf("failed to get user's captcha API key: %v", err)
+		return models.StatusUnknown, 0, fmt.Errorf("failed to get user's captcha API key: %v", err)
 	}
 
 	gRecaptchaResponse, err := SolveReCaptchaV2WithKey(captchaAPIKey)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to solve reCAPTCHA")
-		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %v", err)
+		return models.StatusUnknown, 0, fmt.Errorf("failed to solve reCAPTCHA: %v", err)
 	}
 
 	// Further processing of gRecaptchaResponse can be done here
@@ -76,7 +76,7 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 	req, err := http.NewRequest("GET", banAppealUrl, nil)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to create HTTP request")
-		return models.StatusUnknown, errors.New("failed to create HTTP request to check account")
+		return models.StatusUnknown, 0, errors.New("failed to create HTTP request to check account")
 	}
 
 	headers := GenerateHeaders(ssoCookie)
@@ -90,17 +90,17 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to send HTTP request")
-		return models.StatusUnknown, errors.New("failed to send HTTP request to check account")
+		return models.StatusUnknown, 0, errors.New("failed to send HTTP request to check account")
 	}
 	defer resp.Body.Close()
 
 	logger.Log.WithField("status", resp.Status).Info("Received response")
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to read response body")
-		return models.StatusUnknown, errors.New("failed to read response body from check account request")
+		return models.StatusUnknown, 0, errors.New("failed to read response body from check account request")
 	}
+
 	logger.Log.WithField("body", string(body)).Info("Read response body")
 
 	// Check for specific error responses
@@ -117,53 +117,54 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 		logger.Log.WithField("errorResponse", errorResponse).Info("Parsed error response")
 		if errorResponse.Status == 400 && errorResponse.Path == "/api/bans/v2/appeal" {
 			logger.Log.Error("Invalid request to new endpoint, possibly missing or invalid reCAPTCHA")
-			return models.StatusUnknown, errors.New("invalid request to new endpoint, possibly missing or invalid reCAPTCHA")
+			return models.StatusUnknown, 0, errors.New("invalid request to new endpoint, possibly missing or invalid reCAPTCHA")
 		}
 	}
 
 	// If not an error response, proceed with parsing the actual ban data
-	var data struct {
-		Error     string `json:"error"`
-		Success   string `json:"success"`
-		CanAppeal bool   `json:"canAppeal"`
-		Bans      []struct {
+	var response struct {
+		Error   string `json:"error"`
+		Success string `json:"success"`
+		Bans    []struct {
 			Enforcement string `json:"enforcement"`
-			Title       string `json:"title"`
-			CanAppeal   bool   `json:"canAppeal"`
+			Duration    int    `json:"duration"`
 		} `json:"bans"`
 	}
 
 	if string(body) == "" {
 		logger.Log.Info("Empty response body, treating as invalid cookie")
-		return models.StatusInvalidCookie, nil
+		return models.StatusInvalidCookie, 0, nil
 	}
 
-	err = json.Unmarshal(body, &data)
+	err = json.Unmarshal(body, &response)
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to decode JSON response")
-		return models.StatusUnknown, fmt.Errorf("failed to decode JSON response: %v", err)
+		logger.Log.WithError(err).Error("Failed to parse response")
+		return models.StatusUnknown, 0, fmt.Errorf("failed to parse response: %v", err)
 	}
-	logger.Log.WithField("data", data).Info("Parsed ban data")
+	logger.Log.WithField("response", response).Info("Parsed ban data")
 
-	if len(data.Bans) == 0 {
+	if len(response.Bans) == 0 {
 		logger.Log.Info("No bans found, account status is good")
-		return models.StatusGood, nil
+		return models.StatusGood, 0, nil
 	}
 
-	for _, ban := range data.Bans {
+	for _, ban := range response.Bans {
 		logger.Log.WithField("ban", ban).Info("Processing ban")
 		switch ban.Enforcement {
 		case "PERMANENT":
 			logger.Log.Info("Permanent ban detected")
-			return models.StatusPermaban, nil
+			return models.StatusPermaban, 0, nil
+		case "TEMPORARY":
+			logger.Log.Info("Temporary ban detected")
+			return models.StatusTempban, ban.Duration, nil
 		case "UNDER_REVIEW":
 			logger.Log.Info("Shadowban detected")
-			return models.StatusShadowban, nil
+			return models.StatusShadowban, 0, nil
 		}
 	}
 
 	logger.Log.Info("Unknown account status")
-	return models.StatusUnknown, nil
+	return models.StatusUnknown, 0, nil
 }
 
 // CheckAccountAge retrieves the age of the account associated with the provided SSO cookie.
