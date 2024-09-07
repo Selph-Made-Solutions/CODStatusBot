@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
+	"io/ioutil"
+	"net/http"
 	"os"
 	"strconv"
 	"sync"
@@ -240,7 +242,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 		return
 	}
 
-	result, banDuration, err = CheckAccount(account.SSOCookie, account.UserID)
+	result, banDuration, err := CheckAccount(account.SSOCookie, account.UserID)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to check account %s: possible expired SSO Cookie", account.Title)
 		return
@@ -498,6 +500,26 @@ func formatBanDuration(duration int) string {
 }
 
 func CheckAccount(ssoCookie string, userID string) (models.Status, int, error) {
+	url := "https://support.activision.com/api/bans/v2/appeal?locale=en"
+	client := &http.Client{}
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return models.StatusUnknown, 0, fmt.Errorf("error creating request: %v", err)
+	}
+
+	req.Header.Set("Cookie", fmt.Sprintf("ACT_SSO_COOKIE=%s", ssoCookie))
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return models.StatusUnknown, 0, fmt.Errorf("error sending request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return models.StatusUnknown, 0, fmt.Errorf("error reading response body: %v", err)
+	}
 
 	var response struct {
 		Bans []struct {
