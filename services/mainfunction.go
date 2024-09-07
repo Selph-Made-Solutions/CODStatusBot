@@ -4,6 +4,7 @@ import (
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
+	"encoding/json"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
@@ -24,6 +25,7 @@ var (
 	userNotificationTimestamps  = make(map[string]time.Time)
 	userNotificationMutex       sync.Mutex
 	DBMutex                     sync.Mutex
+	defaultRateLimit            = 5 * time.Minute
 )
 
 func init() {
@@ -189,10 +191,15 @@ func CheckAccounts(s *discordgo.Session) {
 			}
 
 			// Check account status if enough time has passed since the last check
-			if time.Since(lastCheck).Minutes() > float64(userSettings.CheckInterval) {
+			checkInterval := userSettings.CheckInterval
+			if userSettings.CaptchaAPIKey == "" {
+				checkInterval = int(defaultRateLimit.Minutes())
+			}
+
+			if time.Since(lastCheck).Minutes() > float64(checkInterval) {
 				go CheckSingleAccount(account, s)
 			} else {
-				logger.Log.WithField("account", account.Title).Infof("Account %s checked recently less than %.2f minutes ago, skipping", account.Title, float64(userSettings.CheckInterval))
+				logger.Log.WithField("account", account.Title).Infof("Account %s checked recently less than %d minutes ago, skipping", account.Title, checkInterval)
 			}
 
 			// Send daily update if enough time has passed since the last notification
@@ -210,6 +217,7 @@ func CheckAccounts(s *discordgo.Session) {
 func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	// Check SSO cookie expiration
 	timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
+
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to check SSO cookie expiration for account %s", account.Title)
 	} else if timeUntilExpiration > 0 && timeUntilExpiration <= 24*time.Hour {
@@ -232,7 +240,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 		return
 	}
 
-	result, err := CheckAccount(account.SSOCookie, account.UserID)
+	result, banDuration, err = CheckAccount(account.SSOCookie, account.UserID)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to check account %s: possible expired SSO Cookie", account.Title)
 		return
@@ -275,6 +283,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	lastStatus := account.LastStatus
 	account.LastCheck = time.Now().Unix()
 	account.IsExpiredCookie = false
+	account.BanDuration = banDuration
 	if err := database.DB.Save(&account).Error; err != nil {
 		logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
 		DBMutex.Unlock()
@@ -311,6 +320,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 			Account:   account,
 			Status:    result,
 			AccountID: account.ID,
+			Duration:  banDuration,
 		}
 		if err := database.DB.Create(&ban).Error; err != nil {
 			logger.Log.WithError(err).Errorf("Failed to create new ban record for account %s", account.Title)
@@ -321,7 +331,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 
 		embed := &discordgo.MessageEmbed{
 			Title:       fmt.Sprintf("%s - %s", account.Title, EmbedTitleFromStatus(result)),
-			Description: fmt.Sprintf("The status of account %s has changed to %s", account.Title, result),
+			Description: getStatusDescription(result, account.Title, banDuration),
 			Color:       GetColorForStatus(result, account.IsExpiredCookie),
 			Timestamp:   time.Now().Format(time.RFC3339),
 		}
@@ -332,30 +342,54 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	}
 }
 
-// GetColorForStatus function: returns the appropriate color for an embed message based on the account status
-func GetColorForStatus(status models.Status, isExpiredCookie bool) int {
-	if isExpiredCookie {
-		return 0xff9900 // Orange for expired cookie
-	}
+// EmbedTitleFromStatus function: returns the appropriate title for an embed message based on the account status
+func getStatusDescription(status models.Status, accountTitle string, banDuration int) string {
 	switch status {
+	case models.StatusGood:
+		return fmt.Sprintf("The account %s is in good standing.", accountTitle)
 	case models.StatusPermaban:
-		return 0xff0000 // Red for permanent ban
+		return fmt.Sprintf("The account %s has been permanently banned.", accountTitle)
 	case models.StatusShadowban:
-		return 0xffff00 // Yellow for shadowban
+		return fmt.Sprintf("The account %s has been shadowbanned.", accountTitle)
+	case models.StatusTempban:
+		return fmt.Sprintf("The account %s has been temporarily banned for %s.", accountTitle, formatBanDuration(banDuration))
 	default:
-		return 0x00ff00 // Green for no ban
+		return fmt.Sprintf("The status of account %s is unknown.", accountTitle)
 	}
 }
 
 // EmbedTitleFromStatus function: returns the appropriate title for an embed message based on the account status
 func EmbedTitleFromStatus(status models.Status) string {
 	switch status {
+	case models.StatusGood:
+		return "ACCOUNT IN GOOD STANDING"
 	case models.StatusPermaban:
 		return "PERMANENT BAN DETECTED"
 	case models.StatusShadowban:
 		return "SHADOWBAN DETECTED"
+	case models.StatusTempban:
+		return "TEMPORARY BAN DETECTED"
 	default:
-		return "ACCOUNT NOT BANNED"
+		return "UNKNOWN STATUS"
+	}
+}
+
+// GetColorForStatus function: returns the appropriate color for an embed message based on the account status
+func GetColorForStatus(status models.Status, isExpiredCookie bool) int {
+	if isExpiredCookie {
+		return 0xff9900 // Orange for expired cookie
+	}
+	switch status {
+	case models.StatusGood:
+		return 0x00ff00 // Green for good standing
+	case models.StatusPermaban:
+		return 0xff0000 // Red for permanent ban
+	case models.StatusShadowban:
+		return 0xffff00 // Yellow for shadowban
+	case models.StatusTempban:
+		return 0xffa500 // Orange for temporary ban
+	default:
+		return 0x808080 // Gray for unknown status
 	}
 }
 
@@ -453,4 +487,44 @@ func createAnnouncementEmbed() *discordgo.MessageEmbed {
 		},
 		Timestamp: time.Now().Format(time.RFC3339),
 	}
+}
+
+// formating the tempban duration
+func formatBanDuration(duration int) string {
+	if duration < 3600 {
+		return fmt.Sprintf("%d minutes", duration/60)
+	}
+	return fmt.Sprintf("%d hours", duration/3600)
+}
+
+func CheckAccount(ssoCookie string, userID string) (models.Status, int, error) {
+
+	var response struct {
+		Bans []struct {
+			Enforcement string `json:"enforcement"`
+			Duration    int    `json:"duration"`
+		} `json:"bans"`
+	}
+
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		return models.StatusUnknown, 0, fmt.Errorf("failed to parse response: %v", err)
+	}
+
+	if len(response.Bans) == 0 {
+		return models.StatusGood, 0, nil
+	}
+
+	for _, ban := range response.Bans {
+		switch ban.Enforcement {
+		case "PERMANENT":
+			return models.StatusPermaban, 0, nil
+		case "TEMPORARY":
+			return models.StatusTempban, ban.Duration, nil
+		case "UNDER_REVIEW":
+			return models.StatusShadowban, 0, nil
+		}
+	}
+
+	return models.StatusUnknown, 0, nil
 }
