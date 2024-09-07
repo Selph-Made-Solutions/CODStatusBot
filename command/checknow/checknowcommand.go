@@ -184,7 +184,7 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 			continue
 		}
 
-		status, err := services.CheckAccount(account.SSOCookie, account.UserID)
+		status, banDuration, err := services.CheckAccount(account.SSOCookie, account.UserID)
 		if err != nil {
 			logger.Log.WithError(err).Errorf("Error checking account status for %s: %v", account.Title, err)
 
@@ -206,6 +206,7 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 
 		account.LastStatus = status
 		account.LastCheck = time.Now().Unix()
+		account.BanDuration = banDuration
 		if err := database.DB.Save(&account).Error; err != nil {
 			logger.Log.WithError(err).Errorf("Failed to update account %s after check", account.Title)
 		} else {
@@ -225,6 +226,15 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 				},
 			},
 		}
+
+		if banDuration > 0 {
+			embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+				Name:   "Ban Duration",
+				Value:  fmt.Sprintf("%d seconds", banDuration),
+				Inline: true,
+			})
+		}
+
 		embeds = append(embeds, embed)
 	}
 
