@@ -106,7 +106,6 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
 
-	newSSOCookie := utils.SanitizeInput(strings.TrimSpace(data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value))
 	accountIDStr := strings.TrimPrefix(data.CustomID, "update_account_modal_")
 	accountID, err := strconv.Atoi(accountIDStr)
 	if err != nil {
@@ -121,7 +120,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		if row, ok := comp.(*discordgo.ActionsRow); ok {
 			for _, rowComp := range row.Components {
 				if v, ok := rowComp.(*discordgo.TextInput); ok && v.CustomID == "new_sso_cookie" {
-					newSSOCookie = strings.TrimSpace(v.Value)
+					newSSOCookie = utils.SanitizeInput(strings.TrimSpace(v.Value))
 				}
 			}
 		}
