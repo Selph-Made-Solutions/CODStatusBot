@@ -18,17 +18,12 @@ import (
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
-	"fmt"
 	"github.com/bwmarrin/discordgo"
 )
 
 var Handlers = map[string]func(*discordgo.Session, *discordgo.InteractionCreate){}
 
 func RegisterCommands(s *discordgo.Session) error {
-	if s == nil {
-		return fmt.Errorf("Discord session is nil")
-	}
-
 	logger.Log.Info("Registering global commands")
 
 	commands := []*discordgo.ApplicationCommand{
@@ -120,10 +115,6 @@ func RegisterCommands(s *discordgo.Session) error {
 		},
 	}
 
-	if s.State == nil || s.State.User == nil {
-		return fmt.Errorf("bot is not properly connected or initialized")
-	}
-
 	_, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, "", commands)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error registering global commands")
@@ -147,10 +138,10 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["togglecheck"] = togglecheck.CommandToggleCheck
 
 	// Command Modal Handlers
-	Handlers["add_account_modal"] = addaccount.HandleModalSubmit
-	Handlers["update_account_modal"] = updateaccount.HandleModalSubmit
-	Handlers["set_check_interval_modal"] = setcheckinterval.HandleModalSubmit
-	Handlers["set_captcha_service_modal"] = setcaptchaservice.HandleModalSubmit
+	Handlers["setcaptchaservice_modal"] = setcaptchaservice.HandleModalSubmit
+	Handlers["addaccount_modal"] = addaccount.HandleModalSubmit
+	Handlers["updateaccount_modal"] = updateaccount.HandleModalSubmit
+	Handlers["setcheckinterval_modal"] = setcheckinterval.HandleModalSubmit
 
 	// Command select handlers
 	Handlers["account_age"] = accountage.HandleAccountSelection
@@ -161,8 +152,6 @@ func RegisterCommands(s *discordgo.Session) error {
 
 	// Confirmation handlers
 	Handlers["confirm_remove"] = removeaccount.HandleConfirmation
-	Handlers["feedback_anonymous"] = feedback.HandleFeedbackChoice
-	Handlers["feedback_with_id"] = feedback.HandleFeedbackChoice
 
 	logger.Log.Info("Global commands registered and handlers set up")
 	return nil
@@ -198,28 +187,13 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		}
 	}
 
-	// Handle different interaction types
-	switch i.Type {
-	case discordgo.InteractionApplicationCommand:
-		if h, ok := Handlers[i.ApplicationCommandData().Name]; ok {
-			h(s, i)
-		} else {
-			logger.Log.Warnf("No handler for application command: %s", i.ApplicationCommandData().Name)
-		}
-	case discordgo.InteractionMessageComponent:
-		if h, ok := Handlers[i.MessageComponentData().CustomID]; ok {
-			h(s, i)
-		} else {
-			logger.Log.Warnf("No handler for message component: %s", i.MessageComponentData().CustomID)
-		}
-	case discordgo.InteractionModalSubmit:
-		if h, ok := Handlers[i.ModalSubmitData().CustomID]; ok {
-			h(s, i)
-		} else {
-			logger.Log.Warnf("No handler for modal submit: %s", i.ModalSubmitData().CustomID)
-		}
-	default:
-		logger.Log.Warnf("Unhandled interaction type: %v", i.Type)
+	// Continue with regular command handling
+	if h, ok := Handlers[i.ApplicationCommandData().Name]; ok {
+		h(s, i)
+	} else if h, ok := Handlers[i.MessageComponentData().CustomID]; ok {
+		h(s, i)
+	} else {
+		logger.Log.Warnf("Unhandled interaction: %s", i.Type)
 	}
 }
 
