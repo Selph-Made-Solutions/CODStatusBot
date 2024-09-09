@@ -96,14 +96,14 @@ func showAccountButtons(s *discordgo.Session, i *discordgo.InteractionCreate, ac
 		components = append(components, discordgo.Button{
 			Label:    account.Title,
 			Style:    discordgo.PrimaryButton,
-			CustomID: fmt.Sprintf("check_now_%d", account.ID),
+			CustomID: fmt.Sprintf("check_now_%s_%d", i.Member.User.ID, account.ID),
 		})
 	}
 
 	components = append(components, discordgo.Button{
 		Label:    "Check All",
 		Style:    discordgo.SuccessButton,
-		CustomID: "check_now_all",
+		CustomID: fmt.Sprintf("check_now_%s_all", i.Member.User.ID),
 	})
 
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -126,10 +126,20 @@ func showAccountButtons(s *discordgo.Session, i *discordgo.InteractionCreate, ac
 
 func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
+	parts := strings.Split(customID, "_")
 
-	if customID == "check_now_all" {
+	if len(parts) != 4 {
+		logger.Log.Error("Invalid custom ID format")
+		respondToInteraction(s, i, "An error occurred while processing your request.")
+		return
+	}
+
+	userID := parts[2]
+	accountIDOrAll := parts[3]
+
+	if accountIDOrAll == "all" {
 		var accounts []models.Account
-		result := database.DB.Where("user_id = ?", i.Member.User.ID).Find(&accounts)
+		result := database.DB.Where("user_id = ?", userID).Find(&accounts)
 		if result.Error != nil {
 			logger.Log.WithError(result.Error).Error("Error fetching accounts")
 			respondToInteraction(s, i, "Error fetching accounts. Please try again later.")
@@ -139,7 +149,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		return
 	}
 
-	accountID, err := strconv.Atoi(strings.TrimPrefix(customID, "check_now_"))
+	accountID, err := strconv.Atoi(accountIDOrAll)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error parsing account ID")
 		respondToInteraction(s, i, "Error processing your selection. Please try again.")
