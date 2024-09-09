@@ -110,7 +110,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 			},
 			{
 				Name:   "Creation Date",
-				Value:  time.Now().AddDate(-years, -months, -days).Format("January 2, 2006"),
+				Value:  created.Format("January 2, 2006"),
 				Inline: true,
 			},
 		},
