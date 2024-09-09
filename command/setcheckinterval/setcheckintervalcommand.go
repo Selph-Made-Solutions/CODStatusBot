@@ -96,10 +96,6 @@ func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreat
 func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
 
-	checkInterval := utils.SanitizeInput(data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
-	notificationInterval := utils.SanitizeInput(data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
-	notificationType := utils.SanitizeInput(data.Components[2].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
-
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
@@ -134,7 +130,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 						if textInput.Value == "" {
 							userSettings.CheckInterval = defaultSettings.CheckInterval
 						} else {
-							interval, err := strconv.Atoi(textInput.Value)
+							interval, err := strconv.Atoi(utils.SanitizeInput(textInput.Value))
 							if err != nil || interval < 1 || interval > 1440 {
 								respondToInteraction(s, i, "Invalid check interval. Please enter a number between 1 and 1440.")
 								return
@@ -145,7 +141,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 						if textInput.Value == "" {
 							userSettings.NotificationInterval = defaultSettings.NotificationInterval
 						} else {
-							interval, err := strconv.ParseFloat(textInput.Value, 64)
+							interval, err := strconv.ParseFloat(utils.SanitizeInput(textInput.Value), 64)
 							if err != nil || interval < 1 || interval > 24 {
 								respondToInteraction(s, i, "Invalid notification interval. Please enter a number between 1 and 24.")
 								return
@@ -156,7 +152,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 						if textInput.Value == "" {
 							userSettings.NotificationType = defaultSettings.NotificationType
 						} else {
-							notificationType := strings.ToLower(textInput.Value)
+							notificationType := strings.ToLower(utils.SanitizeInput(textInput.Value))
 							if notificationType != "channel" && notificationType != "dm" {
 								respondToInteraction(s, i, "Invalid notification type. Please enter 'channel' or 'dm'.")
 								return
