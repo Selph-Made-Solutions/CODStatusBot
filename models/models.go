@@ -6,7 +6,6 @@ import (
 
 type Account struct {
 	gorm.Model
-	GuildID                string `gorm:"index"` // The ID of the guild the account belongs to.
 	UserID                 string `gorm:"index"` // The ID of the user.
 	ChannelID              string // The ID of the channel associated with the account.
 	Title                  string // The title of the account.
@@ -15,7 +14,6 @@ type Account struct {
 	LastNotification       int64  // The timestamp of the last daily notification sent out on the account.
 	LastCookieNotification int64  // The timestamp of the last notification sent out on the account for an expired ssocookie.
 	SSOCookie              string // The SSO cookie associated with the account.
-	SSOCookieExpiration    int64
 	Created                string // The timestamp of when the account was created on Activision.
 	IsExpiredCookie        bool   `gorm:"default:false"`   // A flag indicating if the SSO cookie has expired.
 	NotificationType       string `gorm:"default:channel"` // User preference for location of notifications either channel or dm
@@ -23,6 +21,8 @@ type Account struct {
 	LastCookieCheck        int64  `gorm:"default:0"`       // The timestamp of the last cookie check for permanently banned accounts
 	LastStatusChange       int64  `gorm:"default:0"`       // The timestamp of the last status change
 	IsCheckDisabled        bool   `gorm:"default:false"`   // A flag indicating if checks are disabled for this account
+	BanDuration            int    `gorm:"default:0"`       // The duration of the ban in seconds
+	SSOCookieExpiration    int64
 }
 
 type UserSettings struct {
@@ -39,17 +39,19 @@ type UserSettings struct {
 
 type Ban struct {
 	gorm.Model
-	Account   Account // The account that has been banned.
-	AccountID uint    // The ID of the banned account.
+	Account   Account // The account that has a status history.
+	AccountID uint    // The ID of the account.
 	Status    Status  // The status of the ban.
+	Duration  int     // The duration of the temporary ban in seconds.
 }
 
 type Status string
 
 const (
-	StatusGood          Status = "good"           // The account is in good standing.
-	StatusPermaban      Status = "permaban"       // The account has been permanently banned.
-	StatusShadowban     Status = "shadowban"      // The account has been shadowbanned.
-	StatusUnknown       Status = "unknown"        // The status of the account is unknown.
+	StatusGood          Status = "good"           // The account status returned as good standing.
+	StatusPermaban      Status = "permaban"       // The account status returned as permanent ban.
+	StatusShadowban     Status = "shadowban"      // The account status returned as shadowban.
+	StatusUnknown       Status = "unknown"        // The account status not known.
 	StatusInvalidCookie Status = "invalid_cookie" // The account has an invalid SSO cookie.
+	StatusTempban       Status = "temporary"      // The account status returned as temporarily banned.
 )
