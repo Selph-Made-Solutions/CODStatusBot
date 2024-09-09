@@ -18,12 +18,17 @@ import (
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
+	"fmt"
 	"github.com/bwmarrin/discordgo"
 )
 
 var Handlers = map[string]func(*discordgo.Session, *discordgo.InteractionCreate){}
 
 func RegisterCommands(s *discordgo.Session) error {
+	if s == nil {
+		return fmt.Errorf("Discord session is nil")
+	}
+
 	logger.Log.Info("Registering global commands")
 
 	commands := []*discordgo.ApplicationCommand{
@@ -115,6 +120,10 @@ func RegisterCommands(s *discordgo.Session) error {
 		},
 	}
 
+	if s.State == nil || s.State.User == nil {
+		return fmt.Errorf("bot is not properly connected or initialized")
+	}
+
 	_, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, "", commands)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error registering global commands")
@@ -189,13 +198,28 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		}
 	}
 
-	// Continue with regular command handling
-	if h, ok := Handlers[i.ApplicationCommandData().Name]; ok {
-		h(s, i)
-	} else if h, ok := Handlers[i.MessageComponentData().CustomID]; ok {
-		h(s, i)
-	} else {
-		logger.Log.Warnf("Unhandled interaction: %s", i.Type)
+	// Handle different interaction types
+	switch i.Type {
+	case discordgo.InteractionApplicationCommand:
+		if h, ok := Handlers[i.ApplicationCommandData().Name]; ok {
+			h(s, i)
+		} else {
+			logger.Log.Warnf("No handler for application command: %s", i.ApplicationCommandData().Name)
+		}
+	case discordgo.InteractionMessageComponent:
+		if h, ok := Handlers[i.MessageComponentData().CustomID]; ok {
+			h(s, i)
+		} else {
+			logger.Log.Warnf("No handler for message component: %s", i.MessageComponentData().CustomID)
+		}
+	case discordgo.InteractionModalSubmit:
+		if h, ok := Handlers[i.ModalSubmitData().CustomID]; ok {
+			h(s, i)
+		} else {
+			logger.Log.Warnf("No handler for modal submit: %s", i.ModalSubmitData().CustomID)
+		}
+	default:
+		logger.Log.Warnf("Unhandled interaction type: %v", i.Type)
 	}
 }
 
