@@ -85,22 +85,40 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 	}
 	logger.Log.WithField("headers", headers).Info("Set request headers")
 
-	client := &http.Client{}
-	logger.Log.Info("Sending HTTP request to check account")
-	resp, err := client.Do(req)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to send HTTP request")
-		return models.StatusUnknown, errors.New("failed to send HTTP request to check account")
+	client := &http.Client{
+		Timeout: 45 * time.Second,
 	}
-	defer resp.Body.Close()
 
-	logger.Log.WithField("status", resp.Status).Info("Received response")
+	var resp *http.Response
+	var body []byte
+	maxRetries := 1
+	for i := 0; i < maxRetries; i++ {
+		logger.Log.Infof("Sending HTTP request to check account (attempt %d/%d)", i+1, maxRetries)
+		resp, err = client.Do(req)
+		if err != nil {
+			logger.Log.WithError(err).Error("Failed to send HTTP request")
+			if i == maxRetries-1 {
+				return models.StatusUnknown, errors.New("failed to send HTTP request to check account after multiple attempts")
+			}
+			time.Sleep(time.Duration(i+1) * time.Second)
+			continue
+		}
+		defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to read response body")
-		return models.StatusUnknown, errors.New("failed to read response body from check account request")
+		logger.Log.WithField("status", resp.Status).Info("Received response")
+
+		body, err = io.ReadAll(resp.Body)
+		if err != nil {
+			logger.Log.WithError(err).Error("Failed to read response body")
+			if i == maxRetries-1 {
+				return models.StatusUnknown, errors.New("failed to read response body from check account request after multiple attempts")
+			}
+			time.Sleep(time.Duration(i+1) * time.Second)
+			continue
+		}
+		break
 	}
+
 	logger.Log.WithField("body", string(body)).Info("Read response body")
 
 	// Check for specific error responses
@@ -159,6 +177,9 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 		case "UNDER_REVIEW":
 			logger.Log.Info("Shadowban detected")
 			return models.StatusShadowban, nil
+		case "TEMPORARY":
+			logger.Log.Info("Temporary ban detected")
+			return models.StatusTempban, nil
 		}
 	}
 
