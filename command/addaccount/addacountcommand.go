@@ -5,6 +5,7 @@ import (
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
+	"CODStatusBot/utils"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"strings"
@@ -65,9 +66,8 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
 
-	title := sanitizeInput(strings.TrimSpace(data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value))
+	title := utils.SanitizeInput(strings.TrimSpace(data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value))
 	ssoCookie := strings.TrimSpace(data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
-
 	logger.Log.Infof("Attempting to add account. Title: %s, SSO Cookie length: %d", title, len(ssoCookie))
 
 	// Verify SSO Cookie
@@ -85,13 +85,21 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	var userID, guildID string
+	var userID string
+	var channelID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
-		guildID = i.GuildID
+		channelID = i.ChannelID
 	} else if i.User != nil {
 		userID = i.User.ID
-		// In DMs, we don't have a guildID, so we'll leave it empty
+		// For user applications, we'll use DM as the default channel
+		channel, err := s.UserChannelCreate(userID)
+		if err != nil {
+			logger.Log.WithError(err).Error("Error creating DM channel")
+			respondToInteraction(s, i, "An error occurred while processing your request.")
+			return
+		}
+		channelID = channel.ID
 	} else {
 		logger.Log.Error("Interaction doesn't have Member or User")
 		respondToInteraction(s, i, "An error occurred while processing your request.")
@@ -105,6 +113,9 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	notificationType := "channel" // Default to channel if no existing preference
 	if result.Error == nil {
 		notificationType = existingAccount.NotificationType
+	} else if i.User != nil {
+		// If it's a user application and no existing preference, default to DM
+		notificationType = "dm"
 	}
 
 	// Create new account
@@ -113,8 +124,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		Title:               title,
 		SSOCookie:           ssoCookie,
 		SSOCookieExpiration: expirationTimestamp,
-		GuildID:             guildID,
-		ChannelID:           i.ChannelID,
+		ChannelID:           channelID,
 		NotificationType:    notificationType,
 	}
 

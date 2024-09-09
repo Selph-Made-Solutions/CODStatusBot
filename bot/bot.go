@@ -6,6 +6,7 @@ import (
 	"CODStatusBot/command/accountlogs"
 	"CODStatusBot/command/addaccount"
 	"CODStatusBot/command/checknow"
+	"CODStatusBot/command/feedback"
 	"CODStatusBot/command/removeaccount"
 	"CODStatusBot/command/setcaptchaservice"
 	"CODStatusBot/command/setcheckinterval"
@@ -87,19 +88,19 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
 	switch {
+	case strings.HasPrefix(customID, "feedback_"):
+		feedback.HandleFeedbackChoice(s, i)
+		logger.Log.Info("Handling feedback choice")
 	case strings.HasPrefix(customID, "account_age_"):
 		accountage.HandleAccountSelection(s, i)
 		logger.Log.Info("Handling account age selection")
 	case strings.HasPrefix(customID, "account_logs_"):
 		accountlogs.HandleAccountSelection(s, i)
 		logger.Log.Info("Handling account logs selection")
-	case customID == "account_logs_select":
+	case customID == "account_logs_all":
 		accountlogs.HandleAccountSelection(s, i)
 		logger.Log.Info("Handling account logs selection")
 	case strings.HasPrefix(customID, "update_account_"):
-		updateaccount.HandleAccountSelection(s, i)
-		logger.Log.Info("Handling update account selection")
-	case customID == "update_account_select":
 		updateaccount.HandleAccountSelection(s, i)
 		logger.Log.Info("Handling update account selection")
 	case strings.HasPrefix(customID, "remove_account_"):

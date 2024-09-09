@@ -3,6 +3,7 @@ package setcaptchaservice
 import (
 	"CODStatusBot/logger"
 	"CODStatusBot/services"
+	"CODStatusBot/utils"
 	"github.com/bwmarrin/discordgo"
 	"strings"
 )
@@ -33,7 +34,6 @@ func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCrea
 		logger.Log.WithError(err).Error("Error responding with modal")
 	}
 }
-
 func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
 
@@ -42,7 +42,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		if row, ok := comp.(*discordgo.ActionsRow); ok {
 			for _, rowComp := range row.Components {
 				if textInput, ok := rowComp.(*discordgo.TextInput); ok && textInput.CustomID == "api_key" {
-					apiKey = strings.TrimSpace(textInput.Value)
+					apiKey = utils.SanitizeInput(strings.TrimSpace(textInput.Value))
 				}
 			}
 		}

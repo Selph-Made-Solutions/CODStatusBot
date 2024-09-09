@@ -23,7 +23,7 @@ import (
 
 var Handlers = map[string]func(*discordgo.Session, *discordgo.InteractionCreate){}
 
-func RegisterCommands(s *discordgo.Session) {
+func RegisterCommands(s *discordgo.Session) error {
 	logger.Log.Info("Registering global commands")
 
 	commands := []*discordgo.ApplicationCommand{
@@ -69,16 +69,8 @@ func RegisterCommands(s *discordgo.Session) {
 		},
 		{
 			Name:         "checknow",
-			Description:  "Check account status now (rate limited for default API key)",
+			Description:  "Check All accounts Now (rate limited for default API key)",
 			DMPermission: BoolPtr(true),
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "account_title",
-					Description: "The title of the specific account to check (optional)",
-					Required:    false,
-				},
-			},
 		},
 		{
 			Name:         "listaccounts",
@@ -118,15 +110,14 @@ func RegisterCommands(s *discordgo.Session) {
 	_, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, "", commands)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error registering global commands")
-		return
+		return err
 	}
 
-	// Set up command handlers
+	// Command handlers
 	Handlers["globalannouncement"] = globalannouncement.CommandGlobalAnnouncement
 	Handlers["setcaptchaservice"] = setcaptchaservice.CommandSetCaptchaService
 	Handlers["setcheckinterval"] = setcheckinterval.CommandSetCheckInterval
 	Handlers["addaccount"] = addaccount.CommandAddAccount
-	Handlers["add_account_modal"] = addaccount.HandleModalSubmit
 	Handlers["helpcookie"] = helpcookie.CommandHelpCookie
 	Handlers["helpapi"] = helpapi.CommandHelpApi
 	Handlers["feedback"] = feedback.CommandFeedback
@@ -135,13 +126,29 @@ func RegisterCommands(s *discordgo.Session) {
 	Handlers["checknow"] = checknow.CommandCheckNow
 	Handlers["listaccounts"] = listaccounts.CommandListAccounts
 	Handlers["removeaccount"] = removeaccount.CommandRemoveAccount
-	Handlers["remove_account_select"] = removeaccount.HandleAccountSelection
 	Handlers["updateaccount"] = updateaccount.CommandUpdateAccount
-	Handlers["update_account_modal"] = updateaccount.HandleModalSubmit
-	Handlers["set_check_interval_modal"] = setcheckinterval.HandleModalSubmit
 	Handlers["togglecheck"] = togglecheck.CommandToggleCheck
 
+	// Command Modal Handlers
+	Handlers["setcaptchaservice_modal"] = setcaptchaservice.HandleModalSubmit
+	Handlers["addaccount_modal"] = addaccount.HandleModalSubmit
+	Handlers["updateaccount_modal"] = updateaccount.HandleModalSubmit
+	Handlers["setcheckinterval_modal"] = setcheckinterval.HandleModalSubmit
+
+	// Command select handlers
+	Handlers["account_age"] = accountage.HandleAccountSelection
+	Handlers["account_logs"] = accountlogs.HandleAccountSelection
+	Handlers["remove_account"] = removeaccount.HandleAccountSelection
+	Handlers["check_now"] = checknow.HandleAccountSelection
+	Handlers["toggle_check"] = togglecheck.HandleAccountSelection
+	Handlers["feedback_anonymous"] = feedback.HandleFeedbackChoice
+	Handlers["feedback_with_id"] = feedback.HandleFeedbackChoice
+
+	// Confirmation handlers
+	Handlers["confirm_remove"] = removeaccount.HandleConfirmation
+
 	logger.Log.Info("Global commands registered and handlers set up")
+	return nil
 }
 
 // HandleCommand handles incoming commands and checks for announcements
@@ -177,6 +184,10 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Continue with regular command handling
 	if h, ok := Handlers[i.ApplicationCommandData().Name]; ok {
 		h(s, i)
+	} else if h, ok := Handlers[i.MessageComponentData().CustomID]; ok {
+		h(s, i)
+	} else {
+		logger.Log.Warnf("Unhandled interaction: %s", i.Type)
 	}
 }
 

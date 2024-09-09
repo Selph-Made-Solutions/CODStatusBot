@@ -5,6 +5,7 @@ import (
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
+	"CODStatusBot/utils"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"strconv"
@@ -119,7 +120,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		if row, ok := comp.(*discordgo.ActionsRow); ok {
 			for _, rowComp := range row.Components {
 				if v, ok := rowComp.(*discordgo.TextInput); ok && v.CustomID == "new_sso_cookie" {
-					newSSOCookie = strings.TrimSpace(v.Value)
+					newSSOCookie = utils.SanitizeInput(strings.TrimSpace(v.Value))
 				}
 			}
 		}

@@ -1,66 +1,84 @@
 package main
 
 import (
+	"CODStatusBot/admin"
 	"CODStatusBot/bot"
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
 	"fmt"
+	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 )
 
+var discord *discordgo.Session
+
 func main() {
-	logger.Log.Info("Bot starting...") // Log that the bot is starting up.
-	err := loadEnvironmentVariables()  // Load environment variables from .env file.
-	if err != nil {
-		logger.Log.WithError(err).WithField("Bot Startup", "Environment Variables").Error()
-		os.Exit(1)
-	}
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Log.Errorf("Recovered from panic: %v\n%s", r, debug.Stack())
+		}
+	}()
 
-	err = services.LoadEnvironmentVariables() // Initialize EZ-Captcha service
-	if err != nil {
-		logger.Log.WithError(err).WithField("Bot Startup", "EZ-Captcha Initialization").Error()
+	logger.Log.Info("Bot starting...")
+	if err := run(); err != nil {
+		logger.Log.WithError(err).Error("Bot encountered an error and is shutting down")
 		os.Exit(1)
-	}
-
-	err = database.Databaselogin()
-	if err != nil {
-		logger.Log.WithError(err).WithField("Bot Startup", "Database login").Error()
-		os.Exit(1)
-	}
-
-	err = services.LoadEnvironmentVariables() // Initialize EZ-Captcha service
-	if err != nil {
-		logger.Log.WithError(err).WithField("Bot Startup", "EZ-Captcha Initialization").Error()
-		os.Exit(1)
-	}
-	discord, err := bot.StartBot() // Start the Discord bot.
-	if err != nil {
-		logger.Log.WithError(err).WithField("Bot Startup", "Discord login").Error()
-		os.Exit(1)
-	}
-
-	logger.Log.Info("Bot is running")                                // Log that the bot is running.
-	sc := make(chan os.Signal, 1)                                    // Set up a channel to receive system signals.
-	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt) // Notify the channel when a SIGINT, SIGTERM, or Interrupt signal is received.
-	<-sc                                                             // Block until a signal is received.
-
-	// Gracefully close the Discord session
-	err = discord.Close()
-	if err != nil {
-		logger.Log.WithError(err).Error("Error closing Discord session")
 	}
 }
 
-// loadEnvironmentVariables loads environment variables from a .env file.
-func loadEnvironmentVariables() error {
-	logger.Log.Info("Loading environment variables...") // Log that environment variables are being loaded.
-	err := godotenv.Load()                              // Load environment variables from .env file.
+func run() error {
+	if err := loadEnvironmentVariables(); err != nil {
+		return fmt.Errorf("failed to load environment variables: %w", err)
+	}
+	logger.Log.Info("Environment variables loaded successfully")
+
+	if err := services.LoadEnvironmentVariables(); err != nil {
+		return fmt.Errorf("failed to initialize EZ-Captcha service: %w", err)
+	}
+	logger.Log.Info("EZ-Captcha service initialized successfully")
+
+	if err := database.Databaselogin(); err != nil {
+		return fmt.Errorf("failed to connect to database: %w", err)
+	}
+	logger.Log.Info("Database connection established successfully")
+
+	if err := initializeDatabase(); err != nil {
+		return fmt.Errorf("failed to initialize database: %w", err)
+	}
+	logger.Log.Info("Database initialized successfully")
+
+	var err error
+	discord, err = bot.StartBot()
 	if err != nil {
+		return fmt.Errorf("failed to start Discord bot: %w", err)
+	}
+	logger.Log.Info("Discord bot started successfully")
+
+	// Start the admin panel
+	go admin.StartAdminPanel()
+
+	logger.Log.Info("Bot is running")
+	sc := make(chan os.Signal, 1)
+	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
+	<-sc
+
+	// Gracefully close the Discord session
+	if err := discord.Close(); err != nil {
+		logger.Log.WithError(err).Error("Error closing Discord session")
+	}
+
+	return nil
+}
+
+func loadEnvironmentVariables() error {
+	logger.Log.Info("Loading environment variables...")
+	if err := godotenv.Load(); err != nil {
 		logger.Log.WithError(err).Error("Error loading .env file")
 		return fmt.Errorf("error loading .env file: %w", err)
 	}
@@ -76,11 +94,11 @@ func loadEnvironmentVariables() error {
 		"DB_PORT",
 		"DB_NAME",
 		"DB_VAR",
+		"DEVELOPER_ID",
 	}
 
 	for _, envVar := range requiredEnvVars {
 		if os.Getenv(envVar) == "" {
-			logger.Log.Errorf("%s is not set in the environment", envVar)
 			return fmt.Errorf("%s is not set in the environment", envVar)
 		}
 	}
@@ -89,35 +107,8 @@ func loadEnvironmentVariables() error {
 }
 
 func initializeDatabase() error {
-	err := database.Databaselogin()
-	if err != nil {
-		return fmt.Errorf("failed to initialize database connection: %w", err)
-	}
-
-	// Create or update necessary tables
-	err = database.DB.AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{})
-	if err != nil {
+	if err := database.DB.AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{}); err != nil {
 		return fmt.Errorf("failed to migrate database tables: %w", err)
 	}
-
 	return nil
-}
-
-// Helper function to create a pointer to a bool
-func BoolPtr(b bool) *bool {
-	return &b
-}
-
-func init() {
-	// Initialize the database connection
-	err := database.Databaselogin()
-	if err != nil {
-		logger.Log.WithError(err).Fatal("Failed to initialize database connection")
-	}
-
-	// Create or update the UserSettings table
-	err = database.DB.AutoMigrate(&models.UserSettings{})
-	if err != nil {
-		logger.Log.WithError(err).Fatal("Failed to create or update UserSettings table")
-	}
 }

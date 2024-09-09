@@ -6,6 +6,7 @@ import (
 	"CODStatusBot/models"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
+	"gorm.io/gorm"
 	"os"
 	"time"
 )
@@ -93,10 +94,21 @@ func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 			// Find the most recent channel used by the user
 			var account models.Account
 			if err := database.DB.Where("user_id = ?", userID).Order("updated_at DESC").First(&account).Error; err != nil {
-				logger.Log.WithError(err).Error("Error finding recent channel for user")
-				return err
+				if err == gorm.ErrRecordNotFound {
+					// If no account found, default to DM
+					channel, err := s.UserChannelCreate(userID)
+					if err != nil {
+						logger.Log.WithError(err).Error("Error creating DM channel for global announcement")
+						return err
+					}
+					channelID = channel.ID
+				} else {
+					logger.Log.WithError(err).Error("Error finding recent channel for user")
+					return err
+				}
+			} else {
+				channelID = account.ChannelID
 			}
-			channelID = account.ChannelID
 		}
 
 		announcementEmbed := createAnnouncementEmbed()

@@ -4,7 +4,7 @@
 
 ## Introduction
 
-COD Status Bot is a Discord bot designed to help you monitor your Activision accounts for shadowbans or permanent bans in Call of Duty games. The bot periodically checks the status of your accounts and notifies you of any changes.
+COD Status Bot is a Discord bot designed to help you monitor your Activision accounts for shadowbans or permanent bans in Call of Duty games. The bot periodically checks the status of your accounts and notifies you of any changes. Now serving 300+ Discord servers, our bot has been optimized for performance and scalability.
 
 ## Features
 
@@ -15,7 +15,7 @@ COD Status Bot is a Discord bot designed to help you monitor your Activision acc
 - Ban history logs
 - Customizable notification preferences
 - Anonymous feedback submission
-- EZ-Captcha integration for continued compatibility with activision
+- EZ-Captcha integration for continued compatibility with Activision
 - SSO Cookie expiration tracking and notifications
 - Toggle automatic checks on/off for individual accounts
 
@@ -28,8 +28,8 @@ COD Status Bot is a Discord bot designed to help you monitor your Activision acc
 
 ## EZ-Captcha Integration
 
-The bot uses EZ-Captcha for solving CAPTCHAs, which maintains the compatability to check your accounts with 
-activision. Users have two options:
+The bot uses EZ-Captcha for solving CAPTCHAs, which maintains compatibility to check your accounts with
+Activision. Users have two options:
 
 1. Use the bot's default API key (limited use, shared among all users)
 2. Get your own EZ-Captcha API key for unlimited use and customizable check intervals
@@ -138,13 +138,14 @@ The bot uses a MySQL database to store account information and user settings. It
 
 - Secure storage of SSO cookies and user preferences
 - Regular checks for expired cookies and account status changes
-
+- Optimized queries and connection pooling for high-performance
 
 ## Support and Feedback
 
 If you encounter any issues or have questions:
 
 1. Use the `/feedback` command to contact the bot developer anonymously.
+2. Join our [Support Server](https://discord.gg/your-support-server) for real-time assistance and updates.
 
 ## Privacy and Data Security
 
@@ -152,16 +153,16 @@ If you encounter any issues or have questions:
 - Data is used solely for monitoring account status and providing notifications.
 - No data is shared with third parties.
 - Users can delete their data at any time using the `/removeaccount` command.
+- We employ industry-standard security practices to protect your data.
 
 ## Recent Changes and Updates
 
-- Added global announcement feature for important updates
-- Implemented user-specific EZ-Captcha API key support
-- Added customizable check intervals for users with personal API keys
-- Improved error handling and logging
-- Enhanced notification system with cooldowns and user preferences
-- Implemented account check toggling feature
-- Added detailed account logs viewing
+- Optimized bot performance for 300+ Discord servers
+- Implemented database connection pooling for improved scalability
+- Added caching mechanisms to reduce API calls and improve response times
+- Enhanced rate limiting to ensure fair usage across all servers
+- Improved error handling and logging for better issue resolution
+- Implemented performance monitoring to maintain high uptime and responsiveness
 
 ## Disclaimer
 
@@ -194,7 +195,9 @@ This project is open source and available on GitHub. We believe in the power of 
 
 - Encourage collaboration and improvement of the bot's features.
 - Provide transparency in how the bot operates.
-- Allow users to audit the code for security and privacy concerns.
 - Enable the community to adapt the bot for their specific needs.
 
 You can find the full source code, contribute to the project, or report issues at our [GitHub repository](https://github.com/bradselph/CODStatusBot).
+
+
+Thank you for using COD Status Bot! We're committed to providing a reliable and efficient service to our growing community of users across 300+ Discord servers.
