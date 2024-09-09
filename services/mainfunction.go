@@ -215,9 +215,10 @@ func CheckAccounts(s *discordgo.Session) {
 	}
 }
 
+var accountMutex sync.Mutex
+
 // CheckSingleAccount function: checks the status of a single account
 func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
-	// Check SSO cookie expiration
 	timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to check SSO cookie expiration for account %s", account.Title)
