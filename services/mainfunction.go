@@ -235,19 +235,16 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 			logger.Log.WithError(err).Errorf("Failed to send SSO cookie expiration notification for account %s", account.Title)
 		}
 	}
-
 	// Skip checking if the account is already permanently banned
 	if account.IsPermabanned {
 		logger.Log.WithField("account", account.Title).Info("Skipping permanently banned account")
 		return
 	}
-
 	result, err := CheckAccount(account.SSOCookie, account.UserID)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to check account %s: possible expired SSO Cookie", account.Title)
 		return
 	}
-
 	// Handle invalid cookie status
 	if result == models.StatusInvalidCookie {
 		lastNotification := time.Unix(account.LastCookieNotification, 0)
@@ -341,6 +338,10 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 			Color:       GetColorForStatus(result, account.IsExpiredCookie),
 			Timestamp:   time.Now().Format(time.RFC3339),
 		}
+		if result == models.StatusPermaban {
+			embed.Description += "\n\nThis account has been marked as permanently banned. It will no longer be checked automatically. You will receive daily reminders about this account. Please use the /removeaccount command to remove this account from monitoring if you no longer need it."
+		}
+
 		err = sendNotification(discord, account, embed, fmt.Sprintf("<@%s>", account.UserID))
 		if err != nil {
 			logger.Log.WithError(err).Errorf("Failed to send status update message for account %s", account.Title)
