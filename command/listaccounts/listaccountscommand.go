@@ -44,8 +44,8 @@ func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	for i, account := range accounts {
 		embed.Fields[i] = &discordgo.MessageEmbedField{
 			Name: account.Title,
-			Value: fmt.Sprintf("Status: %s\nGuild: %s\nNotification Type: %s",
-				account.LastStatus, account.GuildID, account.NotificationType),
+			Value: fmt.Sprintf("Status: %s\nNotification Type: %s",
+				account.LastStatus, account.NotificationType),
 			Inline: false,
 		}
 	}
