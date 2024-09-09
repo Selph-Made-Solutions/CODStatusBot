@@ -6,6 +6,7 @@ import (
 	"CODStatusBot/command/accountlogs"
 	"CODStatusBot/command/addaccount"
 	"CODStatusBot/command/checknow"
+	"CODStatusBot/command/feedback"
 	"CODStatusBot/command/removeaccount"
 	"CODStatusBot/command/setcaptchaservice"
 	"CODStatusBot/command/setcheckinterval"
@@ -89,6 +90,7 @@ func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate
 	switch {
 	case strings.HasPrefix(customID, "feedback_"):
 		feedback.HandleFeedbackChoice(s, i)
+		logger.Log.Info("Handling feedback choice")
 	case strings.HasPrefix(customID, "account_age_"):
 		accountage.HandleAccountSelection(s, i)
 		logger.Log.Info("Handling account age selection")
