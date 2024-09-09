@@ -69,16 +69,8 @@ func RegisterCommands(s *discordgo.Session) error {
 		},
 		{
 			Name:         "checknow",
-			Description:  "Check account status now (rate limited for default API key)",
+			Description:  "Check All accounts Now (rate limited for default API key)",
 			DMPermission: BoolPtr(true),
-			Options:      []*discordgo.ApplicationCommandOption{
-				/*{
-					Type:        discordgo.ApplicationCommandOptionString,
-					Name:        "account_title",
-					Description: "The title of the specific account to check (optional)",
-					Required:    false,
-				},*/
-			},
 		},
 		{
 			Name:         "listaccounts",
