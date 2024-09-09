@@ -4,14 +4,15 @@ import (
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
+	"embed"
 	"encoding/json"
 	"fmt"
+	"github.com/gorilla/mux"
+	"github.com/gorilla/sessions"
+	"html/template"
 	"net/http"
 	"os"
 	"time"
-
-	"github.com/gorilla/mux"
-	"github.com/gorilla/sessions"
 )
 
 var (
@@ -27,12 +28,69 @@ type Stats struct {
 	ChecksLast24Hours int `json:"checks_last_24_hours"`
 }
 
+var templateFS embed.FS
+
+var templates *template.Template
+
+var dashboardTemplate = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COD Status Bot Admin Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; }
+        h1 { color: #333; }
+        .stat { margin-bottom: 10px; }
+        .stat span { font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>COD Status Bot Admin Dashboard</h1>
+    <div class="stat">Total Accounts: <span id="totalAccounts"></span></div>
+    <div class="stat">Active Accounts: <span id="activeAccounts"></span></div>
+    <div class="stat">Banned Accounts: <span id="bannedAccounts"></span></div>
+    <div class="stat">Total Users: <span id="totalUsers"></span></div>
+    <div class="stat">Checks Last Hour: <span id="checksLastHour"></span></div>
+    <div class="stat">Checks Last 24 Hours: <span id="checksLast24Hours"></span></div>
+
+    <script>
+        function updateStats() {
+            fetch('/stats')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('totalAccounts').textContent = data.total_accounts;
+                    document.getElementById('activeAccounts').textContent = data.active_accounts;
+                    document.getElementById('bannedAccounts').textContent = data.banned_accounts;
+                    document.getElementById('totalUsers').textContent = data.total_users;
+                    document.getElementById('checksLastHour').textContent = data.checks_last_hour;
+                    document.getElementById('checksLast24Hours').textContent = data.checks_last_24_hours;
+                });
+        }
+
+        updateStats();
+        setInterval(updateStats, 60000); // Update every minute
+    </script>
+</body>
+</html>
+`
+
+func init() {
+	var err error
+	templates, err = template.ParseFS(templateFS, "templates/*.html")
+	if err != nil {
+		logger.Log.WithError(err).Fatal("Failed to parse admin templates")
+	}
+}
+
 func StartAdminPanel() {
 	r := mux.NewRouter()
 
 	r.HandleFunc("/login", loginHandler).Methods("POST")
 	r.HandleFunc("/logout", logoutHandler).Methods("POST")
 	r.HandleFunc("/stats", authMiddleware(statsHandler)).Methods("GET")
+	r.HandleFunc("/", authMiddleware(dashboardHandler)).Methods("GET")
 
 	port := os.Getenv("ADMIN_PORT")
 	if port == "" {
@@ -158,4 +216,13 @@ func getChecksInTimeRange(duration time.Duration) (int, error) {
 	timeThreshold := time.Now().Add(-duration).Unix()
 	err := database.DB.Model(&models.Account{}).Where("last_check > ?", timeThreshold).Count(&count).Error
 	return int(count), err
+}
+
+var dashboardTmpl = template.Must(template.New("dashboard").Parse(dashboardTemplate))
+
+func dashboardHandler(w http.ResponseWriter, r *http.Request) {
+	err := dashboardTmpl.Execute(w, nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
