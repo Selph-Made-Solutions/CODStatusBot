@@ -34,18 +34,15 @@ func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCrea
 		logger.Log.WithError(err).Error("Error responding with modal")
 	}
 }
-
 func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
-
-	ApiKey := utils.SanitizeInput(strings.TrimSpace(data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value))
 
 	var apiKey string
 	for _, comp := range data.Components {
 		if row, ok := comp.(*discordgo.ActionsRow); ok {
 			for _, rowComp := range row.Components {
 				if textInput, ok := rowComp.(*discordgo.TextInput); ok && textInput.CustomID == "api_key" {
-					apiKey = strings.TrimSpace(textInput.Value)
+					apiKey = utils.SanitizeInput(strings.TrimSpace(textInput.Value))
 				}
 			}
 		}
