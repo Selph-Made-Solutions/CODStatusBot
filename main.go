@@ -1,17 +1,24 @@
 package main
 
 import (
-	"CODStatusBot/bot"
+	"CODStatusBot/admin"
+	"CODStatusBot/command"
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
+	"errors"
 	"fmt"
+	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
 	"os"
 	"os/signal"
+	"runtime/debug"
+	"strings"
 	"syscall"
 )
+
+var discord *discordgo.Session
 
 func main() {
 	logger.Log.Info("Bot starting...") // Log that the bot is starting up.
