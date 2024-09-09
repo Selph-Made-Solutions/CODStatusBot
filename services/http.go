@@ -188,11 +188,11 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 }
 
 // CheckAccountAge retrieves the age of the account associated with the provided SSO cookie.
-func CheckAccountAge(ssoCookie string) (int, int, int, error) {
+func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 	logger.Log.Info("Starting CheckAccountAge function")
 	req, err := http.NewRequest("GET", url2, nil)
 	if err != nil {
-		return 0, 0, 0, errors.New("failed to create HTTP request to check account age")
+		return 0, 0, 0, 0, errors.New("failed to create HTTP request to check account age")
 	}
 	headers := GenerateHeaders(ssoCookie)
 	for k, v := range headers {
@@ -201,7 +201,7 @@ func CheckAccountAge(ssoCookie string) (int, int, int, error) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return 0, 0, 0, errors.New("failed to send HTTP request to check account age")
+		return 0, 0, 0, 0, errors.New("failed to send HTTP request to check account age")
 	}
 	defer resp.Body.Close()
 
@@ -210,25 +210,27 @@ func CheckAccountAge(ssoCookie string) (int, int, int, error) {
 	}
 	err = json.NewDecoder(resp.Body).Decode(&data)
 	if err != nil {
-		return 0, 0, 0, errors.New("failed to decode JSON response from check account age request")
+		return 0, 0, 0, 0, errors.New("failed to decode JSON response from check account age request")
 	}
 
 	logger.Log.Infof("Account created date: %s", data.Created)
 
 	created, err := time.Parse(time.RFC3339, data.Created)
 	if err != nil {
-		return 0, 0, 0, errors.New("failed to parse created date in check account age request")
+		return 0, 0, 0, 0, errors.New("failed to parse created date in check account age request")
 	}
 
-	// Use UTC for consistency
-	now := time.Now().UTC()
-	created = created.UTC()
+	// Convert to UTC and get epoch timestamp
+	createdUTC := created.UTC()
+	createdEpoch := createdUTC.Unix()
 
-	age := now.Sub(created)
+	// Calculate age
+	now := time.Now().UTC()
+	age := now.Sub(createdUTC)
 	years := int(age.Hours() / 24 / 365.25)
 	months := int(age.Hours()/24/30.44) % 12
 	days := int(age.Hours()/24) % 30
 
 	logger.Log.Infof("Account age calculated: %d years, %d months, %d days", years, months, days)
-	return years, months, days, nil
+	return years, months, days, createdEpoch, nil
 }
