@@ -5,6 +5,7 @@ import (
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
+	"CODStatusBot/utils"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"strconv"
@@ -105,6 +106,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
 
+	newSSOCookie := utils.SanitizeInput(strings.TrimSpace(data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value))
 	accountIDStr := strings.TrimPrefix(data.CustomID, "update_account_modal_")
 	accountID, err := strconv.Atoi(accountIDStr)
 	if err != nil {
