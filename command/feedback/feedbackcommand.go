@@ -68,7 +68,6 @@ func CommandFeedback(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 }
-
 func HandleFeedbackChoice(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
 	parts := strings.Split(customID, "_")
