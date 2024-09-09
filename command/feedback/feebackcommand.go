@@ -18,29 +18,18 @@ func CommandFeedback(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	var userID string
-	var username string
 	if i.Member != nil {
 		userID = i.Member.User.ID
-		username = i.Member.User.Username
 	} else if i.User != nil {
 		userID = i.User.ID
-		username = i.User.Username
 	} else {
 		logger.Log.Error("Interaction doesn't have Member or User")
 		sendResponse(s, i, "An error occurred while processing your request.", true)
 		return
 	}
 
-	// Send feedback to developer with anonymity option
-	channel, err := s.UserChannelCreate(developerID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to create DM channel with developer")
-		sendResponse(s, i, "There was an error sending your feedback. Please try again later.", true)
-		return
-	}
-
 	// Create message with buttons for anonymity choice
-	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: "Do you want to send this feedback anonymously?",
@@ -70,7 +59,7 @@ func CommandFeedback(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Store the feedback message temporarily (you might want to use a more persistent storage in a production environment)
+	// Store the feedback message temporarily
 	tempFeedbackStore[userID] = feedbackMessage
 }
 
