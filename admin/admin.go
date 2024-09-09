@@ -4,15 +4,15 @@ import (
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
-	"embed"
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/mux"
-	"github.com/gorilla/sessions"
-	"html/template"
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/gorilla/mux"
+	"github.com/gorilla/sessions"
+	"html/template"
 )
 
 var (
@@ -27,10 +27,6 @@ type Stats struct {
 	ChecksLastHour    int `json:"checks_last_hour"`
 	ChecksLast24Hours int `json:"checks_last_24_hours"`
 }
-
-var templateFS embed.FS
-
-var templates *template.Template
 
 var dashboardTemplate = `
 <!DOCTYPE html>
@@ -75,14 +71,7 @@ var dashboardTemplate = `
 </body>
 </html>
 `
-
-func init() {
-	var err error
-	templates, err = template.ParseFS(templateFS, "templates/*.html")
-	if err != nil {
-		logger.Log.WithError(err).Fatal("Failed to parse admin templates")
-	}
-}
+var dashboardTmpl = template.Must(template.New("dashboard").Parse(dashboardTemplate))
 
 func StartAdminPanel() {
 	r := mux.NewRouter()
@@ -148,6 +137,13 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(stats)
+}
+
+func dashboardHandler(w http.ResponseWriter, r *http.Request) {
+	err := dashboardTmpl.Execute(w, nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func getStats() (Stats, error) {
@@ -216,13 +212,4 @@ func getChecksInTimeRange(duration time.Duration) (int, error) {
 	timeThreshold := time.Now().Add(-duration).Unix()
 	err := database.DB.Model(&models.Account{}).Where("last_check > ?", timeThreshold).Count(&count).Error
 	return int(count), err
-}
-
-var dashboardTmpl = template.Must(template.New("dashboard").Parse(dashboardTemplate))
-
-func dashboardHandler(w http.ResponseWriter, r *http.Request) {
-	err := dashboardTmpl.Execute(w, nil)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
 }
