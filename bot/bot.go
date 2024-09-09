@@ -87,6 +87,8 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
 	switch {
+	case strings.HasPrefix(customID, "feedback_"):
+		feedback.HandleFeedbackChoice(s, i)
 	case strings.HasPrefix(customID, "account_age_"):
 		accountage.HandleAccountSelection(s, i)
 		logger.Log.Info("Handling account age selection")
