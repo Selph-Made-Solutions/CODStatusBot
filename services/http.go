@@ -199,9 +199,11 @@ func CheckAccountAge(ssoCookie string) (int, int, int, error) {
 		return 0, 0, 0, errors.New("failed to parse created date in check account age request")
 	}
 
-	now := time.Now()
-	age := now.Sub(created)
+	// Use UTC for consistency
+	now := time.Now().UTC()
+	created = created.UTC()
 
+	age := now.Sub(created)
 	years := int(age.Hours() / 24 / 365.25)
 	months := int(age.Hours()/24/30.44) % 12
 	days := int(age.Hours()/24) % 30
