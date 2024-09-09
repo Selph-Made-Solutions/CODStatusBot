@@ -85,17 +85,24 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	if !services.VerifySSOCookie(account.SSOCookie) {
 		account.IsExpiredCookie = true // Update account's IsExpiredCookie flag
 		database.DB.Save(&account)
-
 		respondToInteraction(s, i, "Invalid SSOCookie. Account's cookie status updated.")
 		return
 	}
 
-	years, months, days, err := services.CheckAccountAge(account.SSOCookie)
+	years, months, days, createdEpoch, err := services.CheckAccountAge(account.SSOCookie)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Error checking account age for account %s", account.Title)
 		respondToInteraction(s, i, "There was an error checking the account age.")
 		return
 	}
+
+	// Update the account's Created field
+	account.Created = createdEpoch
+	if err := database.DB.Save(&account).Error; err != nil {
+		logger.Log.WithError(err).Errorf("Error saving account creation timestamp for account %s", account.Title)
+	}
+
+	creationDate := time.Unix(createdEpoch, 0).UTC().Format("January 2, 2006")
 
 	embed := &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%s - Account Age", account.Title),
@@ -110,7 +117,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 			},
 			{
 				Name:   "Creation Date",
-				Value:  time.Now().AddDate(-years, -months, -days).Format("January 2, 2006"),
+				Value:  creationDate,
 				Inline: true,
 			},
 		},
