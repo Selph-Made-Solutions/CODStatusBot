@@ -21,7 +21,7 @@ type Account struct {
 	LastCookieCheck        int64  `gorm:"default:0"`       // The timestamp of the last cookie check for permanently banned accounts
 	LastStatusChange       int64  `gorm:"default:0"`       // The timestamp of the last status change
 	IsCheckDisabled        bool   `gorm:"default:false"`   // A flag indicating if checks are disabled for this account
-	SSOCookieExpiration    int64 //
+	SSOCookieExpiration    int64  //
 }
 
 type UserSettings struct {
@@ -38,9 +38,11 @@ type UserSettings struct {
 
 type Ban struct {
 	gorm.Model
-	Account   Account // The account that has a status history.
-	AccountID uint    // The ID of the account.
-	Status    Status  // The status of the ban.
+	Account         Account // The account that has a status history.
+	AccountID       uint    // The ID of the account.
+	Status          Status  // The status of the ban.
+	TempBanDuration string  // Duration of the temporary ban (if applicable)
+	AffectedGames   string  // Comma-separated list of affected games
 }
 
 type Status string
