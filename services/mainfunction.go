@@ -9,6 +9,7 @@ import (
 	"github.com/joho/godotenv"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -195,11 +196,13 @@ func CheckAccounts(s *discordgo.Session) {
 				checkInterval = int(defaultRateLimit.Minutes())
 			}
 
-			if time.Since(lastCheck).Minutes() > float64(checkInterval) {
-				go CheckSingleAccount(account, s)
-			} else {
-				logger.Log.WithField("account", account.Title).Infof("Account %s checked recently less than %d minutes ago, skipping", account.Title, checkInterval)
+			lastCheck = time.Unix(account.LastCheck, 0)
+			if time.Since(lastCheck).Minutes() < float64(checkInterval) {
+				logger.Log.Infof("Skipping check for account %s (rate limit)", account.Title)
+				continue
 			}
+
+			go CheckSingleAccount(account, s)
 
 			// Send daily update if enough time has passed since the last notification
 			if time.Since(lastNotification).Hours() > userSettings.NotificationInterval {
@@ -318,6 +321,12 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 			Status:    result,
 			AccountID: account.ID,
 		}
+
+		if result == models.StatusTempban {
+			// Add logic to parse and set TempBanDuration
+			ban.TempBanDuration = "X days" // Replace with actual duration
+		}
+
 		if err := database.DB.Create(&ban).Error; err != nil {
 			logger.Log.WithError(err).Errorf("Failed to create new ban record for account %s", account.Title)
 		}
@@ -327,7 +336,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 
 		embed := &discordgo.MessageEmbed{
 			Title:       fmt.Sprintf("%s - %s", account.Title, EmbedTitleFromStatus(result)),
-			Description: getStatusDescription(result, account.Title),
+			Description: getStatusDescription(result, account.Title, ban),
 			Color:       GetColorForStatus(result, account.IsExpiredCookie),
 			Timestamp:   time.Now().Format(time.RFC3339),
 		}
@@ -335,6 +344,54 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 		if err != nil {
 			logger.Log.WithError(err).Errorf("Failed to send status update message for account %s", account.Title)
 		}
+
+		if result == models.StatusTempban {
+			// Schedule a notification for when the temporary ban is lifted
+			go scheduleTempBanNotification(account, ban.TempBanDuration, discord)
+		}
+	}
+}
+
+func scheduleTempBanNotification(account models.Account, duration string, discord *discordgo.Session) {
+	// Parse the duration string and create a time.Duration
+	d, err := time.ParseDuration(duration)
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to parse temporary ban duration for account %s", account.Title)
+		return
+	}
+
+	time.Sleep(d)
+
+	// Check the account status again after the temporary ban duration
+	result, err := CheckAccount(account.SSOCookie, account.UserID)
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to check account %s after temporary ban duration", account.Title)
+		return
+	}
+
+	var embed *discordgo.MessageEmbed
+	if result == models.StatusGood {
+		embed = &discordgo.MessageEmbed{
+			Title:       fmt.Sprintf("%s - Temporary Ban Lifted", account.Title),
+			Description: fmt.Sprintf("The temporary ban for account %s has been lifted. The account is now in good standing.", account.Title),
+			Color:       GetColorForStatus(result, false),
+			Timestamp:   time.Now().Format(time.RFC3339),
+		}
+	} else if result == models.StatusPermaban {
+		embed = &discordgo.MessageEmbed{
+			Title:       fmt.Sprintf("%s - Temporary Ban Escalated", account.Title),
+			Description: fmt.Sprintf("The temporary ban for account %s has been escalated to a permanent ban.", account.Title),
+			Color:       GetColorForStatus(result, false),
+			Timestamp:   time.Now().Format(time.RFC3339),
+		}
+	} else {
+		// If the status is still temporary ban or any other status, don't send a notification
+		return
+	}
+
+	err = sendNotification(discord, account, embed, fmt.Sprintf("<@%s>", account.UserID))
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to send temporary ban update message for account %s", account.Title)
 	}
 }
 
@@ -353,7 +410,6 @@ func GetColorForStatus(status models.Status, isExpiredCookie bool) int {
 	}
 }
 
-// EmbedTitleFromStatus function: returns the appropriate title for an embed message based on the account status
 func EmbedTitleFromStatus(status models.Status) string {
 	switch status {
 	case models.StatusTempban:
@@ -367,15 +423,17 @@ func EmbedTitleFromStatus(status models.Status) string {
 	}
 }
 
-// getStatusDescription function: returns the appropriate description for an embed message based on the account status
-func getStatusDescription(status models.Status, accountTitle string) string {
+func getStatusDescription(status models.Status, accountTitle string, ban models.Ban) string {
+	affectedGames := strings.Split(ban.AffectedGames, ",")
+	gamesList := strings.Join(affectedGames, ", ")
+
 	switch status {
 	case models.StatusPermaban:
-		return fmt.Sprintf("The account %s has been permanently banned.", accountTitle)
+		return fmt.Sprintf("The account %s has been permanently banned.\nAffected games: %s", accountTitle, gamesList)
 	case models.StatusShadowban:
-		return fmt.Sprintf("The account %s is currently shadowbanned.", accountTitle)
+		return fmt.Sprintf("The account %s is currently shadowbanned.\nAffected games: %s", accountTitle, gamesList)
 	case models.StatusTempban:
-		return fmt.Sprintf("The account %s is temporarily banned.", accountTitle)
+		return fmt.Sprintf("The account %s is temporarily banned for %s.\nAffected games: %s", accountTitle, ban.TempBanDuration, gamesList)
 	default:
 		return fmt.Sprintf("The account %s is currently not banned.", accountTitle)
 	}
