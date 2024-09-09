@@ -103,8 +103,6 @@ func HandleFeedbackChoice(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		feedbackToSend = fmt.Sprintf("Feedback from User ID %s:\n\n%s", userID, feedbackMessage)
 	}
 
-	developerID := os.Getenv("DEVELOPER_ID")
-	channel, err := s.UserChannelCreate(developerID)
 	if err := sendFeedbackToDeveloper(s, feedbackToSend); err != nil {
 		logger.Log.WithError(err).Error("Failed to send feedback to developer")
 		sendResponse(s, i, "There was an error sending your feedback. Please try again later.", true)
