@@ -23,7 +23,7 @@ import (
 
 var Handlers = map[string]func(*discordgo.Session, *discordgo.InteractionCreate){}
 
-func RegisterCommands(s *discordgo.Session) {
+func RegisterCommands(s *discordgo.Session) error {
 	logger.Log.Info("Registering global commands")
 
 	commands := []*discordgo.ApplicationCommand{
@@ -118,7 +118,7 @@ func RegisterCommands(s *discordgo.Session) {
 	_, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, "", commands)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error registering global commands")
-		return
+		return err
 	}
 
 	// Set up command handlers
@@ -126,7 +126,6 @@ func RegisterCommands(s *discordgo.Session) {
 	Handlers["setcaptchaservice"] = setcaptchaservice.CommandSetCaptchaService
 	Handlers["setcheckinterval"] = setcheckinterval.CommandSetCheckInterval
 	Handlers["addaccount"] = addaccount.CommandAddAccount
-	Handlers["add_account_modal"] = addaccount.HandleModalSubmit
 	Handlers["helpcookie"] = helpcookie.CommandHelpCookie
 	Handlers["helpapi"] = helpapi.CommandHelpApi
 	Handlers["feedback"] = feedback.CommandFeedback
@@ -135,13 +134,27 @@ func RegisterCommands(s *discordgo.Session) {
 	Handlers["checknow"] = checknow.CommandCheckNow
 	Handlers["listaccounts"] = listaccounts.CommandListAccounts
 	Handlers["removeaccount"] = removeaccount.CommandRemoveAccount
-	Handlers["remove_account_select"] = removeaccount.HandleAccountSelection
 	Handlers["updateaccount"] = updateaccount.CommandUpdateAccount
-	Handlers["update_account_modal"] = updateaccount.HandleModalSubmit
-	Handlers["set_check_interval_modal"] = setcheckinterval.HandleModalSubmit
 	Handlers["togglecheck"] = togglecheck.CommandToggleCheck
 
+	// Command Modal Handlers
+	Handlers["setcaptchaservice_modal"] = setcaptchaservice.HandleModalSubmit
+	Handlers["addaccount_modal"] = addaccount.HandleModalSubmit
+	Handlers["updateaccount_modal"] = updateaccount.HandleModalSubmit
+	Handlers["setcheckinterval_modal"] = setcheckinterval.HandleModalSubmit
+
+	// Command select handlers
+	Handlers["accountage_select"] = accountage.HandleAccountSelection
+	Handlers["accountlogs_select"] = accountlogs.HandleAccountSelection
+	Handlers["removeaccount_select"] = removeaccount.HandleAccountSelection
+	Handlers["checknow_select"] = checknow.HandleAccountSelection
+	Handlers["togglecheck_select"] = togglecheck.HandleAccountSelection
+
+	// Comfirmation handlers
+	Handlers["removeaccount_confirm"] = removeaccount.HandleConfirmation
+
 	logger.Log.Info("Global commands registered and handlers set up")
+	return nil
 }
 
 // HandleCommand handles incoming commands and checks for announcements
