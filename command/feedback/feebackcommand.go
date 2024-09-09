@@ -124,6 +124,7 @@ func sendResponse(s *discordgo.Session, i *discordgo.InteractionCreate, content 
 	})
 
 	if err != nil {
+
 		logger.Log.WithError(err).Error("Failed to send interaction response")
 	}
 }
