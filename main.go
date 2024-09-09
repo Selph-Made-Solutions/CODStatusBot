@@ -12,12 +12,19 @@ import (
 	"github.com/joho/godotenv"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 )
 
 var discord *discordgo.Session
 
 func main() {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Log.Errorf("Recovered from panic: %v\n%s", r, debug.Stack())
+		}
+	}()
+
 	logger.Log.Info("Bot starting...")
 	if err := run(); err != nil {
 		logger.Log.WithError(err).Error("Bot encountered an error and is shutting down")
@@ -119,17 +126,19 @@ func startBot() (*discordgo.Session, error) {
 
 	discord.AddHandler(command.HandleCommand)
 
-	logger.Log.Info("Starting to register commands")
-	if err := command.RegisterCommands(discord); err != nil {
-		return nil, fmt.Errorf("error registering commands: %w", err)
-	}
-	logger.Log.Info("Commands registered successfully")
-
 	logger.Log.Info("Opening Discord connection")
 	if err := discord.Open(); err != nil {
 		return nil, fmt.Errorf("error opening connection: %w", err)
 	}
 	logger.Log.Info("Discord connection opened successfully")
+
+	// Wait for the bot to be ready
+	discord.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
+		logger.Log.Info("Bot is ready, registering commands")
+		if err := command.RegisterCommands(s); err != nil {
+			logger.Log.WithError(err).Error("Failed to register commands")
+		}
+	})
 
 	go services.CheckAccounts(discord)
 
