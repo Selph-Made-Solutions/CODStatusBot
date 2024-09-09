@@ -71,13 +71,13 @@ func RegisterCommands(s *discordgo.Session) error {
 			Name:         "checknow",
 			Description:  "Check account status now (rate limited for default API key)",
 			DMPermission: BoolPtr(true),
-			Options: []*discordgo.ApplicationCommandOption{
-				{
+			Options:      []*discordgo.ApplicationCommandOption{
+				/*{
 					Type:        discordgo.ApplicationCommandOptionString,
 					Name:        "account_title",
 					Description: "The title of the specific account to check (optional)",
 					Required:    false,
-				},
+				},*/
 			},
 		},
 		{
@@ -121,7 +121,7 @@ func RegisterCommands(s *discordgo.Session) error {
 		return err
 	}
 
-	// Set up command handlers
+	// Command handlers
 	Handlers["globalannouncement"] = globalannouncement.CommandGlobalAnnouncement
 	Handlers["setcaptchaservice"] = setcaptchaservice.CommandSetCaptchaService
 	Handlers["setcheckinterval"] = setcheckinterval.CommandSetCheckInterval
@@ -149,6 +149,8 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["remove_account"] = removeaccount.HandleAccountSelection
 	Handlers["check_now"] = checknow.HandleAccountSelection
 	Handlers["toggle_check"] = togglecheck.HandleAccountSelection
+	Handlers["feedback_anonymous"] = feedback.HandleFeedbackChoice
+	Handlers["feedback_with_id"] = feedback.HandleFeedbackChoice
 
 	// Confirmation handlers
 	Handlers["confirm_remove"] = removeaccount.HandleConfirmation
