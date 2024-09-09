@@ -24,6 +24,7 @@ var (
 	userNotificationTimestamps  = make(map[string]time.Time)
 	userNotificationMutex       sync.Mutex
 	DBMutex                     sync.Mutex
+	defaultRateLimit            = 5 * time.Minute
 )
 
 func init() {
@@ -64,6 +65,7 @@ func sendNotification(discord *discordgo.Session, account models.Account, embed 
 	}
 
 	var channelID string
+	var err error
 	if account.NotificationType == "dm" {
 		channel, err := discord.UserChannelCreate(account.UserID)
 		if err != nil {
@@ -74,7 +76,7 @@ func sendNotification(discord *discordgo.Session, account models.Account, embed 
 		channelID = account.ChannelID
 	}
 
-	_, err := discord.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
+	_, err = discord.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
 		Embed:   embed,
 		Content: content,
 	})
@@ -188,11 +190,15 @@ func CheckAccounts(s *discordgo.Session) {
 				continue
 			}
 
-			// Check account status if enough time has passed since the last check
-			if time.Since(lastCheck).Minutes() > float64(userSettings.CheckInterval) {
+			checkInterval := userSettings.CheckInterval
+			if userSettings.CaptchaAPIKey == "" {
+				checkInterval = int(defaultRateLimit.Minutes())
+			}
+
+			if time.Since(lastCheck).Minutes() > float64(checkInterval) {
 				go CheckSingleAccount(account, s)
 			} else {
-				logger.Log.WithField("account", account.Title).Infof("Account %s checked recently less than %.2f minutes ago, skipping", account.Title, float64(userSettings.CheckInterval))
+				logger.Log.WithField("account", account.Title).Infof("Account %s checked recently less than %d minutes ago, skipping", account.Title, checkInterval)
 			}
 
 			// Send daily update if enough time has passed since the last notification
@@ -232,7 +238,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 		return
 	}
 
-	result, err := CheckAccount(account.SSOCookie, account.UserID)
+	result, banDuration, err := CheckAccount(account.SSOCookie, account.UserID)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to check account %s: possible expired SSO Cookie", account.Title)
 		return
@@ -275,6 +281,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	lastStatus := account.LastStatus
 	account.LastCheck = time.Now().Unix()
 	account.IsExpiredCookie = false
+	account.BanDuration = banDuration
 	if err := database.DB.Save(&account).Error; err != nil {
 		logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
 		DBMutex.Unlock()
@@ -311,6 +318,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 			Account:   account,
 			Status:    result,
 			AccountID: account.ID,
+			Duration:  banDuration,
 		}
 		if err := database.DB.Create(&ban).Error; err != nil {
 			logger.Log.WithError(err).Errorf("Failed to create new ban record for account %s", account.Title)
@@ -321,7 +329,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 
 		embed := &discordgo.MessageEmbed{
 			Title:       fmt.Sprintf("%s - %s", account.Title, EmbedTitleFromStatus(result)),
-			Description: fmt.Sprintf("The status of account %s has changed to %s", account.Title, result),
+			Description: getStatusDescription(result, account.Title, banDuration),
 			Color:       GetColorForStatus(result, account.IsExpiredCookie),
 			Timestamp:   time.Now().Format(time.RFC3339),
 		}
