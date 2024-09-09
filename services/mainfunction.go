@@ -367,6 +367,20 @@ func EmbedTitleFromStatus(status models.Status) string {
 	}
 }
 
+// getStatusDescription function: returns the appropriate description for an embed message based on the account status
+func getStatusDescription(status models.Status, accountTitle string, banDuration int) string {
+	switch status {
+	case models.StatusPermaban:
+		return fmt.Sprintf("The account %s has been permanently banned.", accountTitle)
+	case models.StatusShadowban:
+		return fmt.Sprintf("The account %s is currently shadowbanned.", accountTitle)
+	case models.StatusTempban:
+		return fmt.Sprintf("The account %s is temporarily banned for %d seconds.", accountTitle, banDuration)
+	default:
+		return fmt.Sprintf("The account %s is currently not banned.", accountTitle)
+	}
+}
+
 // SendGlobalAnnouncement function: sends a global announcement to users who haven't seen it yet
 func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 	var userSettings models.UserSettings
