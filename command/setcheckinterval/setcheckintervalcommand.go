@@ -5,6 +5,7 @@ import (
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
+	"CODStatusBot/utils"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"strconv"
@@ -94,6 +95,10 @@ func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreat
 
 func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
+
+	checkInterval := utils.SanitizeInput(data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
+	notificationInterval := utils.SanitizeInput(data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
+	notificationType := utils.SanitizeInput(data.Components[2].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
 
 	var userID string
 	if i.Member != nil {
