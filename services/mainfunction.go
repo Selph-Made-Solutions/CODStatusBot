@@ -356,6 +356,8 @@ func GetColorForStatus(status models.Status, isExpiredCookie bool) int {
 // EmbedTitleFromStatus function: returns the appropriate title for an embed message based on the account status
 func EmbedTitleFromStatus(status models.Status) string {
 	switch status {
+	case models.StatusTempban:
+		return "TEMPORARY BAN DETECTED"
 	case models.StatusPermaban:
 		return "PERMANENT BAN DETECTED"
 	case models.StatusShadowban:
