@@ -19,67 +19,16 @@ var (
 	store = sessions.NewCookieStore([]byte(os.Getenv("SESSION_KEY")))
 )
 
-type Stats struct {
-	TotalAccounts     int `json:"total_accounts"`
-	ActiveAccounts    int `json:"active_accounts"`
-	BannedAccounts    int `json:"banned_accounts"`
-	TotalUsers        int `json:"total_users"`
-	ChecksLastHour    int `json:"checks_last_hour"`
-	ChecksLast24Hours int `json:"checks_last_24_hours"`
-}
-
-var dashboardTemplate = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>COD Status Bot Admin Dashboard</title>
-    <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; }
-        h1 { color: #333; }
-        .stat { margin-bottom: 10px; }
-        .stat span { font-weight: bold; }
-    </style>
-</head>
-<body>
-    <h1>COD Status Bot Admin Dashboard</h1>
-    <div class="stat">Total Accounts: <span id="totalAccounts"></span></div>
-    <div class="stat">Active Accounts: <span id="activeAccounts"></span></div>
-    <div class="stat">Banned Accounts: <span id="bannedAccounts"></span></div>
-    <div class="stat">Total Users: <span id="totalUsers"></span></div>
-    <div class="stat">Checks Last Hour: <span id="checksLastHour"></span></div>
-    <div class="stat">Checks Last 24 Hours: <span id="checksLast24Hours"></span></div>
-
-    <script>
-        function updateStats() {
-            fetch('/stats')
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('totalAccounts').textContent = data.total_accounts;
-                    document.getElementById('activeAccounts').textContent = data.active_accounts;
-                    document.getElementById('bannedAccounts').textContent = data.banned_accounts;
-                    document.getElementById('totalUsers').textContent = data.total_users;
-                    document.getElementById('checksLastHour').textContent = data.checks_last_hour;
-                    document.getElementById('checksLast24Hours').textContent = data.checks_last_24_hours;
-                });
-        }
-
-        updateStats();
-        setInterval(updateStats, 60000); // Update every minute
-    </script>
-</body>
-</html>
-`
-var dashboardTmpl = template.Must(template.New("dashboard").Parse(dashboardTemplate))
-
 func StartAdminPanel() {
 	r := mux.NewRouter()
 
-	r.HandleFunc("/login", loginHandler).Methods("POST")
-	r.HandleFunc("/logout", logoutHandler).Methods("POST")
-	r.HandleFunc("/stats", authMiddleware(statsHandler)).Methods("GET")
-	r.HandleFunc("/", authMiddleware(dashboardHandler)).Methods("GET")
+	r.HandleFunc("/admin/login", loginHandler).Methods("GET", "POST")
+	r.HandleFunc("/admin/logout", logoutHandler).Methods("POST")
+	r.HandleFunc("/admin/stats", authMiddleware(statsHandler)).Methods("GET")
+	r.HandleFunc("/admin", authMiddleware(dashboardHandler)).Methods("GET")
+
+	// Serve static files
+	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 
 	port := os.Getenv("ADMIN_PORT")
 	if port == "" {
@@ -94,6 +43,17 @@ func StartAdminPanel() {
 }
 
 func loginHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		// Serve login page
+		tmpl, err := template.ParseFiles("templates/login.html")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		tmpl.Execute(w, nil)
+		return
+	}
+
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 
@@ -101,11 +61,9 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		session, _ := store.Get(r, "admin-session")
 		session.Values["authenticated"] = true
 		session.Save(r, w)
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, "Login successful")
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 	} else {
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprint(w, "Invalid credentials")
+		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 	}
 }
 
@@ -140,10 +98,31 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func dashboardHandler(w http.ResponseWriter, r *http.Request) {
-	err := dashboardTmpl.Execute(w, nil)
+	stats, err := getStats()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	tmpl, err := template.ParseFiles("templates/dashboard.html")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	err = tmpl.Execute(w, stats)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+type Stats struct {
+	TotalAccounts     int
+	ActiveAccounts    int
+	BannedAccounts    int
+	TotalUsers        int
+	ChecksLastHour    int
+	ChecksLast24Hours int
 }
 
 func getStats() (Stats, error) {
