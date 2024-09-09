@@ -14,11 +14,11 @@ type Account struct {
 	LastNotification       int64  // The timestamp of the last daily notification sent out on the account.
 	LastCookieNotification int64  // The timestamp of the last notification sent out on the account for an expired ssocookie.
 	SSOCookie              string // The SSO cookie associated with the account.
-	Created                string // The timestamp of when the account was created on Activision.
+	Created                int32  // The timestamp of when the account was created on Activision.
 	IsExpiredCookie        bool   `gorm:"default:false"`   // A flag indicating if the SSO cookie has expired.
 	NotificationType       string `gorm:"default:channel"` // User preference for location of notifications either channel or dm
 	IsPermabanned          bool   `gorm:"default:false"`   // A flag indicating if the account is permanently banned
-	LastCookieCheck        int64  `gorm:"default:0"`       // The timestamp of the last cookie check for permanently banned accounts
+	LastCookieCheck        int64  `gorm:"default:0"`       // The timestamp of the last cookie check for permanently banned accounts.
 	LastStatusChange       int64  `gorm:"default:0"`       // The timestamp of the last status change
 	IsCheckDisabled        bool   `gorm:"default:false"`   // A flag indicating if checks are disabled for this account
 	SSOCookieExpiration    int64  //
@@ -28,12 +28,12 @@ type UserSettings struct {
 	gorm.Model
 	UserID               string  `gorm:"uniqueIndex"`
 	CaptchaAPIKey        string  // User's own API key, if provided
-	CheckInterval        int     // in minutes
-	NotificationInterval float64 // in hours
-	CooldownDuration     float64 // in hours
-	StatusChangeCooldown float64 // in hours
+	CheckInterval        int     // In minutes
+	NotificationInterval float64 // In hours
+	CooldownDuration     float64 // In hours
+	StatusChangeCooldown float64 // In hours
 	NotificationType     string  `gorm:"default:channel"` // User preference for location of notifications either channel or dm
-	HasSeenAnnouncement  bool    `gorm:"default:false"`   // Flag to track if the user has seen the global announcement
+	HasSeenAnnouncement  bool    `gorm:"default:false"`   // Flag to track if the user has seen the global announcement.
 }
 
 type Ban struct {
