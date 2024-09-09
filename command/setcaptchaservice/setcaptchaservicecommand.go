@@ -3,6 +3,7 @@ package setcaptchaservice
 import (
 	"CODStatusBot/logger"
 	"CODStatusBot/services"
+	"CODStatusBot/utils"
 	"github.com/bwmarrin/discordgo"
 	"strings"
 )
@@ -36,6 +37,8 @@ func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCrea
 
 func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
+
+	ApiKey := utils.SanitizeInput(strings.TrimSpace(data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value))
 
 	var apiKey string
 	for _, comp := range data.Components {
