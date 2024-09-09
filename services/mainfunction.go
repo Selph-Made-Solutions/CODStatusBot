@@ -281,7 +281,6 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	lastStatus := account.LastStatus
 	account.LastCheck = time.Now().Unix()
 	account.IsExpiredCookie = false
-	account.BanDuration = banDuration
 	if err := database.DB.Save(&account).Error; err != nil {
 		logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
 		DBMutex.Unlock()
@@ -318,7 +317,6 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 			Account:   account,
 			Status:    result,
 			AccountID: account.ID,
-			Duration:  banDuration,
 		}
 		if err := database.DB.Create(&ban).Error; err != nil {
 			logger.Log.WithError(err).Errorf("Failed to create new ban record for account %s", account.Title)
@@ -329,7 +327,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 
 		embed := &discordgo.MessageEmbed{
 			Title:       fmt.Sprintf("%s - %s", account.Title, EmbedTitleFromStatus(result)),
-			Description: getStatusDescription(result, account.Title, banDuration),
+			Description: getStatusDescription(result, account.Title),
 			Color:       GetColorForStatus(result, account.IsExpiredCookie),
 			Timestamp:   time.Now().Format(time.RFC3339),
 		}
@@ -368,14 +366,14 @@ func EmbedTitleFromStatus(status models.Status) string {
 }
 
 // getStatusDescription function: returns the appropriate description for an embed message based on the account status
-func getStatusDescription(status models.Status, accountTitle string, banDuration int) string {
+func getStatusDescription(status models.Status, accountTitle string) string {
 	switch status {
 	case models.StatusPermaban:
 		return fmt.Sprintf("The account %s has been permanently banned.", accountTitle)
 	case models.StatusShadowban:
 		return fmt.Sprintf("The account %s is currently shadowbanned.", accountTitle)
 	case models.StatusTempban:
-		return fmt.Sprintf("The account %s is temporarily banned for %d seconds.", accountTitle, banDuration)
+		return fmt.Sprintf("The account %s is temporarily banned.", accountTitle)
 	default:
 		return fmt.Sprintf("The account %s is currently not banned.", accountTitle)
 	}
