@@ -138,20 +138,20 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["togglecheck"] = togglecheck.CommandToggleCheck
 
 	// Command Modal Handlers
-	Handlers["setcaptchaservice_modal"] = setcaptchaservice.HandleModalSubmit
-	Handlers["addaccount_modal"] = addaccount.HandleModalSubmit
-	Handlers["updateaccount_modal"] = updateaccount.HandleModalSubmit
-	Handlers["setcheckinterval_modal"] = setcheckinterval.HandleModalSubmit
+	Handlers["add_account_modal"] = addaccount.HandleModalSubmit
+	Handlers["update_account_modal"] = updateaccount.HandleModalSubmit
+	Handlers["set_check_interval_modal"] = setcheckinterval.HandleModalSubmit
+	Handlers["set_captcha_service_modal"] = setcaptchaservice.HandleModalSubmit
 
 	// Command select handlers
-	Handlers["accountage_select"] = accountage.HandleAccountSelection
-	Handlers["accountlogs_select"] = accountlogs.HandleAccountSelection
-	Handlers["removeaccount_select"] = removeaccount.HandleAccountSelection
-	Handlers["checknow_select"] = checknow.HandleAccountSelection
-	Handlers["togglecheck_select"] = togglecheck.HandleAccountSelection
+	Handlers["account_age"] = accountage.HandleAccountSelection
+	Handlers["account_logs"] = accountlogs.HandleAccountSelection
+	Handlers["remove_account"] = removeaccount.HandleAccountSelection
+	Handlers["check_now"] = checknow.HandleAccountSelection
+	Handlers["toggle_check"] = togglecheck.HandleAccountSelection
 
-	// Comfirmation handlers
-	Handlers["removeaccount_confirm"] = removeaccount.HandleConfirmation
+	// Confirmation handlers
+	Handlers["confirm_remove"] = removeaccount.HandleConfirmation
 
 	logger.Log.Info("Global commands registered and handlers set up")
 	return nil
@@ -190,6 +190,10 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Continue with regular command handling
 	if h, ok := Handlers[i.ApplicationCommandData().Name]; ok {
 		h(s, i)
+	} else if h, ok := Handlers[i.MessageComponentData().CustomID]; ok {
+		h(s, i)
+	} else {
+		logger.Log.Warnf("Unhandled interaction: %s", i.Type)
 	}
 }
 
