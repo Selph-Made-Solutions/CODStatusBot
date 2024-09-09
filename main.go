@@ -2,7 +2,7 @@ package main
 
 import (
 	"CODStatusBot/admin"
-	"CODStatusBot/command"
+	"CODStatusBot/bot"
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
@@ -54,7 +54,7 @@ func run() error {
 	logger.Log.Info("Database initialized successfully")
 
 	var err error
-	discord, err = startBot()
+	discord, err = bot.StartBot()
 	if err != nil {
 		return fmt.Errorf("failed to start Discord bot: %w", err)
 	}
@@ -111,40 +111,4 @@ func initializeDatabase() error {
 		return fmt.Errorf("failed to migrate database tables: %w", err)
 	}
 	return nil
-}
-
-func startBot() (*discordgo.Session, error) {
-	token := os.Getenv("DISCORD_TOKEN")
-	if token == "" {
-		return nil, fmt.Errorf("DISCORD_TOKEN not set in environment variables")
-	}
-
-	discord, err := discordgo.New("Bot " + token)
-	if err != nil {
-		return nil, fmt.Errorf("error creating Discord session: %w", err)
-	}
-
-	discord.AddHandler(command.HandleCommand)
-
-	logger.Log.Info("Opening Discord connection")
-	if err := discord.Open(); err != nil {
-		return nil, fmt.Errorf("error opening connection: %w", err)
-	}
-	logger.Log.Info("Discord connection opened successfully")
-
-	// Wait for the bot to be ready
-	discord.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
-		logger.Log.Info("Bot is ready, registering commands")
-		if err := command.RegisterCommands(s); err != nil {
-			logger.Log.WithError(err).Error("Failed to register commands")
-		}
-	})
-
-	go services.CheckAccounts(discord)
-
-	return discord, nil
-}
-
-func BoolPtr(b bool) *bool {
-	return &b
 }
