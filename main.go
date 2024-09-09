@@ -29,24 +29,29 @@ func run() error {
 	if err := loadEnvironmentVariables(); err != nil {
 		return fmt.Errorf("failed to load environment variables: %w", err)
 	}
+	logger.Log.Info("Environment variables loaded successfully")
 
 	if err := services.LoadEnvironmentVariables(); err != nil {
 		return fmt.Errorf("failed to initialize EZ-Captcha service: %w", err)
 	}
+	logger.Log.Info("EZ-Captcha service initialized successfully")
 
 	if err := database.Databaselogin(); err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
+	logger.Log.Info("Database connection established successfully")
 
 	if err := initializeDatabase(); err != nil {
 		return fmt.Errorf("failed to initialize database: %w", err)
 	}
+	logger.Log.Info("Database initialized successfully")
 
 	var err error
 	discord, err = startBot()
 	if err != nil {
 		return fmt.Errorf("failed to start Discord bot: %w", err)
 	}
+	logger.Log.Info("Discord bot started successfully")
 
 	// Start the admin panel
 	go admin.StartAdminPanel()
@@ -114,13 +119,17 @@ func startBot() (*discordgo.Session, error) {
 
 	discord.AddHandler(command.HandleCommand)
 
+	logger.Log.Info("Starting to register commands")
 	if err := command.RegisterCommands(discord); err != nil {
 		return nil, fmt.Errorf("error registering commands: %w", err)
 	}
+	logger.Log.Info("Commands registered successfully")
 
+	logger.Log.Info("Opening Discord connection")
 	if err := discord.Open(); err != nil {
 		return nil, fmt.Errorf("error opening connection: %w", err)
 	}
+	logger.Log.Info("Discord connection opened successfully")
 
 	go services.CheckAccounts(discord)
 
