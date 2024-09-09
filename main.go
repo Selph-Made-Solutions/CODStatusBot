@@ -13,8 +13,6 @@ import (
 	"github.com/joho/godotenv"
 	"os"
 	"os/signal"
-	"runtime/debug"
-	"strings"
 	"syscall"
 )
 
@@ -40,16 +38,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = services.LoadEnvironmentVariables() // Initialize EZ-Captcha service
+	err = initializeDatabase()
 	if err != nil {
-		logger.Log.WithError(err).WithField("Bot Startup", "EZ-Captcha Initialization").Error()
+		logger.Log.WithError(err).WithField("Bot Startup", "Database initialization").Error()
 		os.Exit(1)
 	}
-	discord, err := bot.StartBot() // Start the Discord bot.
+
+	discord, err = startBot() // Start the Discord bot.
 	if err != nil {
 		logger.Log.WithError(err).WithField("Bot Startup", "Discord login").Error()
 		os.Exit(1)
 	}
+
+	// Start the admin panel
+	go admin.StartAdminPanel()
 
 	logger.Log.Info("Bot is running")                                // Log that the bot is running.
 	sc := make(chan os.Signal, 1)                                    // Set up a channel to receive system signals.
@@ -83,6 +85,7 @@ func loadEnvironmentVariables() error {
 		"DB_PORT",
 		"DB_NAME",
 		"DB_VAR",
+		"DEVELOPER_ID",
 	}
 
 	for _, envVar := range requiredEnvVars {
@@ -96,13 +99,7 @@ func loadEnvironmentVariables() error {
 }
 
 func initializeDatabase() error {
-	err := database.Databaselogin()
-	if err != nil {
-		return fmt.Errorf("failed to initialize database connection: %w", err)
-	}
-
-	// Create or update necessary tables
-	err = database.DB.AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{})
+	err := database.DB.AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{})
 	if err != nil {
 		return fmt.Errorf("failed to migrate database tables: %w", err)
 	}
@@ -110,21 +107,34 @@ func initializeDatabase() error {
 	return nil
 }
 
-// Helper function to create a pointer to a bool
-func BoolPtr(b bool) *bool {
-	return &b
+func startBot() (*discordgo.Session, error) {
+	token := os.Getenv("DISCORD_TOKEN")
+	if token == "" {
+		return nil, errors.New("DISCORD_TOKEN not set in environment variables")
+	}
+
+	discord, err := discordgo.New("Bot " + token)
+	if err != nil {
+		return nil, fmt.Errorf("error creating Discord session: %w", err)
+	}
+
+	discord.AddHandler(command.HandleCommand)
+
+	err = command.RegisterCommands(discord)
+	if err != nil {
+		return nil, fmt.Errorf("error registering commands: %w", err)
+	}
+
+	err = discord.Open()
+	if err != nil {
+		return nil, fmt.Errorf("error opening connection: %w", err)
+	}
+
+	go services.CheckAccounts(discord)
+
+	return discord, nil
 }
 
-func init() {
-	// Initialize the database connection
-	err := database.Databaselogin()
-	if err != nil {
-		logger.Log.WithError(err).Fatal("Failed to initialize database connection")
-	}
-
-	// Create or update the UserSettings table
-	err = database.DB.AutoMigrate(&models.UserSettings{})
-	if err != nil {
-		logger.Log.WithError(err).Fatal("Failed to create or update UserSettings table")
-	}
+func BoolPtr(b bool) *bool {
+	return &b
 }
