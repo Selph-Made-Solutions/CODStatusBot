@@ -31,13 +31,9 @@ func init() {
 }
 
 func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	var userID string
-	if i.Member != nil {
-		userID = i.Member.User.ID
-	} else if i.User != nil {
-		userID = i.User.ID
-	} else {
-		logger.Log.Error("Interaction doesn't have Member or User")
+	userID, err := getUserID(i)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to get user ID")
 		respondToInteraction(s, i, "An error occurred while processing your request.")
 		return
 	}
@@ -91,22 +87,29 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 }
 
 func showAccountButtons(s *discordgo.Session, i *discordgo.InteractionCreate, accounts []models.Account) {
+	userID, err := getUserID(i)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to get user ID")
+		respondToInteraction(s, i, "An error occurred while processing your request.")
+		return
+	}
+
 	var components []discordgo.MessageComponent
 	for _, account := range accounts {
 		components = append(components, discordgo.Button{
 			Label:    account.Title,
 			Style:    discordgo.PrimaryButton,
-			CustomID: fmt.Sprintf("check_now_%s_%d", i.Member.User.ID, account.ID),
+			CustomID: fmt.Sprintf("check_now_%s_%d", userID, account.ID),
 		})
 	}
 
 	components = append(components, discordgo.Button{
 		Label:    "Check All",
 		Style:    discordgo.SuccessButton,
-		CustomID: fmt.Sprintf("check_now_%s_all", i.Member.User.ID),
+		CustomID: fmt.Sprintf("check_now_%s_all", userID),
 	})
 
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: "Select an account to check, or 'Check All' to check all accounts:",
@@ -289,4 +292,14 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction")
 	}
+}
+
+func getUserID(i *discordgo.InteractionCreate) (string, error) {
+	if i.Member != nil && i.Member.User != nil {
+		return i.Member.User.ID, nil
+	}
+	if i.User != nil {
+		return i.User.ID, nil
+	}
+	return "", fmt.Errorf("unable to determine user ID")
 }
