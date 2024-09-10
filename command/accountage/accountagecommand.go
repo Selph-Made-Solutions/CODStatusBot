@@ -39,24 +39,32 @@ func CommandAccountAge(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	// Create buttons for each account
 	var components []discordgo.MessageComponent
+	var currentRow []discordgo.MessageComponent
+
 	for _, account := range accounts {
-		components = append(components, discordgo.Button{
+		currentRow = append(currentRow, discordgo.Button{
 			Label:    account.Title,
 			Style:    discordgo.PrimaryButton,
 			CustomID: fmt.Sprintf("account_age_%d", account.ID),
 		})
+
+		if len(currentRow) == 5 {
+			components = append(components, discordgo.ActionsRow{Components: currentRow})
+			currentRow = []discordgo.MessageComponent{}
+		}
+	}
+
+	// Add the last row if it's not empty
+	if len(currentRow) > 0 {
+		components = append(components, discordgo.ActionsRow{Components: currentRow})
 	}
 
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			Content: "Select an account to check its age:",
-			Flags:   discordgo.MessageFlagsEphemeral,
-			Components: []discordgo.MessageComponent{
-				discordgo.ActionsRow{
-					Components: components,
-				},
-			},
+			Content:    "Select an account to check its age:",
+			Flags:      discordgo.MessageFlagsEphemeral,
+			Components: components,
 		},
 	})
 

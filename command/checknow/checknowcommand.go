@@ -95,30 +95,37 @@ func showAccountButtons(s *discordgo.Session, i *discordgo.InteractionCreate, ac
 	}
 
 	var components []discordgo.MessageComponent
+	var currentRow []discordgo.MessageComponent
+
 	for _, account := range accounts {
-		components = append(components, discordgo.Button{
+		currentRow = append(currentRow, discordgo.Button{
 			Label:    account.Title,
 			Style:    discordgo.PrimaryButton,
 			CustomID: fmt.Sprintf("check_now_%s_%d", userID, account.ID),
 		})
+
+		if len(currentRow) == 5 {
+			components = append(components, discordgo.ActionsRow{Components: currentRow})
+			currentRow = []discordgo.MessageComponent{}
+		}
 	}
 
-	components = append(components, discordgo.Button{
+	// Check All button
+	currentRow = append(currentRow, discordgo.Button{
 		Label:    "Check All",
 		Style:    discordgo.SuccessButton,
 		CustomID: fmt.Sprintf("check_now_%s_all", userID),
 	})
 
+	// last row (will always have 5 or fewer components)
+	components = append(components, discordgo.ActionsRow{Components: currentRow})
+
 	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			Content: "Select an account to check, or 'Check All' to check all accounts:",
-			Flags:   discordgo.MessageFlagsEphemeral,
-			Components: []discordgo.MessageComponent{
-				discordgo.ActionsRow{
-					Components: components,
-				},
-			},
+			Content:    "Select an account to check, or 'Check All' to check all accounts:",
+			Flags:      discordgo.MessageFlagsEphemeral,
+			Components: components,
 		},
 	})
 

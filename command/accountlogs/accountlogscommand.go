@@ -38,31 +38,48 @@ func CommandAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	// Create buttons for each account
 	var components []discordgo.MessageComponent
+	var currentRow []discordgo.MessageComponent
+
 	for _, account := range accounts {
-		components = append(components, discordgo.Button{
+		currentRow = append(currentRow, discordgo.Button{
 			Label:    account.Title,
 			Style:    discordgo.PrimaryButton,
 			CustomID: fmt.Sprintf("account_logs_%d", account.ID),
 		})
+
+		if len(currentRow) == 5 {
+			components = append(components, discordgo.ActionsRow{Components: currentRow})
+			currentRow = []discordgo.MessageComponent{}
+		}
 	}
 
 	// Add "View All Logs" button
-	components = append(components, discordgo.Button{
-		Label:    "View All Logs",
-		Style:    discordgo.SuccessButton,
-		CustomID: "account_logs_all",
-	})
+	if len(currentRow) < 5 {
+		currentRow = append(currentRow, discordgo.Button{
+			Label:    "View All Logs",
+			Style:    discordgo.SuccessButton,
+			CustomID: "account_logs_all",
+		})
+	} else {
+		components = append(components, discordgo.ActionsRow{Components: currentRow})
+		currentRow = []discordgo.MessageComponent{
+			discordgo.Button{
+				Label:    "View All Logs",
+				Style:    discordgo.SuccessButton,
+				CustomID: "account_logs_all",
+			},
+		}
+	}
+
+	// Add the last row
+	components = append(components, discordgo.ActionsRow{Components: currentRow})
 
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			Content: "Select an account to view its logs, or 'View All Logs' to see logs for all accounts:",
-			Flags:   discordgo.MessageFlagsEphemeral,
-			Components: []discordgo.MessageComponent{
-				discordgo.ActionsRow{
-					Components: components,
-				},
-			},
+			Content:    "Select an account to view its logs, or 'View All Logs' to see logs for all accounts:",
+			Flags:      discordgo.MessageFlagsEphemeral,
+			Components: components,
 		},
 	})
 
