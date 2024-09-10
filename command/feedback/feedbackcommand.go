@@ -7,14 +7,22 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 var (
 	tempFeedbackStore = struct {
 		sync.RWMutex
-		m map[string]string
-	}{m: make(map[string]string)}
+		m map[string]feedbackEntry
+	}{m: make(map[string]feedbackEntry)}
 )
+
+type feedbackEntry struct {
+	message   string
+	timestamp time.Time
+}
+
+const feedbackTimeout = 5 * time.Minute
 
 func CommandFeedback(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	feedbackMessage := i.ApplicationCommandData().Options[0].StringValue()
@@ -25,20 +33,25 @@ func CommandFeedback(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	userID := getUserID(i)
-	if userID == "" {
-		logger.Log.Error("Failed to get user ID")
+	userID, err := getUserID(i)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to get user ID")
 		sendResponse(s, i, "An error occurred while processing your request.", true)
 		return
 	}
 
 	// Store the feedback message temporarily
 	tempFeedbackStore.Lock()
-	tempFeedbackStore.m[userID] = feedbackMessage
+	tempFeedbackStore.m[userID] = feedbackEntry{
+		message:   feedbackMessage,
+		timestamp: time.Now(),
+	}
 	tempFeedbackStore.Unlock()
 
+	logger.Log.WithField("userID", userID).Info("Stored feedback message")
+
 	// Create message with buttons for anonymity choice
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: "Do you want to send this feedback anonymously?",
@@ -68,9 +81,10 @@ func CommandFeedback(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 }
+
 func HandleFeedbackChoice(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
-	parts := strings.Split(customID, "_")
+	parts := strings.SplitN(customID, "_", 3)
 	if len(parts) != 3 {
 		logger.Log.Error("Invalid custom ID format for feedback choice")
 		sendResponse(s, i, "An error occurred while processing your request.", true)
@@ -80,12 +94,20 @@ func HandleFeedbackChoice(s *discordgo.Session, i *discordgo.InteractionCreate) 
 	isAnonymous := parts[1] == "anonymous"
 	userID := parts[2]
 
+	// Verify that the user ID from the button matches the interaction's user
+	interactionUserID, err := getUserID(i)
+	if err != nil || interactionUserID != userID {
+		logger.Log.WithField("buttonUserID", userID).WithField("interactionUserID", interactionUserID).Error("User ID mismatch")
+		sendResponse(s, i, "An error occurred while processing your request.", true)
+		return
+	}
+
 	tempFeedbackStore.RLock()
-	feedbackMessage, ok := tempFeedbackStore.m[userID]
+	entry, ok := tempFeedbackStore.m[userID]
 	tempFeedbackStore.RUnlock()
 
-	if !ok {
-		logger.Log.Error("Feedback message not found for user")
+	if !ok || time.Since(entry.timestamp) > feedbackTimeout {
+		logger.Log.WithField("userID", userID).Error("Feedback message not found or expired")
 		sendResponse(s, i, "Your feedback session has expired. Please submit your feedback again.", true)
 		return
 	}
@@ -97,9 +119,9 @@ func HandleFeedbackChoice(s *discordgo.Session, i *discordgo.InteractionCreate) 
 
 	var feedbackToSend string
 	if isAnonymous {
-		feedbackToSend = fmt.Sprintf("Anonymous Feedback:\n\n%s", feedbackMessage)
+		feedbackToSend = fmt.Sprintf("Anonymous Feedback:\n\n%s", entry.message)
 	} else {
-		feedbackToSend = fmt.Sprintf("Feedback from User ID %s:\n\n%s", userID, feedbackMessage)
+		feedbackToSend = fmt.Sprintf("Feedback from User ID %s:\n\n%s", userID, entry.message)
 	}
 
 	if err := sendFeedbackToDeveloper(s, feedbackToSend); err != nil {
@@ -142,17 +164,30 @@ func sendResponse(s *discordgo.Session, i *discordgo.InteractionCreate, content 
 	})
 
 	if err != nil {
-
 		logger.Log.WithError(err).Error("Failed to send interaction response")
 	}
 }
 
-func getUserID(i *discordgo.InteractionCreate) string {
-	if i.Member != nil {
-		return i.Member.User.ID
+func getUserID(i *discordgo.InteractionCreate) (string, error) {
+	if i.Member != nil && i.Member.User != nil {
+		return i.Member.User.ID, nil
 	}
 	if i.User != nil {
-		return i.User.ID
+		return i.User.ID, nil
 	}
-	return ""
+	return "", fmt.Errorf("unable to determine user ID")
+}
+
+// Run this function periodically to clean up expired entries
+func cleanupExpiredFeedback() {
+	tempFeedbackStore.Lock()
+	defer tempFeedbackStore.Unlock()
+
+	now := time.Now()
+	for userID, entry := range tempFeedbackStore.m {
+		if now.Sub(entry.timestamp) > feedbackTimeout {
+			delete(tempFeedbackStore.m, userID)
+			logger.Log.WithField("userID", userID).Info("Removed expired feedback entry")
+		}
+	}
 }
