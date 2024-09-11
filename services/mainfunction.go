@@ -71,21 +71,30 @@ func sendNotification(discord *discordgo.Session, account models.Account, embed 
 	lastNotification, exists := userNotificationTimestamps[account.UserID]
 	userNotificationMutex.Unlock()
 
+	shouldSend := true
 	var cooldownDuration time.Duration
+
 	switch notificationType {
 	case "status_change":
-		cooldownDuration = time.Duration(userSettings.StatusChangeCooldown) * time.Hour
-	case "invalid_cookie", "cookie_expiring_soon":
-		cooldownDuration = time.Duration(userSettings.CooldownDuration) * time.Hour
-	case "daily_update":
+		// Always send status change notifications
+		shouldSend = true
+	case "permaban":
+		if exists {
+			cooldownDuration = time.Duration(userSettings.NotificationInterval) * time.Hour
+			shouldSend = time.Since(lastNotification) >= cooldownDuration
+		}
+	case "daily_update", "invalid_cookie", "cookie_expiring_soon":
 		cooldownDuration = time.Duration(userSettings.NotificationInterval) * time.Hour
+		shouldSend = !exists || time.Since(lastNotification) >= cooldownDuration
 	case "temp_ban_update":
 		cooldownDuration = 1 * time.Hour // Set a reasonable cooldown for temp ban updates
+		shouldSend = !exists || time.Since(lastNotification) >= cooldownDuration
 	default:
 		cooldownDuration = time.Duration(globalNotificationCooldown) * time.Hour
+		shouldSend = !exists || time.Since(lastNotification) >= cooldownDuration
 	}
 
-	if exists && time.Since(lastNotification) < cooldownDuration {
+	if !shouldSend {
 		logger.Log.Infof("Skipping %s notification for user %s (cooldown)", notificationType, account.UserID)
 		return nil
 	}
@@ -215,22 +224,24 @@ func CheckAccounts(s *discordgo.Session) {
 }
 
 func handlePermabannedAccount(account models.Account, s *discordgo.Session, userSettings models.UserSettings) {
-	lastCookieCheck := time.Unix(account.LastCookieCheck, 0)
-	if time.Since(lastCookieCheck).Hours() > cookieCheckIntervalPermaban {
-		isValid := VerifySSOCookie(account.SSOCookie)
-		if !isValid {
-			account.IsExpiredCookie = true
-			if err := database.DB.Save(&account).Error; err != nil {
-				logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
-			}
-			go sendDailyUpdate(account, s)
+	lastNotification := time.Unix(account.LastNotification, 0)
+	if time.Since(lastNotification).Hours() >= float64(userSettings.NotificationInterval) {
+		embed := &discordgo.MessageEmbed{
+			Title:       fmt.Sprintf("%s - Permanent Ban Status", account.Title),
+			Description: fmt.Sprintf("The account %s is still permanently banned.", account.Title),
+			Color:       GetColorForStatus(models.StatusPermaban, false),
+			Timestamp:   time.Now().Format(time.RFC3339),
 		}
-		account.LastCookieCheck = time.Now().Unix()
-		if err := database.DB.Save(&account).Error; err != nil {
-			logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
+		err := sendNotification(s, account, embed, fmt.Sprintf("<@%s>", account.UserID), "permaban")
+		if err != nil {
+			logger.Log.WithError(err).Errorf("Failed to send permaban update for account %s", account.Title)
+		} else {
+			account.LastNotification = time.Now().Unix()
+			if err := database.DB.Save(&account).Error; err != nil {
+				logger.Log.WithError(err).Errorf("Failed to update LastNotification for account %s", account.Title)
+			}
 		}
 	}
-	logger.Log.WithField("account", account.Title).Info("Processed permanently banned account")
 }
 
 // Handle accounts with expired cookies
@@ -332,17 +343,10 @@ func updateAccountStatus(account models.Account, result models.Status, discord *
 }
 
 func handleStatusChange(account models.Account, newStatus models.Status, discord *discordgo.Session) {
-	userSettings, _ := GetUserSettings(account.UserID)
-	lastStatusChange := time.Unix(account.LastStatusChange, 0)
-	if time.Since(lastStatusChange).Hours() < userSettings.StatusChangeCooldown {
-		logger.Log.Infof("Skipping status change notification for account %s (cooldown)", account.Title)
-		return
-	}
-
 	DBMutex.Lock()
 	account.LastStatus = newStatus
 	account.LastStatusChange = time.Now().Unix()
-	account.IsPermabanned = newStatus == models.StatusPermaban
+	account.IsPermabanned = (newStatus == models.StatusPermaban)
 	if err := database.DB.Save(&account).Error; err != nil {
 		logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
 		DBMutex.Unlock()
@@ -374,7 +378,12 @@ func handleStatusChange(account models.Account, newStatus models.Status, discord
 		Timestamp:   time.Now().Format(time.RFC3339),
 	}
 
-	err := sendNotification(discord, account, embed, fmt.Sprintf("<@%s>", account.UserID), "status_change")
+	notificationType := "status_change"
+	if newStatus == models.StatusPermaban {
+		notificationType = "permaban"
+	}
+
+	err := sendNotification(discord, account, embed, fmt.Sprintf("<@%s>", account.UserID), notificationType)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to send status update message for account %s", account.Title)
 	}
