@@ -1,18 +1,21 @@
 package services
 
 import (
-	"CODStatusBot/logger"
-	"CODStatusBot/models"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
+
+	"CODStatusBot/logger"
+	"CODStatusBot/models"
 )
 
-var url1 = "https://support.activision.com/api/bans/v2/appeal?locale=en" // Replacement Endpoint for checking account bans
-var url2 = "https://support.activision.com/api/profile?accts=false"      // Endpoint for retrieving profile information
+var (
+	url1 = "https://support.activision.com/api/bans/v2/appeal?locale=en" // Replacement Endpoint for checking account bans
+	url2 = "https://support.activision.com/api/profile?accts=false"      // Endpoint for retrieving profile information
+)
 
 // VerifySSOCookie checks if the provided SSO cookie is valid.
 func VerifySSOCookie(ssoCookie string) bool {
@@ -139,7 +142,7 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 		}
 	}
 
-	// If not an error response, proceed with parsing the actual ban data
+	// If not an error response, proceed with parsing the actual ban data.
 	var data struct {
 		Error     string `json:"error"`
 		Success   string `json:"success"`

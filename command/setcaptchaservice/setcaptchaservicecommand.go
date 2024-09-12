@@ -1,11 +1,12 @@
 package setcaptchaservice
 
 import (
+	"strings"
+
 	"CODStatusBot/logger"
 	"CODStatusBot/services"
 	"CODStatusBot/utils"
 	"github.com/bwmarrin/discordgo"
-	"strings"
 )
 
 func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -29,11 +30,11 @@ func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCrea
 			},
 		},
 	})
-
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding with modal")
 	}
 }
+
 func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
 

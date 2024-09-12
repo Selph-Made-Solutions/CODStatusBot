@@ -31,7 +31,6 @@ func CommandSetPreference(s *discordgo.Session, i *discordgo.InteractionCreate) 
 			},
 		},
 	})
-
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding with preference selection")
 	}
@@ -73,7 +72,7 @@ func HandlePreferenceSelection(s *discordgo.Session, i *discordgo.InteractionCre
 		return
 	}
 
-	// Log the number of accounts updated
+	// Log the amount accounts updated.
 	logger.Log.Infof("Updated %d accounts for user %s", result.RowsAffected, userID)
 
 	message := "Your notification preference has been updated for all your accounts. "

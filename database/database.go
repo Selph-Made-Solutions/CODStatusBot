@@ -1,10 +1,11 @@
 package database
 
 import (
-	"CODStatusBot/models"
 	"errors"
 	"fmt"
 	"os"
+
+	"CODStatusBot/models"
 
 	"CODStatusBot/logger"
 

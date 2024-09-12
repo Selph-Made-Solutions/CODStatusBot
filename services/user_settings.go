@@ -1,9 +1,6 @@
 package services
 
 import (
-	"CODStatusBot/database"
-	"CODStatusBot/logger"
-	"CODStatusBot/models"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -11,6 +8,10 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+
+	"CODStatusBot/database"
+	"CODStatusBot/logger"
+	"CODStatusBot/models"
 )
 
 var defaultSettings models.UserSettings
@@ -61,7 +62,7 @@ func GetUserSettings(userID string) (models.UserSettings, error) {
 		return settings, result.Error
 	}
 
-	// If the user doesn't have custom settings, use default settings
+	// If the user doesn't have custom settings, use default settings.
 	if settings.CheckInterval == 0 {
 		settings.CheckInterval = defaultSettings.CheckInterval
 	}
@@ -109,7 +110,7 @@ func SetUserCaptchaKey(userID string, captchaKey string) error {
 		}
 
 		settings.CaptchaAPIKey = captchaKey
-		// Enable custom settings when user sets their own valid API key
+		// Enable custom settings when user sets their own valid API key.
 		settings.CheckInterval = 15        // Allow more frequent checks, e.g., every 15 minutes
 		settings.NotificationInterval = 12 // Allow more frequent notifications, e.g., every 12 hours
 
@@ -137,7 +138,7 @@ func SetUserCaptchaKey(userID string, captchaKey string) error {
 
 // Add this helper function to validate userID
 func isValidUserID(userID string) bool {
-	// Check if userID consists only of digits (Discord user IDs are numeric)
+	// Check if userID consists of only digits (Discord user IDs are numeric).
 	for _, char := range userID {
 		if char < '0' || char > '9' {
 			return false
@@ -145,6 +146,7 @@ func isValidUserID(userID string) bool {
 	}
 	return true
 }
+
 func GetUserCaptchaKey(userID string) (string, error) {
 	var settings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).First(&settings)
@@ -158,7 +160,7 @@ func GetUserCaptchaKey(userID string) (string, error) {
 		return settings.CaptchaAPIKey, nil
 	}
 
-	// If the user doesn't have a custom API key, return the default key
+	// If the user doesn't have a custom API key, return the default key.
 	defaultKey := os.Getenv("EZCAPTCHA_CLIENT_KEY")
 	if defaultKey == "" {
 		return "", fmt.Errorf("default EZCAPTCHA_CLIENT_KEY not set in environment")
@@ -202,7 +204,7 @@ func UpdateUserSettings(userID string, newSettings models.UserSettings) error {
 		return result.Error
 	}
 
-	// Only allow updating settings if the user has a valid API key
+	// User can only update settings if they have a valid API key.
 	if settings.CaptchaAPIKey != "" {
 		if newSettings.CheckInterval != 0 {
 			settings.CheckInterval = newSettings.CheckInterval

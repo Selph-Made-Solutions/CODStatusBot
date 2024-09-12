@@ -1,15 +1,17 @@
 package updateaccount
 
 import (
+	"fmt"
+	"strconv"
+	"strings"
+
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
 	"CODStatusBot/utils"
-	"fmt"
+
 	"github.com/bwmarrin/discordgo"
-	"strconv"
-	"strings"
 )
 
 func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -54,12 +56,12 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		}
 	}
 
-	// Add the last row if it's not empty
+	// Add the last row if it is not empty.
 	if len(currentRow) > 0 {
 		components = append(components, discordgo.ActionsRow{Components: currentRow})
 	}
 
-	// Send message with account buttons
+	// Send a message with account buttons.
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
@@ -68,7 +70,6 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 			Components: components,
 		},
 	})
-
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding with account selection")
 	}
@@ -105,7 +106,6 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 			},
 		},
 	})
-
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding with modal")
 	}

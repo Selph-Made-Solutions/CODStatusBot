@@ -23,7 +23,7 @@ func init() {
 		ForceColors: true,
 	})
 	logDir := "logs/"
-	err := os.MkdirAll(logDir, 0755)
+	err := os.MkdirAll(logDir, 0o755)
 	if err != nil {
 		Log.WithError(err).Fatal("Failed to create log directory")
 	}
@@ -44,7 +44,7 @@ func rotateLog() {
 
 	logDir := "logs/"
 	logFileName := filepath.Join(logDir, time.Now().Format("2006-01-02")+".txt")
-	newLogFile, err := os.OpenFile(logFileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	newLogFile, err := os.OpenFile(logFileName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
 	if err != nil {
 		Log.WithError(err).Fatal("Failed to open new log file")
 	}

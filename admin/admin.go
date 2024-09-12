@@ -1,23 +1,22 @@
 package admin
 
 import (
-	"CODStatusBot/database"
-	"CODStatusBot/logger"
-	"CODStatusBot/models"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"net/http"
 	"os"
 	"time"
 
+	"CODStatusBot/database"
+	"CODStatusBot/logger"
+	"CODStatusBot/models"
+
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
-	"html/template"
 )
 
-var (
-	store = sessions.NewCookieStore([]byte(os.Getenv("SESSION_KEY")))
-)
+var store = sessions.NewCookieStore([]byte(os.Getenv("SESSION_KEY")))
 
 func StartAdminPanel() {
 	r := mux.NewRouter()
@@ -85,6 +84,7 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		next.ServeHTTP(w, r)
 	}
 }
+
 func statsHandler(w http.ResponseWriter, r *http.Request) {
 	stats, err := getStats()
 	if err != nil {

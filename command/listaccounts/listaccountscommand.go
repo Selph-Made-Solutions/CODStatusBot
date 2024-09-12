@@ -1,10 +1,12 @@
 package listaccounts
 
 import (
+	"fmt"
+
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
-	"fmt"
+
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -57,7 +59,6 @@ func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			Flags:  discordgo.MessageFlagsEphemeral,
 		},
 	})
-
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction")
 	}

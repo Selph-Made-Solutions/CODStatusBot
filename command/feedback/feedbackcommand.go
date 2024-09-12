@@ -1,21 +1,21 @@
 package feedback
 
 import (
-	"CODStatusBot/logger"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
 	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"CODStatusBot/logger"
+
+	"github.com/bwmarrin/discordgo"
 )
 
-var (
-	tempFeedbackStore = struct {
-		sync.RWMutex
-		m map[string]feedbackEntry
-	}{m: make(map[string]feedbackEntry)}
-)
+var tempFeedbackStore = struct {
+	sync.RWMutex
+	m map[string]feedbackEntry
+}{m: make(map[string]feedbackEntry)}
 
 type feedbackEntry struct {
 	message   string
@@ -50,7 +50,7 @@ func CommandFeedback(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	logger.Log.WithField("userID", userID).Info("Stored feedback message")
 
-	// Create message with buttons for anonymity choice
+	// Create a message with buttons for anonymity choice.
 	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
@@ -74,7 +74,6 @@ func CommandFeedback(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			},
 		},
 	})
-
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to send anonymity choice message")
 		sendResponse(s, i, "There was an error processing your feedback. Please try again later.", true)
@@ -94,7 +93,7 @@ func HandleFeedbackChoice(s *discordgo.Session, i *discordgo.InteractionCreate) 
 	isAnonymous := parts[1] == "anonymous"
 	userID := parts[2]
 
-	// Verify that the user ID from the button matches the interaction's user
+	// Verify that the user ID from the button matches the interaction's user.
 	interactionUserID, err := getUserID(i)
 	if err != nil || interactionUserID != userID {
 		logger.Log.WithField("buttonUserID", userID).WithField("interactionUserID", interactionUserID).Error("User ID mismatch")
@@ -162,7 +161,6 @@ func sendResponse(s *discordgo.Session, i *discordgo.InteractionCreate, content 
 			Flags:   flags,
 		},
 	})
-
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to send interaction response")
 	}

@@ -1,27 +1,29 @@
 package services
 
 import (
-	"CODStatusBot/database"
-	"CODStatusBot/logger"
-	"CODStatusBot/models"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
-	"github.com/joho/godotenv"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"CODStatusBot/database"
+	"CODStatusBot/logger"
+	"CODStatusBot/models"
+
+	"github.com/bwmarrin/discordgo"
+	"github.com/joho/godotenv"
 )
 
 var (
-	checkInterval               float64 // Check interval for accounts (in minutes)
-	notificationInterval        float64 // Notification interval for daily updates (in hours)
-	cooldownDuration            float64 // Cooldown duration for invalid cookie notifications (in hours)
-	sleepDuration               int     // Sleep duration for the account checking loop (in minutes)
-	cookieCheckIntervalPermaban float64 // Check interval for permabanned accounts (in hours)
-	statusChangeCooldown        float64 // Cooldown duration for status change notifications (in hours)
-	globalNotificationCooldown  float64 // Global cooldown for notifications per user (in hours)
+	checkInterval               float64 // Check interval for accounts (in minutes).
+	notificationInterval        float64 // Notification interval for daily updates (in hours).
+	cooldownDuration            float64 // Cooldown duration for invalid cookie notifications (in hours).
+	sleepDuration               int     // Sleep duration for the account checking loop (in minutes).
+	cookieCheckIntervalPermaban float64 // Check interval for permabanned accounts (in hours).
+	statusChangeCooldown        float64 // Cooldown duration for status change notifications (in hours).
+	globalNotificationCooldown  float64 // A global cooldown for notifications per user (in hours).
 	userNotificationTimestamps  = make(map[string]time.Time)
 	userNotificationMutex       sync.Mutex
 	DBMutex                     sync.Mutex
@@ -46,19 +48,6 @@ func init() {
 		checkInterval, notificationInterval, cooldownDuration, sleepDuration, cookieCheckIntervalPermaban, statusChangeCooldown, globalNotificationCooldown)
 }
 
-func canSendNotification(userID string, userSettings models.UserSettings) bool {
-	userNotificationMutex.Lock()
-	defer userNotificationMutex.Unlock()
-
-	lastNotification, exists := userNotificationTimestamps[userID]
-	if !exists || time.Since(lastNotification).Hours() >= userSettings.NotificationInterval {
-		userNotificationTimestamps[userID] = time.Now()
-		return true
-	}
-	logger.Log.Infof("Notification suppressed for user %s due to cooldown", userID)
-	return false
-}
-
 // sendNotification function: sends notifications based on user preference
 func sendNotification(discord *discordgo.Session, account models.Account, embed *discordgo.MessageEmbed, content string, notificationType string) error {
 	userSettings, err := GetUserSettings(account.UserID)
@@ -80,7 +69,7 @@ func sendNotification(discord *discordgo.Session, account models.Account, embed 
 		shouldSend = true
 	case "permaban":
 		if exists {
-			cooldownDuration = time.Duration(userSettings.NotificationInterval) * time.Hour
+			cooldownDuration = 24 * time.Hour // Set 24-hour cooldown for permaban reminders.
 			shouldSend = time.Since(lastNotification) >= cooldownDuration
 		}
 	case "daily_update", "invalid_cookie", "cookie_expiring_soon":
@@ -125,7 +114,7 @@ func sendNotification(discord *discordgo.Session, account models.Account, embed 
 	return err
 }
 
-// sendDailyUpdate function: sends a daily update message for a given account
+// sendDailyUpdate function: sends a daily update message for a given account.
 func sendDailyUpdate(account models.Account, discord *discordgo.Session) {
 	logger.Log.Infof("Attempting to send daily update for account %s", account.Title)
 
@@ -225,10 +214,10 @@ func CheckAccounts(s *discordgo.Session) {
 
 func handlePermabannedAccount(account models.Account, s *discordgo.Session, userSettings models.UserSettings) {
 	lastNotification := time.Unix(account.LastNotification, 0)
-	if time.Since(lastNotification).Hours() >= float64(userSettings.NotificationInterval) {
+	if time.Since(lastNotification).Hours() >= 24 { // Send a reminder every 24 hours.
 		embed := &discordgo.MessageEmbed{
 			Title:       fmt.Sprintf("%s - Permanent Ban Status", account.Title),
-			Description: fmt.Sprintf("The account %s is still permanently banned.", account.Title),
+			Description: fmt.Sprintf("The account %s is still permanently banned. Please remove this account from monitoring using the /removeaccount command.", account.Title),
 			Color:       GetColorForStatus(models.StatusPermaban, false),
 			Timestamp:   time.Now().Format(time.RFC3339),
 		}
@@ -261,7 +250,7 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to check SSO cookie expiration for account %s", account.Title)
-		// Notify user if the cookie will expire within 24 hours}
+		// Notify user if the cookie will expire within 24 hours.
 	} else if timeUntilExpiration > 0 && timeUntilExpiration <= 24*time.Hour {
 		notifyCookieExpiringSoon(account, discord, timeUntilExpiration)
 	}
@@ -346,7 +335,7 @@ func handleStatusChange(account models.Account, newStatus models.Status, discord
 	DBMutex.Lock()
 	account.LastStatus = newStatus
 	account.LastStatusChange = time.Now().Unix()
-	account.IsPermabanned = (newStatus == models.StatusPermaban)
+	account.IsPermabanned = newStatus == models.StatusPermaban
 	if err := database.DB.Save(&account).Error; err != nil {
 		logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
 		DBMutex.Unlock()
@@ -354,7 +343,7 @@ func handleStatusChange(account models.Account, newStatus models.Status, discord
 	}
 	logger.Log.Infof("Account %s status changed to %s", account.Title, newStatus)
 
-	// Create a new record for the account
+	// Create a record for the account.
 	ban := models.Ban{
 		Account:   account,
 		Status:    newStatus,
@@ -381,6 +370,8 @@ func handleStatusChange(account models.Account, newStatus models.Status, discord
 	notificationType := "status_change"
 	if newStatus == models.StatusPermaban {
 		notificationType = "permaban"
+	} else if newStatus == models.StatusGood && account.LastStatus != models.StatusGood {
+		embed.Description += "\n\nYour account has returned to good standing."
 	}
 
 	err := sendNotification(discord, account, embed, fmt.Sprintf("<@%s>", account.UserID), notificationType)
@@ -393,25 +384,8 @@ func handleStatusChange(account models.Account, newStatus models.Status, discord
 	}
 }
 
-func sendStatusChangeNotification(account models.Account, newStatus models.Status, discord *discordgo.Session, ban models.Ban) {
-	embed := &discordgo.MessageEmbed{
-		Title:       fmt.Sprintf("%s - %s", account.Title, EmbedTitleFromStatus(newStatus)),
-		Description: getStatusDescription(newStatus, account.Title, ban),
-		Color:       GetColorForStatus(newStatus, account.IsExpiredCookie),
-		Timestamp:   time.Now().Format(time.RFC3339),
-	}
-	if newStatus == models.StatusPermaban {
-		embed.Description += "\n\nThis account has been marked as permanently banned. It will no longer be checked automatically. You will receive daily reminders about this account. Please use the /removeaccount command to remove this account from monitoring if you no longer need it."
-	}
-
-	err := sendNotification(discord, account, embed, "", "daily_update")
-	if err != nil {
-		logger.Log.WithError(err).Errorf("Failed to send status update message for account %s", account.Title)
-	}
-}
-
 func scheduleTempBanNotification(account models.Account, duration string, discord *discordgo.Session) {
-	// Parse the duration string (assuming it's in the format "X days, Y hours")
+	// Parse the duration string (assuming it is in the format "X days, Y hours").
 	parts := strings.Split(duration, ",")
 	if len(parts) != 2 {
 		logger.Log.Errorf("Invalid duration format for account %s: %s", account.Title, duration)
@@ -421,9 +395,29 @@ func scheduleTempBanNotification(account models.Account, duration string, discor
 	hours, _ := strconv.Atoi(strings.TrimSpace(strings.Split(parts[1], " ")[0]))
 
 	sleepDuration := time.Duration(days)*24*time.Hour + time.Duration(hours)*time.Hour
-	time.Sleep(sleepDuration)
 
-	// Check the account status again after the temporary ban duration
+	// Send intermediate notifications
+	for remainingTime := sleepDuration; remainingTime > 0; remainingTime -= 24 * time.Hour {
+		if remainingTime > 24*time.Hour {
+			time.Sleep(24 * time.Hour)
+		} else {
+			time.Sleep(remainingTime)
+		}
+
+		embed := &discordgo.MessageEmbed{
+			Title:       fmt.Sprintf("%s - Temporary Ban Update", account.Title),
+			Description: fmt.Sprintf("Your account is still temporarily banned. Remaining time: %v", remainingTime),
+			Color:       GetColorForStatus(models.StatusTempban, false),
+			Timestamp:   time.Now().Format(time.RFC3339),
+		}
+
+		err := sendNotification(discord, account, embed, "", "temp_ban_update")
+		if err != nil {
+			logger.Log.WithError(err).Errorf("Failed to send temporary ban update for account %s", account.Title)
+		}
+	}
+
+	// Check the account status after the temporary ban duration
 	result, err := CheckAccount(account.SSOCookie, account.UserID)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to check account %s after temporary ban duration", account.Title)
@@ -432,6 +426,7 @@ func scheduleTempBanNotification(account models.Account, duration string, discor
 
 	var embed *discordgo.MessageEmbed
 	if result == models.StatusGood {
+		// If the status has returned to good, send a notification stating this.
 		embed = &discordgo.MessageEmbed{
 			Title:       fmt.Sprintf("%s - Temporary Ban Lifted", account.Title),
 			Description: fmt.Sprintf("The temporary ban for account %s has been lifted. The account is now in good standing.", account.Title),
@@ -439,6 +434,7 @@ func scheduleTempBanNotification(account models.Account, duration string, discor
 			Timestamp:   time.Now().Format(time.RFC3339),
 		}
 	} else if result == models.StatusPermaban {
+		// If the status is now permaban, send a notification stating this.
 		embed = &discordgo.MessageEmbed{
 			Title:       fmt.Sprintf("%s - Temporary Ban Escalated", account.Title),
 			Description: fmt.Sprintf("The temporary ban for account %s has been escalated to a permanent ban.", account.Title),
@@ -461,7 +457,7 @@ func scheduleTempBanNotification(account models.Account, duration string, discor
 	}
 }
 
-// GetColorForStatus function: returns the appropriate color for an embed message based on the account status
+// GetColorForStatus function: returns the appropriate color for an embed message based on the account status.
 func GetColorForStatus(status models.Status, isExpiredCookie bool) int {
 	if isExpiredCookie {
 		return 0xff9900 // Orange for expired cookie
@@ -505,7 +501,7 @@ func getStatusDescription(status models.Status, accountTitle string, ban models.
 	}
 }
 
-// SendGlobalAnnouncement function: sends a global announcement to users who haven't seen it yet
+// SendGlobalAnnouncement function: sends a global announcement to users who haven't seen it yet.
 func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 	var userSettings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings)

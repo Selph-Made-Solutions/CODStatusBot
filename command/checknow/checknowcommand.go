@@ -1,17 +1,19 @@
 package checknow
 
 import (
-	"CODStatusBot/database"
-	"CODStatusBot/logger"
-	"CODStatusBot/models"
-	"CODStatusBot/services"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"CODStatusBot/database"
+	"CODStatusBot/logger"
+	"CODStatusBot/models"
+	"CODStatusBot/services"
+
+	"github.com/bwmarrin/discordgo"
 )
 
 var (
@@ -78,10 +80,10 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	if len(accounts) == 1 || accountTitle != "" {
-		// If only one account or a specific account was requested, check it immediately
+		// If only one account, or a specific account was requested, check it immediately.
 		checkAccounts(s, i, accounts)
 	} else {
-		// If multiple accounts and no specific account was requested, show buttons
+		// If multiple accounts and no specific account was requested, show buttons.
 		showAccountButtons(s, i, accounts)
 	}
 }
@@ -128,7 +130,6 @@ func showAccountButtons(s *discordgo.Session, i *discordgo.InteractionCreate, ac
 			Components: components,
 		},
 	})
-
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding with account selection")
 	}

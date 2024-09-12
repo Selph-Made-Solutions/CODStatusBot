@@ -48,7 +48,6 @@ func CommandHelpCookie(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			Flags:   discordgo.MessageFlagsEphemeral,
 		},
 	})
-
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to help cookie command")
 	}

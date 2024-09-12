@@ -173,7 +173,7 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		if err := globalannouncement.SendGlobalAnnouncement(s, userID); err != nil {
 			logger.Log.WithError(err).Error("Error sending announcement to user")
 		} else {
-			// Update the user's settings to mark the announcement as seen
+			// Update the user's settings to mark the announcement as seen.
 			userSettings.HasSeenAnnouncement = true
 			if err := database.DB.Save(&userSettings).Error; err != nil {
 				logger.Log.WithError(err).Error("Error updating user settings after sending announcement")

@@ -1,7 +1,6 @@
 package services
 
 import (
-	"CODStatusBot/logger"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -10,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"CODStatusBot/logger"
 )
 
 const (

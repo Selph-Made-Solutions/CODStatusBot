@@ -1,14 +1,16 @@
 package globalannouncement
 
 import (
+	"fmt"
+	"os"
+	"time"
+
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
-	"fmt"
+
 	"github.com/bwmarrin/discordgo"
 	"gorm.io/gorm"
-	"os"
-	"time"
 )
 
 func CommandGlobalAnnouncement(s *discordgo.Session, i *discordgo.InteractionCreate) {
