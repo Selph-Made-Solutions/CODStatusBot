@@ -1,6 +1,10 @@
 package bot
 
 import (
+	"errors"
+	"os"
+	"strings"
+
 	"CODStatusBot/command"
 	"CODStatusBot/command/accountage"
 	"CODStatusBot/command/accountlogs"
@@ -16,10 +20,8 @@ import (
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
-	"errors"
+
 	"github.com/bwmarrin/discordgo"
-	"os"
-	"strings"
 )
 
 var discord *discordgo.Session

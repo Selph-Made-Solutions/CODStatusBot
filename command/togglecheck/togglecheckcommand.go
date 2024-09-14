@@ -1,13 +1,15 @@
 package togglecheck
 
 import (
+	"fmt"
+	"strconv"
+	"strings"
+
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
-	"fmt"
+
 	"github.com/bwmarrin/discordgo"
-	"strconv"
-	"strings"
 )
 
 func CommandToggleCheck(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -53,7 +55,7 @@ func CommandToggleCheck(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		}
 	}
 
-	// Add the last row if it's not empty
+	// Add the last row if it is not empty.
 	if len(currentRow) > 0 {
 		components = append(components, discordgo.ActionsRow{Components: currentRow})
 	}
@@ -66,7 +68,6 @@ func CommandToggleCheck(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			Components: components,
 		},
 	})
-
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding with account selection")
 	}

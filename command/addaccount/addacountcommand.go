@@ -1,15 +1,17 @@
 package addaccount
 
 import (
+	"fmt"
+	"strings"
+	"unicode"
+
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
 	"CODStatusBot/utils"
-	"fmt"
+
 	"github.com/bwmarrin/discordgo"
-	"strings"
-	"unicode"
 )
 
 func sanitizeInput(input string) string {
@@ -57,7 +59,6 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			},
 		},
 	})
-
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding with modal")
 	}
@@ -92,7 +93,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		channelID = i.ChannelID
 	} else if i.User != nil {
 		userID = i.User.ID
-		// For user applications, we'll use DM as the default channel
+		// For user applications, we'll use DM as the default channel.
 		channel, err := s.UserChannelCreate(userID)
 		if err != nil {
 			logger.Log.WithError(err).Error("Error creating DM channel")
@@ -114,7 +115,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if result.Error == nil {
 		notificationType = existingAccount.NotificationType
 	} else if i.User != nil {
-		// If it's a user application and no existing preference, default to DM
+		// If it is a user application and no existing preference, default to DM.
 		notificationType = "dm"
 	}
 

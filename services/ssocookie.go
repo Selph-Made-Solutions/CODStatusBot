@@ -1,12 +1,13 @@
 package services
 
 import (
-	"CODStatusBot/logger"
 	"encoding/base64"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
+
+	"CODStatusBot/logger"
 )
 
 func DecodeSSOCookie(encodedStr string) (int64, error) {

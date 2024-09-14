@@ -1,14 +1,16 @@
 package accountlogs
 
 import (
-	"CODStatusBot/database"
-	"CODStatusBot/logger"
-	"CODStatusBot/models"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
 	"strconv"
 	"strings"
 	"time"
+
+	"CODStatusBot/database"
+	"CODStatusBot/logger"
+	"CODStatusBot/models"
+
+	"github.com/bwmarrin/discordgo"
 )
 
 func CommandAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -53,7 +55,7 @@ func CommandAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		}
 	}
 
-	// Add "View All Logs" button
+	// Create View All Logs button
 	if len(currentRow) < 5 {
 		currentRow = append(currentRow, discordgo.Button{
 			Label:    "View All Logs",
@@ -82,7 +84,6 @@ func CommandAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			Components: components,
 		},
 	})
-
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding with account selection")
 	}
@@ -120,7 +121,6 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 			Components: []discordgo.MessageComponent{},
 		},
 	})
-
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction with account logs")
 		respondToInteraction(s, i, "Error displaying account logs. Please try again.")

@@ -1,15 +1,17 @@
 package setcheckinterval
 
 import (
+	"fmt"
+	"strconv"
+	"strings"
+
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
 	"CODStatusBot/utils"
-	"fmt"
+
 	"github.com/bwmarrin/discordgo"
-	"strconv"
-	"strings"
 )
 
 func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -87,7 +89,6 @@ func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreat
 			},
 		},
 	})
-
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding with modal")
 	}

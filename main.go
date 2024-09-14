@@ -1,19 +1,21 @@
 package main
 
 import (
+	"fmt"
+	"os"
+	"os/signal"
+	"runtime/debug"
+	"syscall"
+
 	"CODStatusBot/admin"
 	"CODStatusBot/bot"
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
-	"fmt"
+
 	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
-	"os"
-	"os/signal"
-	"runtime/debug"
-	"syscall"
 )
 
 var discord *discordgo.Session
