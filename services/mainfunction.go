@@ -4,8 +4,6 @@ import (
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
-	"expvar"
-	"flag"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
@@ -17,19 +15,20 @@ import (
 )
 
 var (
-	checkInterval               float64 // Check interval for accounts (in minutes)
-	notificationInterval        float64 // Notification interval for daily updates (in hours)
-	cooldownDuration            float64 // Cooldown duration for invalid cookie notifications (in hours)
-	sleepDuration               int     // Sleep duration for the account checking loop (in minutes)
-	cookieCheckIntervalPermaban float64 // Check interval for permabanned accounts (in hours)
-	statusChangeCooldown        float64 // Cooldown duration for status change notifications (in hours)
-	globalNotificationCooldown  float64 // Global cooldown for notifications per user (in hours)
-	cookieExpirationWarning     float64 // Time before cookie expiration to send a warning (in hours)
-	tempBanUpdateInterval       float64 // Interval for temporary ban update notifications (in hours)
+	checkInterval               float64 // Check interval for accounts (in minutes).
+	notificationInterval        float64 // Notification interval for daily updates (in hours).
+	cooldownDuration            float64 // Cooldown duration for invalid cookie notifications (in hours).
+	sleepDuration               int     // Sleep duration for the account checking loop (in minutes).
+	cookieCheckIntervalPermaban float64 // Check interval for permabanned accounts (in hours).
+	statusChangeCooldown        float64 // Cooldown duration for status change notifications (in hours).
+	globalNotificationCooldown  float64 // Global cooldown for notifications per user (in hours).
+	cookieExpirationWarning     float64 // Time before cookie expiration to send a warning (in hours).
+	tempBanUpdateInterval       float64 // Interval for temporary ban update notifications (in hours).
 	userNotificationTimestamps  = make(map[string]time.Time)
 	userNotificationMutex       sync.Mutex
 	DBMutex                     sync.Mutex
-	defaultRateLimit            time.Duration
+	defaultRateLimit            time.Duration // Default rate limit for checks (in minutes).
+	checkNowRateLimit           time.Duration // Rate limit for the check now command (in seconds).
 )
 
 func init() {
@@ -48,39 +47,37 @@ func init() {
 	cookieExpirationWarning = getEnvFloat("COOKIE_EXPIRATION_WARNING", 24)
 	tempBanUpdateInterval = getEnvFloat("TEMP_BAN_UPDATE_INTERVAL", 24)
 	defaultRateLimit = time.Duration(getEnvInt("DEFAULT_RATE_LIMIT", 5)) * time.Minute
+	checkNowRateLimit = time.Duration(getEnvInt("CHECK_NOW_RATE_LIMIT", 3600)) * time.Second
 
-	logger.Log.Infof("Loaded config: CHECK_INTERVAL=%.2f, NOTIFICATION_INTERVAL=%.2f, COOLDOWN_DURATION=%.2f, SLEEP_DURATION=%d, COOKIE_CHECK_INTERVAL_PERMABAN=%.2f, STATUS_CHANGE_COOLDOWN=%.2f, GLOBAL_NOTIFICATION_COOLDOWN=%.2f, COOKIE_EXPIRATION_WARNING=%.2f, TEMP_BAN_UPDATE_INTERVAL=%.2f, DEFAULT_RATE_LIMIT=%v",
-		checkInterval, notificationInterval, cooldownDuration, sleepDuration, cookieCheckIntervalPermaban, statusChangeCooldown, globalNotificationCooldown, cookieExpirationWarning, tempBanUpdateInterval, defaultRateLimit)
+	logger.Log.Infof("Loaded config: CHECK_INTERVAL=%.2f, NOTIFICATION_INTERVAL=%.2f, COOLDOWN_DURATION=%.2f, SLEEP_DURATION=%d, COOKIE_CHECK_INTERVAL_PERMABAN=%.2f, STATUS_CHANGE_COOLDOWN=%.2f, GLOBAL_NOTIFICATION_COOLDOWN=%.2f, COOKIE_EXPIRATION_WARNING=%.2f, TEMP_BAN_UPDATE_INTERVAL=%.2f, CHECK_NOW_RATE_LIMIT=%v, DEFAULT_RATE_LIMIT=%v",
+		checkInterval, notificationInterval, cooldownDuration, sleepDuration, cookieCheckIntervalPermaban, statusChangeCooldown, globalNotificationCooldown, cookieExpirationWarning, tempBanUpdateInterval, checkNowRateLimit, defaultRateLimit)
 }
 
 func getEnvFloat(key string, fallback float64) float64 {
-	value := getEnvFloatRaq(key, fallback)
-	// Convert hours to minutes for certain settings.
-	if key == "CHECK_INTERVAL" || key == "SLEEP_DURATION" || key == "DEFAULT_RATE_LIMIT"{
+	value := getEnvFloatRaw(key, fallback)
+	// Convert hours to minutes for certain settings
+	if key == "CHECK_INTERVAL" || key == "SLEEP_DURATION" || key == "DEFAULT_RATE_LIMIT" {
 		return value
 	}
+	// All other values are in hours, so we don't need to convert them
 	return value
 }
-
-
 func getEnvFloatRaw(key string, fallback float64) float64 {
-	if value, ok := os.LookupEnv(key); ok{
+	if value, ok := os.LookupEnv(key); ok {
 		floatValue, err := strconv.ParseFloat(value, 64)
-		if err == nil{
-	    	return floatValue
+		if err == nil {
+			return floatValue
 		}
 		logger.Log.WithError(err).Errorf("Failed to parse %s, using fallback value", key)
 	}
 	return fallback
-	}
-
-
-func getEnvInt(key string, fallback int) int {
-	flag.Value() := getEnvIntRaw(key, fallback)
-	// All int values are in minutes, so we don't need to convert them.
-	return value
 }
 
+func getEnvInt(key string, fallback int) int {
+	value := getEnvIntRaw(key, fallback)
+	// All int values are currently in minutes, so we don't need to convert them
+	return value
+}
 func getEnvIntRaw(key string, fallback int) int {
 	if value, ok := os.LookupEnv(key); ok {
 		intValue, err := strconv.Atoi(value)
