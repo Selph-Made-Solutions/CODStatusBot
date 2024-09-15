@@ -501,22 +501,22 @@ func scheduleTempBanNotification(account models.Account, duration string, discor
 // GetColorForStatus function: returns the appropriate color for an embed message based on the account status.
 func GetColorForStatus(status models.Status, isExpiredCookie bool, isCheckDisabled bool) int {
 	if isCheckDisabled {
-		return 0x808080 // Gray for disabled checks
+		return 0xA9A9A9 // Dark Gray for disabled checks
 	}
 	if isExpiredCookie {
-		return 0xff9900 // Orange for expired cookie
+		return 0xFF6347 // Tomato for expired cookie
 	}
 	switch status {
 	case models.StatusPermaban:
-		return 0xff0000 // Red for permanent ban
+		return 0x8B0000 // Dark Red for permanent ban
 	case models.StatusShadowban:
-		return 0xffff00 // Yellow for shadowban
+		return 0xFFD700 // Gold for shadowban
 	case models.StatusTempban:
-		return 0xffa500 // Orange for temporary ban
+		return 0xFF8C00 // Dark Orange for temporary ban
 	case models.StatusGood:
-		return 0x00ff00 // Green for good status
+		return 0x32CD32 // Lime Green for good status
 	default:
-		return 0x00ff00 // Green for unknown status
+		return 0x708090 // Slate Gray for unknown status
 	}
 }
 
