@@ -178,7 +178,7 @@ func sendDailyUpdate(account models.Account, discord *discordgo.Session) {
 	embed := &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%.2f Hour Update - %s", notificationInterval, account.Title),
 		Description: description,
-		Color:       GetColorForStatus(account.LastStatus, account.IsExpiredCookie),
+		Color:       GetColorForStatus(account.LastStatus, account.IsExpiredCookie, account.IsCheckDisabled),
 		Timestamp:   time.Now().Format(time.RFC3339),
 	}
 
@@ -259,7 +259,7 @@ func handlePermabannedAccount(account models.Account, s *discordgo.Session, user
 		embed := &discordgo.MessageEmbed{
 			Title:       fmt.Sprintf("%s - Permanent Ban Status", account.Title),
 			Description: fmt.Sprintf("The account %s is still permanently banned. Please remove this account from monitoring using the /removeaccount command.", account.Title),
-			Color:       GetColorForStatus(models.StatusPermaban, false),
+			Color:       GetColorForStatus(models.StatusPermaban, false, account.IsCheckDisabled),
 			Timestamp:   time.Now().Format(time.RFC3339),
 		}
 		err := sendNotification(s, account, embed, fmt.Sprintf("<@%s>", account.UserID), "permaban")
@@ -404,7 +404,7 @@ func handleStatusChange(account models.Account, newStatus models.Status, discord
 	embed := &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%s - %s", account.Title, EmbedTitleFromStatus(newStatus)),
 		Description: getStatusDescription(newStatus, account.Title, ban),
-		Color:       GetColorForStatus(newStatus, account.IsExpiredCookie),
+		Color:       GetColorForStatus(newStatus, account.IsExpiredCookie, account.IsCheckDisabled),
 		Timestamp:   time.Now().Format(time.RFC3339),
 	}
 
@@ -448,7 +448,7 @@ func scheduleTempBanNotification(account models.Account, duration string, discor
 		embed := &discordgo.MessageEmbed{
 			Title:       fmt.Sprintf("%s - Temporary Ban Update", account.Title),
 			Description: fmt.Sprintf("Your account is still temporarily banned. Remaining time: %v", remainingTime),
-			Color:       GetColorForStatus(models.StatusTempban, false),
+			Color:       GetColorForStatus(models.StatusTempban, false, account.IsCheckDisabled),
 			Timestamp:   time.Now().Format(time.RFC3339),
 		}
 
@@ -471,7 +471,7 @@ func scheduleTempBanNotification(account models.Account, duration string, discor
 		embed = &discordgo.MessageEmbed{
 			Title:       fmt.Sprintf("%s - Temporary Ban Lifted", account.Title),
 			Description: fmt.Sprintf("The temporary ban for account %s has been lifted. The account is now in good standing.", account.Title),
-			Color:       GetColorForStatus(result, false),
+			Color:       GetColorForStatus(result, false, account.IsCheckDisabled),
 			Timestamp:   time.Now().Format(time.RFC3339),
 		}
 	} else if result == models.StatusPermaban {
@@ -479,7 +479,7 @@ func scheduleTempBanNotification(account models.Account, duration string, discor
 		embed = &discordgo.MessageEmbed{
 			Title:       fmt.Sprintf("%s - Temporary Ban Escalated", account.Title),
 			Description: fmt.Sprintf("The temporary ban for account %s has been escalated to a permanent ban.", account.Title),
-			Color:       GetColorForStatus(result, false),
+			Color:       GetColorForStatus(result, false, account.IsCheckDisabled),
 			Timestamp:   time.Now().Format(time.RFC3339),
 		}
 	} else {
@@ -487,7 +487,7 @@ func scheduleTempBanNotification(account models.Account, duration string, discor
 		embed = &discordgo.MessageEmbed{
 			Title:       fmt.Sprintf("%s - Temporary Ban Update", account.Title),
 			Description: fmt.Sprintf("The temporary ban for account %s is still in effect. Current status: %s", account.Title, result),
-			Color:       GetColorForStatus(result, false),
+			Color:       GetColorForStatus(result, false, account.IsCheckDisabled),
 			Timestamp:   time.Now().Format(time.RFC3339),
 		}
 	}
@@ -499,17 +499,24 @@ func scheduleTempBanNotification(account models.Account, duration string, discor
 }
 
 // GetColorForStatus function: returns the appropriate color for an embed message based on the account status.
-func GetColorForStatus(status models.Status, isExpiredCookie bool) int {
+func GetColorForStatus(status models.Status, isExpiredCookie bool, isCheckDisabled bool) int {
+	if isCheckDisabled {
+		return 0xA9A9A9 // Dark Gray for disabled checks
+	}
 	if isExpiredCookie {
-		return 0xff9900 // Orange for expired cookie
+		return 0xFF6347 // Tomato for expired cookie
 	}
 	switch status {
 	case models.StatusPermaban:
-		return 0xff0000 // Red for permanent ban
+		return 0x8B0000 // Dark Red for permanent ban
 	case models.StatusShadowban:
-		return 0xffff00 // Yellow for shadowban
+		return 0xFFD700 // Gold for shadowban
+	case models.StatusTempban:
+		return 0xFF8C00 // Dark Orange for temporary ban
+	case models.StatusGood:
+		return 0x32CD32 // Lime Green for good status
 	default:
-		return 0x00ff00 // Green for no ban
+		return 0x708090 // Slate Gray for unknown status
 	}
 }
 

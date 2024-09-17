@@ -236,7 +236,7 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 		embed := &discordgo.MessageEmbed{
 			Title:       fmt.Sprintf("%s - %s", account.Title, status),
 			Description: fmt.Sprintf("Current status: %s", status),
-			Color:       services.GetColorForStatus(status, account.IsExpiredCookie),
+			Color:       services.GetColorForStatus(status, account.IsExpiredCookie, account.IsCheckDisabled),
 			Timestamp:   time.Now().Format(time.RFC3339),
 			Fields: []*discordgo.MessageEmbedField{
 				{

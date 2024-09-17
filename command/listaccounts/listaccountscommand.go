@@ -2,10 +2,12 @@ package listaccounts
 
 import (
 	"fmt"
+	"time"
 
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
+	"CODStatusBot/services"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -38,17 +40,36 @@ func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	embed := &discordgo.MessageEmbed{
 		Title:       "Your Monitored Accounts",
-		Description: "Here's a list of all your monitored accounts:",
+		Description: "Here's a detailed list of all your monitored accounts:",
 		Color:       0x00ff00,
-		Fields:      make([]*discordgo.MessageEmbedField, len(accounts)),
+		Fields:      make([]*discordgo.MessageEmbedField, 0),
 	}
 
-	for i, account := range accounts {
-		embed.Fields[i] = &discordgo.MessageEmbedField{
-			Name: account.Title,
-			Value: fmt.Sprintf("Status: %s\nNotification Type: %s",
-				account.LastStatus, account.NotificationType),
+	for _, account := range accounts {
+		checkStatus := getCheckStatus(account.IsCheckDisabled)
+		cookieExpiration := services.FormatExpirationTime(account.SSOCookieExpiration)
+		creationDate := time.Unix(account.Created, 0).Format("2006-01-02")
+		lastCheckTime := time.Unix(account.LastCheck, 0).Format("2006-01-02 15:04:05")
+
+		fieldValue := fmt.Sprintf("Status: %s\n"+
+			"Checks: %s\n"+
+			"Notification Type: %s\n"+
+			"Cookie Expires: %s\n"+
+			"Created: %s\n"+
+			"Last Checked: %s",
+			account.LastStatus, checkStatus, account.NotificationType,
+			cookieExpiration, creationDate, lastCheckTime)
+
+		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+			Name:   account.Title,
+			Value:  fieldValue,
 			Inline: false,
+		})
+
+		// Use the updated GetColorForStatus function
+		embedColor := services.GetColorForStatus(account.LastStatus, account.IsExpiredCookie, account.IsCheckDisabled)
+		if embedColor != 0x00ff00 {
+			embed.Color = embedColor
 		}
 	}
 
@@ -62,6 +83,13 @@ func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction")
 	}
+}
+
+func getCheckStatus(isDisabled bool) string {
+	if isDisabled {
+		return "Disabled"
+	}
+	return "Enabled"
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
