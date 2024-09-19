@@ -53,6 +53,12 @@ func init() {
 		checkInterval, notificationInterval, cooldownDuration, sleepDuration, cookieCheckIntervalPermaban, statusChangeCooldown, globalNotificationCooldown, cookieExpirationWarning, tempBanUpdateInterval, checkNowRateLimit, defaultRateLimit)
 }
 
+const (
+	maxRetryAttempts  = 3
+	retryDelay        = 5 * time.Second
+	maxFailedAttempts = 5
+)
+
 func getEnvFloat(key string, fallback float64) float64 {
 	value := getEnvFloatRaw(key, fallback)
 	// Convert hours to minutes for certain settings
@@ -140,19 +146,62 @@ func sendNotification(discord *discordgo.Session, account models.Account, embed 
 		channelID = account.ChannelID
 	}
 
-	_, err = discord.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
-		Embed:   embed,
-		Content: content,
-	})
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to send notification")
-	} else {
+	for attempt := 0; attempt < maxRetryAttempts; attempt++ {
+		_, err = discord.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
+			Embed:   embed,
+			Content: content,
+		})
+		if err != nil {
+			if isDiscordError(err, 10003, 50001, 50007) {
+				logger.Log.WithError(err).Errorf("Discord API error for account %s (attempt %d/%d)", account.Title, attempt+1, maxRetryAttempts)
+				if attempt == maxRetryAttempts-1 {
+					// Max attempts reached, update failed attempts count
+					if err := incrementFailedAttempts(account); err != nil {
+						logger.Log.WithError(err).Error("Failed to increment failed attempts")
+					}
+					return err
+				}
+				time.Sleep(retryDelay)
+				continue
+			}
+			logger.Log.WithError(err).Error("Failed to send notification")
+			return err
+		}
+		// Message sent successfully
 		logger.Log.Infof("%s notification sent to user %s", notificationType, account.UserID)
 		userNotificationMutex.Lock()
 		userNotificationTimestamps[account.UserID] = time.Now()
 		userNotificationMutex.Unlock()
+		// Reset failed attempts on successful send
+		if err := resetFailedAttempts(account); err != nil {
+			logger.Log.WithError(err).Error("Failed to reset failed attempts")
+		}
+		return nil
 	}
-	return err
+	return fmt.Errorf("failed to send notification after %d attempts", maxRetryAttempts)
+}
+
+func isDiscordError(err error, codes ...int) bool {
+	for _, code := range codes {
+		if strings.Contains(err.Error(), fmt.Sprintf("\"code\": %d", code)) {
+			return true
+		}
+	}
+	return false
+}
+
+func incrementFailedAttempts(account models.Account) error {
+	account.FailedAttempts++
+	if account.FailedAttempts >= maxFailedAttempts {
+		account.IsErrorDisabled = true
+		logger.Log.Warnf("Account %s automatically disabled due to persistent notification failures", account.Title)
+	}
+	return database.DB.Save(&account).Error
+}
+
+func resetFailedAttempts(account models.Account) error {
+	account.FailedAttempts = 0
+	return database.DB.Save(&account).Error
 }
 
 // sendDailyUpdate function: sends a daily update message for a given account.
@@ -209,11 +258,11 @@ func CheckAccounts(s *discordgo.Session) {
 		// Iterate through each account and perform checks
 		for _, account := range accounts {
 			// Skip disabled accounts
-			if account.IsCheckDisabled {
-				logger.Log.Infof("Skipping check for disabled account: %s", account.Title)
+			if account.IsCheckDisabled || account.IsErrorDisabled {
+				logger.Log.Infof("Skipping check for disabled account: %s (User disabled: %v, Error disabled: %v)",
+					account.Title, account.IsCheckDisabled, account.IsErrorDisabled)
 				continue
 			}
-
 			userSettings, err := GetUserSettings(account.UserID)
 			if err != nil {
 				logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", account.UserID)
@@ -654,4 +703,31 @@ func calculateBanDuration(banStartTime time.Time) string {
 	days := int(duration.Hours() / 24)
 	hours := int(duration.Hours()) % 24
 	return fmt.Sprintf("%d days, %d hours", days, hours)
+}
+
+func cleanupDisabledAccounts() {
+	var errorDisabledAccounts []models.Account
+	if err := database.DB.Where("is_error_disabled = ? AND is_check_disabled = ?", true, false).Find(&errorDisabledAccounts).Error; err != nil {
+		logger.Log.WithError(err).Error("Failed to fetch error-disabled accounts")
+		return
+	}
+
+	for _, account := range errorDisabledAccounts {
+		// Instead of deleting, we'll notify the user and reset the error status
+		if err := notifyUserAboutDisabledAccount(account); err != nil {
+			logger.Log.WithError(err).Errorf("Failed to notify user about disabled account %s", account.Title)
+		} else {
+			account.IsErrorDisabled = false
+			account.FailedAttempts = 0
+			if err := database.DB.Save(&account).Error; err != nil {
+				logger.Log.WithError(err).Errorf("Failed to reset error status for account %s", account.Title)
+			} else {
+				logger.Log.Infof("Reset error status for account %s", account.Title)
+			}
+		}
+	}
+}
+func notifyUserAboutDisabledAccount(account models.Account) error {
+	logger.Log.Infof("Account %s was automatically disabled due to persistent errors. User should be notified.", account.Title)
+	return nil
 }
