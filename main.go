@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"runtime/debug"
 	"syscall"
+	"time"
 
 	"CODStatusBot/admin"
 	"CODStatusBot/bot"
@@ -113,4 +114,13 @@ func initializeDatabase() error {
 		return fmt.Errorf("failed to migrate database tables: %w", err)
 	}
 	return nil
+}
+
+func startCleanupTask() {
+	ticker := time.NewTicker(24 * time.Hour) // Run cleanup daily
+	go func() {
+		for range ticker.C {
+			cleanupDisabledAccounts()
+		}
+	}()
 }
