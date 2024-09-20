@@ -1,10 +1,6 @@
 package bot
 
 import (
-	"errors"
-	"os"
-	"strings"
-
 	"CODStatusBot/command"
 	"CODStatusBot/command/accountage"
 	"CODStatusBot/command/accountlogs"
@@ -20,11 +16,29 @@ import (
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
+	"errors"
+	"os"
+	"strings"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
 
 var discord *discordgo.Session
+
+func init() {
+	// Initialize the database connection
+	err := database.Databaselogin()
+	if err != nil {
+		logger.Log.WithError(err).Fatal("Failed to initialize database connection")
+	}
+
+	// Create or update the UserSettings table
+	err = database.DB.AutoMigrate(&models.UserSettings{})
+	if err != nil {
+		logger.Log.WithError(err).Fatal("Failed to create or update UserSettings table")
+	}
+}
 
 func StartBot() (*discordgo.Session, error) {
 	envToken := os.Getenv("DISCORD_TOKEN")
@@ -67,7 +81,12 @@ func StartBot() (*discordgo.Session, error) {
 		}
 	})
 
+	// Add new event handler for GUILD_DELETE
+	discord.AddHandler(handleGuildDelete)
+
 	go services.CheckAccounts(discord)
+	go periodicUserCheck(discord) // Start periodic check for user applications
+
 	return discord, nil
 }
 
@@ -122,16 +141,37 @@ func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 }
 
-func init() {
-	// Initialize the database connection
-	err := database.Databaselogin()
-	if err != nil {
-		logger.Log.WithError(err).Fatal("Failed to initialize database connection")
-	}
+func handleGuildDelete(s *discordgo.Session, g *discordgo.GuildDelete) {
+	logger.Log.Infof("Bot removed from guild: %s", g.ID)
 
-	// Create or update the UserSettings table
-	err = database.DB.AutoMigrate(&models.UserSettings{})
+	// Update all UserSettings for this guild
+	err := database.DB.Model(&models.UserSettings{}).
+		Where("install_type = ? AND user_id IN (SELECT user_id FROM accounts WHERE channel_id LIKE ?)",
+			"guild", g.ID+"%").
+		Updates(map[string]interface{}{"is_bot_installed": false}).Error
+
 	if err != nil {
-		logger.Log.WithError(err).Fatal("Failed to create or update UserSettings table")
+		logger.Log.WithError(err).Error("Failed to update UserSettings after guild removal")
+	}
+}
+
+func periodicUserCheck(s *discordgo.Session) {
+	ticker := time.NewTicker(24 * time.Hour) // Check once a day
+	for range ticker.C {
+		var userSettings []models.UserSettings
+		err := database.DB.Where("install_type = ? AND is_bot_installed = ?", "user", true).Find(&userSettings).Error
+		if err != nil {
+			logger.Log.WithError(err).Error("Failed to fetch user applications for periodic check")
+			continue
+		}
+
+		for _, settings := range userSettings {
+			_, err := s.UserChannelCreate(settings.UserID)
+			if err != nil {
+				logger.Log.WithError(err).Infof("Failed to create DM channel with user %s, marking as uninstalled", settings.UserID)
+				settings.IsBotInstalled = false
+				database.DB.Save(&settings)
+			}
+		}
 	}
 }
