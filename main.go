@@ -1,19 +1,17 @@
 package main
 
 import (
-	"fmt"
-	"os"
-	"os/signal"
-	"runtime/debug"
-	"syscall"
-	"time"
-
 	"CODStatusBot/admin"
 	"CODStatusBot/bot"
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
+	"fmt"
+	"os"
+	"os/signal"
+	"runtime/debug"
+	"syscall"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
@@ -114,13 +112,4 @@ func initializeDatabase() error {
 		return fmt.Errorf("failed to migrate database tables: %w", err)
 	}
 	return nil
-}
-
-func startCleanupTask() {
-	ticker := time.NewTicker(24 * time.Hour) // Run cleanup daily
-	go func() {
-		for range ticker.C {
-			cleanupDisabledAccounts()
-		}
-	}()
 }
