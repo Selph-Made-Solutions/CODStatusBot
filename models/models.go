@@ -36,6 +36,8 @@ type UserSettings struct {
 	StatusChangeCooldown float64 // In hours
 	NotificationType     string  `gorm:"default:channel"` // User preference for location of notifications either channel or dm
 	HasSeenAnnouncement  bool    `gorm:"default:false"`   // Flag to track if the user has seen the global announcement.
+	IsBotInstalled       bool    `gorm:"default:true"`    // New field to track if the bot is still installed
+	InstallationType     string  `gorm:"default:guild"`   // 'guild' or 'user' to differentiate installation type
 }
 
 type Ban struct {
