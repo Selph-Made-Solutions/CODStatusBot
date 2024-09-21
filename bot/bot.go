@@ -153,6 +153,15 @@ func handleGuildDelete(s *discordgo.Session, g *discordgo.GuildDelete) {
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to update UserSettings after guild removal")
 	}
+
+	// Disable checks for all accounts in this guild
+	err = database.DB.Model(&models.Account{}).
+		Where("channel_id LIKE ?", g.ID+"%").
+		Update("is_check_disabled", true).Error
+
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to disable checks for accounts after guild removal")
+	}
 }
 
 func periodicUserCheck(s *discordgo.Session) {
@@ -171,6 +180,15 @@ func periodicUserCheck(s *discordgo.Session) {
 				logger.Log.WithError(err).Infof("Failed to create DM channel with user %s, marking as uninstalled", settings.UserID)
 				settings.IsBotInstalled = false
 				database.DB.Save(&settings)
+
+				// Disable checks for all accounts of this user
+				err = database.DB.Model(&models.Account{}).
+					Where("user_id = ?", settings.UserID).
+					Update("is_check_disabled", true).Error
+
+				if err != nil {
+					logger.Log.WithError(err).Error("Failed to disable checks for accounts after user removal")
+				}
 			}
 		}
 	}
@@ -192,10 +210,29 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error getting user settings")
-	} else if !userSettings.HasSeenAnnouncement {
-		// Send the announcement to the user
-		if err := services.SendGlobalAnnouncement(s, userID); err != nil {
-			logger.Log.WithError(err).Error("Error sending announcement to user")
+	} else {
+		if !userSettings.IsBotInstalled {
+			// Re-enable the bot for this user
+			userSettings.IsBotInstalled = true
+			if err := database.DB.Save(&userSettings).Error; err != nil {
+				logger.Log.WithError(err).Error("Error updating user settings after re-enabling bot")
+			}
+
+			// Re-enable checks for all accounts of this user
+			err := database.DB.Model(&models.Account{}).
+				Where("user_id = ?", userID).
+				Update("is_check_disabled", false).Error
+
+			if err != nil {
+				logger.Log.WithError(err).Error("Failed to re-enable checks for accounts after user interaction")
+			}
+		}
+
+		if !userSettings.HasSeenAnnouncement {
+			// Send the announcement to the user
+			if err := services.SendGlobalAnnouncement(s, userID); err != nil {
+				logger.Log.WithError(err).Error("Error sending announcement to user")
+			}
 		}
 	}
 
