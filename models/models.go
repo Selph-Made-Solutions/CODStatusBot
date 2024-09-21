@@ -24,6 +24,7 @@ type Account struct {
 	IsDisabled             bool   `gorm:"default:false"`   // Automatic disable due to errors
 	FailedAttempts         int    `gorm:"default:0"`
 	SSOCookieExpiration    int64
+	IsErrorDisabled        bool `gorm:"default:false"`
 }
 
 type UserSettings struct {
