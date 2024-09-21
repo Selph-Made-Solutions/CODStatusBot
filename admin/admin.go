@@ -1,6 +1,7 @@
 package admin
 
 import (
+	services "CODStatusBot"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -52,7 +53,7 @@ func StartAdminPanel() {
 }
 
 func markedAccountsHandler(w http.ResponseWriter, r *http.Request) {
-	markedAccounts, err := getErrorDisabledAccounts()
+	markedAccounts, err := services.GetErrorDisabledAccounts()
 	if err != nil {
 		http.Error(w, "Error fetching marked accounts", http.StatusInternalServerError)
 		return
