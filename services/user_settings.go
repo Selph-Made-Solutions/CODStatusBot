@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -206,42 +206,44 @@ func UpdateUserSettings(userID string, newSettings models.UserSettings) error {
 
 	// User can only update settings if they have a valid API key.
 	if settings.CaptchaAPIKey != "" {
-	if newSettings.CheckInterval != 0 {
-		settings.CheckInterval = newSettings.CheckInterval
-	}
-	if newSettings.NotificationInterval != 0 {
-		settings.NotificationInterval = newSettings.NotificationInterval
-	}
-	if newSettings.CooldownDuration != 0 {
-		settings.CooldownDuration = newSettings.CooldownDuration
-	}
-	if newSettings.StatusChangeCooldown != 0 {
-		settings.StatusChangeCooldown = newSettings.StatusChangeCooldown
-	}
-
-	// Allow updating notification type regardless of API key
-	if newSettings.NotificationType != "" {
-		settings.NotificationType = newSettings.NotificationType
-	}
-
-	// Ensure custom settings are within acceptable ranges
-	if settings.CaptchaAPIKey != "" {
-		if settings.CheckInterval < 1 {
-			settings.CheckInterval = 1 // Minimum 1 minute interval for custom API keys
+		if newSettings.CheckInterval != 0 {
+			settings.CheckInterval = newSettings.CheckInterval
 		}
-	} else {
-		if settings.CheckInterval < defaultSettings.CheckInterval {
-			settings.CheckInterval = defaultSettings.CheckInterval
+		if newSettings.NotificationInterval != 0 {
+			settings.NotificationInterval = newSettings.NotificationInterval
 		}
+		if newSettings.CooldownDuration != 0 {
+			settings.CooldownDuration = newSettings.CooldownDuration
+		}
+		if newSettings.StatusChangeCooldown != 0 {
+			settings.StatusChangeCooldown = newSettings.StatusChangeCooldown
+		}
+
+		// Allow updating notification type regardless of API key
+		if newSettings.NotificationType != "" {
+			settings.NotificationType = newSettings.NotificationType
+		}
+
+		// Ensure custom settings are within acceptable ranges
+		if settings.CaptchaAPIKey != "" {
+			if settings.CheckInterval < 1 {
+				settings.CheckInterval = 1 // Minimum 1 minute interval for custom API keys
+			}
+		} else {
+			if settings.CheckInterval < defaultSettings.CheckInterval {
+				settings.CheckInterval = defaultSettings.CheckInterval
+			}
+		}
+
+		if err := database.DB.Save(&settings).Error; err != nil {
+			logger.Log.WithError(err).Error("Error saving user settings")
+			return err
+		}
+
+		logger.Log.Infof("Updated settings for user: %s", userID)
+		return nil
 	}
 
-	if err := database.DB.Save(&settings).Error; err != nil {
-		logger.Log.WithError(err).Error("Error saving user settings")
-		return err
-	}
-
-	logger.Log.Infof("Updated settings for user: %s", userID)
-	return nil
 }
 
 func CheckCaptchaKeyValidity(captchaKey string) (bool, error) {
@@ -261,7 +263,7 @@ func CheckCaptchaKeyValidity(captchaKey string) (bool, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return false, fmt.Errorf("failed to read response body: %v", err)
 	}
