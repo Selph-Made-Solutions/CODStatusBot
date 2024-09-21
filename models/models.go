@@ -21,7 +21,7 @@ type Account struct {
 	LastCookieCheck        int64  `gorm:"default:0"`       // The timestamp of the last cookie check for permanently banned accounts.
 	LastStatusChange       int64  `gorm:"default:0"`       // The timestamp of the last status change
 	IsCheckDisabled        bool   `gorm:"default:false"`   // A flag indicating if checks are disabled for this account
-	IsErrorDisabled        bool   `gorm:"default:false"`   // Automatic disable due to errors
+	IsDisabled             bool   `gorm:"default:false"`   // Automatic disable due to errors
 	FailedAttempts         int    `gorm:"default:0"`
 	SSOCookieExpiration    int64
 }
