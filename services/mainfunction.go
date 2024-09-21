@@ -298,6 +298,7 @@ func CheckAccounts(s *discordgo.Session) {
 					account.Title, account.IsCheckDisabled, account.IsErrorDisabled)
 				continue
 			}
+
 			userSettings, err := GetUserSettings(account.UserID)
 			if err != nil {
 				logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", account.UserID)
