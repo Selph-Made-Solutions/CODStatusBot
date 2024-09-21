@@ -2,6 +2,7 @@ package admin
 
 import (
 	services "CODStatusBot"
+	"CODStatusBot/logger"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -51,9 +52,18 @@ func StartAdminPanel() {
 		fmt.Printf("Failed to start admin panel: %v\n", err)
 	}
 }
+func GetErrorDisabledAccounts() ([]models.Account, error) {
+	var accounts []models.Account
+	result := database.DB.Where("is_error_disabled = ?", true).Find(&accounts)
+	if result.Error != nil {
+		logger.Log.WithError(result.Error).Error("Error fetching error-disabled accounts")
+		return nil, result.Error
+	}
+	return accounts, nil
+}
 
 func markedAccountsHandler(w http.ResponseWriter, r *http.Request) {
-	markedAccounts, err := services.GetErrorDisabledAccounts()
+	markedAccounts, err := GetErrorDisabledAccounts()
 	if err != nil {
 		http.Error(w, "Error fetching marked accounts", http.StatusInternalServerError)
 		return
