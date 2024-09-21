@@ -115,6 +115,7 @@ func getCheckStatus(account models.Account) string {
 	}
 	return "enabled"
 }
+
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseUpdateMessage,
