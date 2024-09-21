@@ -175,3 +175,34 @@ func periodicUserCheck(s *discordgo.Session) {
 		}
 	}
 }
+
+func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// Check if the user has seen the announcement
+	var userID string
+	if i.Member != nil {
+		userID = i.Member.User.ID
+	} else if i.User != nil {
+		userID = i.User.ID
+	} else {
+		logger.Log.Error("Interaction doesn't have Member or User")
+		return
+	}
+
+	var userSettings models.UserSettings
+	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings)
+	if result.Error != nil {
+		logger.Log.WithError(result.Error).Error("Error getting user settings")
+	} else if !userSettings.HasSeenAnnouncement {
+		// Send the announcement to the user
+		if err := services.SendGlobalAnnouncement(s, userID); err != nil {
+			logger.Log.WithError(err).Error("Error sending announcement to user")
+		}
+	}
+
+	// Continue with regular command handling
+	if h, ok := command.Handlers[i.ApplicationCommandData().Name]; ok {
+		h(s, i)
+	} else {
+		logger.Log.Warnf("Unhandled command: %s", i.ApplicationCommandData().Name)
+	}
+}
