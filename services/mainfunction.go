@@ -95,6 +95,13 @@ func getEnvIntRaw(key string, fallback int) int {
 	return fallback
 }
 
+func PeriodicCleanup() {
+	for {
+		time.Sleep(24 * time.Hour)
+		cleanupDisabledAccounts()
+	}
+}
+
 // sendNotification function: sends notifications based on user preference
 func sendNotification(discord *discordgo.Session, account models.Account, embed *discordgo.MessageEmbed, content string, notificationType string) error {
 	userSettings, err := GetUserSettings(account.UserID)
@@ -195,8 +202,36 @@ func incrementFailedAttempts(account models.Account) error {
 	if account.FailedAttempts >= maxFailedAttempts {
 		account.IsErrorDisabled = true
 		logger.Log.Warnf("Account %s automatically disabled due to persistent notification failures", account.Title)
+		notifyAdminAboutErrorDisabledAccount(account)
 	}
 	return database.DB.Save(&account).Error
+}
+
+func notifyAdminAboutErrorDisabledAccount(account models.Account) {
+	adminID := os.Getenv("DEVELOPER_ID")
+	if adminID == "" {
+		logger.Log.Error("DEVELOPER_ID not set in environment variables")
+		return
+	}
+
+	discord, err := discordgo.New("Bot " + os.Getenv("DISCORD_TOKEN"))
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to create Discord session")
+		return
+	}
+	defer discord.Close()
+
+	channel, err := discord.UserChannelCreate(adminID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to create DM channel with admin")
+		return
+	}
+
+	message := fmt.Sprintf("Account '%s' (ID: %d) has been automatically disabled due to persistent notification failures. Please review and take appropriate action.", account.Title, account.ID)
+	_, err = discord.ChannelMessageSend(channel.ID, message)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to send notification to admin")
+	}
 }
 
 func resetFailedAttempts(account models.Account) error {
@@ -707,24 +742,13 @@ func calculateBanDuration(banStartTime time.Time) string {
 
 func cleanupDisabledAccounts() {
 	var errorDisabledAccounts []models.Account
-	if err := database.DB.Where("is_error_disabled = ? AND is_check_disabled = ?", true, false).Find(&errorDisabledAccounts).Error; err != nil {
+	if err := database.DB.Where("is_error_disabled = ?", true).Find(&errorDisabledAccounts).Error; err != nil {
 		logger.Log.WithError(err).Error("Failed to fetch error-disabled accounts")
 		return
 	}
 
 	for _, account := range errorDisabledAccounts {
-		// Instead of deleting, we'll notify the user and reset the error status
-		if err := notifyUserAboutDisabledAccount(account); err != nil {
-			logger.Log.WithError(err).Errorf("Failed to notify user about disabled account %s", account.Title)
-		} else {
-			account.IsErrorDisabled = false
-			account.FailedAttempts = 0
-			if err := database.DB.Save(&account).Error; err != nil {
-				logger.Log.WithError(err).Errorf("Failed to reset error status for account %s", account.Title)
-			} else {
-				logger.Log.Infof("Reset error status for account %s", account.Title)
-			}
-		}
+		notifyAdminAboutErrorDisabledAccount(account)
 	}
 }
 func notifyUserAboutDisabledAccount(account models.Account) error {
