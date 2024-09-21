@@ -104,7 +104,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		return
 	}
 
-	status := getCheckStatus(account)
+	status := getCheckStatus(account.IsCheckDisabled)
 	message := fmt.Sprintf("Checks for account '%s' are now %s.", account.Title, status)
 	respondToInteraction(s, i, message)
 }
