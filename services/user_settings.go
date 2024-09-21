@@ -12,9 +12,6 @@ import (
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
-	"fmt"
-	"os"
-	"strconv"
 )
 
 var defaultSettings models.UserSettings
