@@ -90,6 +90,11 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		return
 	}
 
+	if account.IsDisabled {
+		respondToInteraction(s, i, fmt.Sprintf("Account '%s' is currently disabled due to errors. Please contact support to re-enable it.", account.Title))
+		return
+	}
+
 	// Toggle the IsCheckDisabled field
 	account.IsCheckDisabled = !account.IsCheckDisabled
 
@@ -99,18 +104,17 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		return
 	}
 
-	status := getCheckStatus(account.IsCheckDisabled)
+	status := getCheckStatus(account)
 	message := fmt.Sprintf("Checks for account '%s' are now %s.", account.Title, status)
 	respondToInteraction(s, i, message)
 }
 
-func getCheckStatus(isDisabled bool) string {
-	if isDisabled {
+func getCheckStatus(account models.Account) string {
+	if account.IsDisabled {
 		return "disabled"
 	}
 	return "enabled"
 }
-
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseUpdateMessage,
@@ -122,4 +126,13 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction")
 	}
+}
+func getUserID(i *discordgo.InteractionCreate) (string, error) {
+	if i.Member != nil && i.Member.User != nil {
+		return i.Member.User.ID, nil
+	}
+	if i.User != nil {
+		return i.User.ID, nil
+	}
+	return "", fmt.Errorf("unable to determine user ID")
 }
