@@ -12,6 +12,9 @@ import (
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
+	"fmt"
+	"os"
+	"strconv"
 )
 
 var defaultSettings models.UserSettings
@@ -281,4 +284,14 @@ func CheckCaptchaKeyValidity(captchaKey string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func GetErrorDisabledAccounts() ([]models.Account, error) {
+	var accounts []models.Account
+	result := database.DB.Where("is_error_disabled = ?", true).Find(&accounts)
+	if result.Error != nil {
+		logger.Log.WithError(result.Error).Error("Error fetching error-disabled accounts")
+		return nil, result.Error
+	}
+	return accounts, nil
 }
