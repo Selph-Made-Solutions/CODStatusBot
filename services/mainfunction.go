@@ -752,7 +752,9 @@ func cleanupDisabledAccounts() {
 		notifyAdminAboutErrorDisabledAccount(account)
 	}
 }
+
 func notifyUserAboutDisabledAccount(account models.Account) error {
 	logger.Log.Infof("Account %s was automatically disabled due to persistent errors. User should be notified.", account.Title)
+	// Implement the actual notification logic here
 	return nil
 }
