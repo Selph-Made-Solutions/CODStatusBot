@@ -64,6 +64,8 @@ func run() error {
 	// Start the admin panel
 	go admin.StartAdminPanel()
 
+	go services.PeriodicCleanup()
+
 	logger.Log.Info("Bot is running")
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
