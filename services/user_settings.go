@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"strconv"
@@ -98,8 +98,8 @@ func SetUserCaptchaKey(userID string, captchaKey string) error {
 	}
 
 	if captchaKey != "" {
-		// Validate the captcha key before setting it and get balance
-		isValid, balance, err := CheckCaptchaKeyValidity(captchaKey)
+		// Validate the captcha key before setting it
+		isValid, err := CheckCaptchaKeyValidity(captchaKey)
 		if err != nil {
 			logger.Log.WithError(err).Error("Error validating captcha key")
 			return err
@@ -110,7 +110,7 @@ func SetUserCaptchaKey(userID string, captchaKey string) error {
 		}
 
 		settings.CaptchaAPIKey = captchaKey
-		// Enable custom settings when user sets their own valid API key.
+		// Allow more frequent checks when using a custom API key
 		settings.CheckInterval = 15        // Allow more frequent checks, e.g., every 15 minutes
 		settings.NotificationInterval = 12 // Allow more frequent notifications, e.g., every 12 hours
 
@@ -206,18 +206,17 @@ func UpdateUserSettings(userID string, newSettings models.UserSettings) error {
 
 	// User can only update settings if they have a valid API key.
 	if settings.CaptchaAPIKey != "" {
-		if newSettings.CheckInterval != 0 {
-			settings.CheckInterval = newSettings.CheckInterval
-		}
-		if newSettings.NotificationInterval != 0 {
-			settings.NotificationInterval = newSettings.NotificationInterval
-		}
-		if newSettings.CooldownDuration != 0 {
-			settings.CooldownDuration = newSettings.CooldownDuration
-		}
-		if newSettings.StatusChangeCooldown != 0 {
-			settings.StatusChangeCooldown = newSettings.StatusChangeCooldown
-		}
+	if newSettings.CheckInterval != 0 {
+		settings.CheckInterval = newSettings.CheckInterval
+	}
+	if newSettings.NotificationInterval != 0 {
+		settings.NotificationInterval = newSettings.NotificationInterval
+	}
+	if newSettings.CooldownDuration != 0 {
+		settings.CooldownDuration = newSettings.CooldownDuration
+	}
+	if newSettings.StatusChangeCooldown != 0 {
+		settings.StatusChangeCooldown = newSettings.StatusChangeCooldown
 	}
 
 	// Allow updating notification type regardless of API key
@@ -225,8 +224,19 @@ func UpdateUserSettings(userID string, newSettings models.UserSettings) error {
 		settings.NotificationType = newSettings.NotificationType
 	}
 
+	// Ensure custom settings are within acceptable ranges
+	if settings.CaptchaAPIKey != "" {
+		if settings.CheckInterval < 1 {
+			settings.CheckInterval = 1 // Minimum 1 minute interval for custom API keys
+		}
+	} else {
+		if settings.CheckInterval < defaultSettings.CheckInterval {
+			settings.CheckInterval = defaultSettings.CheckInterval
+		}
+	}
+
 	if err := database.DB.Save(&settings).Error; err != nil {
-		logger.Log.WithError(err).Error("Error updating user settings")
+		logger.Log.WithError(err).Error("Error saving user settings")
 		return err
 	}
 
@@ -234,7 +244,7 @@ func UpdateUserSettings(userID string, newSettings models.UserSettings) error {
 	return nil
 }
 
-func CheckCaptchaKeyValidity(captchaKey string) (bool, float64, error) {
+func CheckCaptchaKeyValidity(captchaKey string) (bool, error) {
 	url := "https://api.ez-captcha.com/getBalance"
 	payload := map[string]string{
 		"clientKey": captchaKey,
@@ -242,18 +252,18 @@ func CheckCaptchaKeyValidity(captchaKey string) (bool, float64, error) {
 
 	jsonPayload, err := json.Marshal(payload)
 	if err != nil {
-		return false, 0, fmt.Errorf("failed to marshal JSON payload: %v", err)
+		return false, fmt.Errorf("failed to marshal JSON payload: %v", err)
 	}
 
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonPayload))
 	if err != nil {
-		return false, 0, fmt.Errorf("failed to send getBalance request: %v", err)
+		return false, fmt.Errorf("failed to send getBalance request: %v", err)
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return false, 0, fmt.Errorf("failed to read response body: %v", err)
+		return false, fmt.Errorf("failed to read response body: %v", err)
 	}
 
 	var result struct {
@@ -263,12 +273,12 @@ func CheckCaptchaKeyValidity(captchaKey string) (bool, float64, error) {
 
 	err = json.Unmarshal(body, &result)
 	if err != nil {
-		return false, 0, fmt.Errorf("failed to parse JSON response: %v", err)
+		return false, fmt.Errorf("failed to parse JSON response: %v", err)
 	}
 
 	if result.ErrorId != 0 {
-		return false, 0, nil
+		return false, nil
 	}
 
-	return true, result.Balance, nil
+	return true, nil
 }
