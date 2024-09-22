@@ -21,10 +21,7 @@ type Account struct {
 	LastCookieCheck        int64  `gorm:"default:0"`       // The timestamp of the last cookie check for permanently banned accounts.
 	LastStatusChange       int64  `gorm:"default:0"`       // The timestamp of the last status change
 	IsCheckDisabled        bool   `gorm:"default:false"`   // A flag indicating if checks are disabled for this account
-	IsDisabled             bool   `gorm:"default:false"`   // Automatic disable due to errors
-	FailedAttempts         int    `gorm:"default:0"`
-	SSOCookieExpiration    int64
-	IsErrorDisabled        bool `gorm:"default:false"`
+	SSOCookieExpiration    int64  //
 }
 
 type UserSettings struct {
@@ -37,8 +34,6 @@ type UserSettings struct {
 	StatusChangeCooldown float64 // In hours
 	NotificationType     string  `gorm:"default:channel"` // User preference for location of notifications either channel or dm
 	HasSeenAnnouncement  bool    `gorm:"default:false"`   // Flag to track if the user has seen the global announcement.
-	IsBotInstalled       bool    `gorm:"default:true"`    // New field to track if the bot is still installed
-	InstallationType     string  `gorm:"default:guild"`   // 'guild' or 'user' to differentiate installation type
 }
 
 type Ban struct {
