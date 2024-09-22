@@ -1,8 +1,6 @@
 package admin
 
 import (
-	services "CODStatusBot"
-	"CODStatusBot/logger"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -11,21 +9,12 @@ import (
 	"time"
 
 	"CODStatusBot/database"
+	"CODStatusBot/logger"
 	"CODStatusBot/models"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 )
-
-type Stats struct {
-	TotalAccounts      int
-	ActiveAccounts     int
-	BannedAccounts     int
-	TotalUsers         int
-	ChecksLastHour     int
-	ChecksLast24Hours  int
-	MarkedAccountCount int
-}
 
 var store = sessions.NewCookieStore([]byte(os.Getenv("SESSION_KEY")))
 
@@ -36,7 +25,6 @@ func StartAdminPanel() {
 	r.HandleFunc("/admin/logout", logoutHandler).Methods("POST")
 	r.HandleFunc("/admin/stats", authMiddleware(statsHandler)).Methods("GET")
 	r.HandleFunc("/admin", authMiddleware(dashboardHandler)).Methods("GET")
-	r.HandleFunc("/admin/marked-accounts", authMiddleware(markedAccountsHandler)).Methods("GET")
 
 	// Serve static files
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
@@ -46,31 +34,11 @@ func StartAdminPanel() {
 		port = "8080"
 	}
 
-	fmt.Printf("Admin panel starting on port %s\n", port)
+	logger.Log.Infof("Admin panel starting on port %s", port)
 	err := http.ListenAndServe(":"+port, r)
 	if err != nil {
-		fmt.Printf("Failed to start admin panel: %v\n", err)
+		logger.Log.WithError(err).Fatal("Failed to start admin panel")
 	}
-}
-func GetErrorDisabledAccounts() ([]models.Account, error) {
-	var accounts []models.Account
-	result := database.DB.Where("is_error_disabled = ?", true).Find(&accounts)
-	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error fetching error-disabled accounts")
-		return nil, result.Error
-	}
-	return accounts, nil
-}
-
-func markedAccountsHandler(w http.ResponseWriter, r *http.Request) {
-	markedAccounts, err := GetErrorDisabledAccounts()
-	if err != nil {
-		http.Error(w, "Error fetching marked accounts", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(markedAccounts)
 }
 
 func loginHandler(w http.ResponseWriter, r *http.Request) {
@@ -120,7 +88,7 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 func statsHandler(w http.ResponseWriter, r *http.Request) {
 	stats, err := getStats()
 	if err != nil {
-		fmt.Printf("Failed to get stats: %v\n", err)
+		logger.Log.WithError(err).Error("Failed to get stats")
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -146,6 +114,15 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+type Stats struct {
+	TotalAccounts     int
+	ActiveAccounts    int
+	BannedAccounts    int
+	TotalUsers        int
+	ChecksLastHour    int
+	ChecksLast24Hours int
 }
 
 func getStats() (Stats, error) {
@@ -182,12 +159,6 @@ func getStats() (Stats, error) {
 		return stats, err
 	}
 
-	markedAccounts, err := services.GetErrorDisabledAccounts()
-	if err != nil {
-		return stats, err
-	}
-
-	stats.MarkedAccountCount = len(markedAccounts)
 	return stats, nil
 }
 
