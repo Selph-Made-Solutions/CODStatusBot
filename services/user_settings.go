@@ -98,8 +98,8 @@ func SetUserCaptchaKey(userID string, captchaKey string) error {
 	}
 
 	if captchaKey != "" {
-		// Validate the captcha key before setting it
-		isValid, err := CheckCaptchaKeyValidity(captchaKey)
+		// Validate the captcha key before setting it and get balance
+		isValid, balance, err := CheckCaptchaKeyValidity(captchaKey)
 		if err != nil {
 			logger.Log.WithError(err).Error("Error validating captcha key")
 			return err
@@ -110,7 +110,7 @@ func SetUserCaptchaKey(userID string, captchaKey string) error {
 		}
 
 		settings.CaptchaAPIKey = captchaKey
-		// Allow more frequent checks when using a custom API key
+		// Enable custom settings when user sets their own valid API key.
 		settings.CheckInterval = 15        // Allow more frequent checks, e.g., every 15 minutes
 		settings.NotificationInterval = 12 // Allow more frequent notifications, e.g., every 12 hours
 
@@ -218,35 +218,23 @@ func UpdateUserSettings(userID string, newSettings models.UserSettings) error {
 		if newSettings.StatusChangeCooldown != 0 {
 			settings.StatusChangeCooldown = newSettings.StatusChangeCooldown
 		}
-
-		// Allow updating notification type regardless of API key
-		if newSettings.NotificationType != "" {
-			settings.NotificationType = newSettings.NotificationType
-		}
-
-		// Ensure custom settings are within acceptable ranges
-		if settings.CaptchaAPIKey != "" {
-			if settings.CheckInterval < 1 {
-				settings.CheckInterval = 1 // Minimum 1 minute interval for custom API keys
-			}
-		} else {
-			if settings.CheckInterval < defaultSettings.CheckInterval {
-				settings.CheckInterval = defaultSettings.CheckInterval
-			}
-		}
-
-		if err := database.DB.Save(&settings).Error; err != nil {
-			logger.Log.WithError(err).Error("Error saving user settings")
-			return err
-		}
-
-		logger.Log.Infof("Updated settings for user: %s", userID)
-		return nil
 	}
 
+	// Allow updating notification type regardless of API key
+	if newSettings.NotificationType != "" {
+		settings.NotificationType = newSettings.NotificationType
+	}
+
+	if err := database.DB.Save(&settings).Error; err != nil {
+		logger.Log.WithError(err).Error("Error updating user settings")
+		return err
+	}
+
+	logger.Log.Infof("Updated settings for user: %s", userID)
+	return nil
 }
 
-func CheckCaptchaKeyValidity(captchaKey string) (bool, error) {
+func CheckCaptchaKeyValidity(captchaKey string) (bool, float64, error) {
 	url := "https://api.ez-captcha.com/getBalance"
 	payload := map[string]string{
 		"clientKey": captchaKey,
@@ -254,18 +242,18 @@ func CheckCaptchaKeyValidity(captchaKey string) (bool, error) {
 
 	jsonPayload, err := json.Marshal(payload)
 	if err != nil {
-		return false, fmt.Errorf("failed to marshal JSON payload: %v", err)
+		return false, 0, fmt.Errorf("failed to marshal JSON payload: %v", err)
 	}
 
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonPayload))
 	if err != nil {
-		return false, fmt.Errorf("failed to send getBalance request: %v", err)
+		return false, 0, fmt.Errorf("failed to send getBalance request: %v", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return false, fmt.Errorf("failed to read response body: %v", err)
+		return false, 0, fmt.Errorf("failed to read response body: %v", err)
 	}
 
 	var result struct {
@@ -275,22 +263,12 @@ func CheckCaptchaKeyValidity(captchaKey string) (bool, error) {
 
 	err = json.Unmarshal(body, &result)
 	if err != nil {
-		return false, fmt.Errorf("failed to parse JSON response: %v", err)
+		return false, 0, fmt.Errorf("failed to parse JSON response: %v", err)
 	}
 
 	if result.ErrorId != 0 {
-		return false, nil
+		return false, 0, nil
 	}
 
-	return true, nil
-}
-
-func GetErrorDisabledAccounts() ([]models.Account, error) {
-	var accounts []models.Account
-	result := database.DB.Where("is_error_disabled = ?", true).Find(&accounts)
-	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error fetching error-disabled accounts")
-		return nil, result.Error
-	}
-	return accounts, nil
+	return true, result.Balance, nil
 }
