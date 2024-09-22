@@ -1,17 +1,18 @@
 package main
 
 import (
+	"fmt"
+	"os"
+	"os/signal"
+	"runtime/debug"
+	"syscall"
+
 	"CODStatusBot/admin"
 	"CODStatusBot/bot"
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
-	"fmt"
-	"os"
-	"os/signal"
-	"runtime/debug"
-	"syscall"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
@@ -63,8 +64,6 @@ func run() error {
 
 	// Start the admin panel
 	go admin.StartAdminPanel()
-
-	go services.PeriodicCleanup()
 
 	logger.Log.Info("Bot is running")
 	sc := make(chan os.Signal, 1)
