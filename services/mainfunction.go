@@ -53,12 +53,6 @@ func init() {
 		checkInterval, notificationInterval, cooldownDuration, sleepDuration, cookieCheckIntervalPermaban, statusChangeCooldown, globalNotificationCooldown, cookieExpirationWarning, tempBanUpdateInterval, checkNowRateLimit, defaultRateLimit)
 }
 
-const (
-	maxRetryAttempts  = 3
-	retryDelay        = 5 * time.Second
-	maxFailedAttempts = 5
-)
-
 func getEnvFloat(key string, fallback float64) float64 {
 	value := getEnvFloatRaw(key, fallback)
 	// Convert hours to minutes for certain settings
@@ -93,13 +87,6 @@ func getEnvIntRaw(key string, fallback int) int {
 		logger.Log.WithError(err).Errorf("Failed to parse %s, using fallback value", key)
 	}
 	return fallback
-}
-
-func PeriodicCleanup() {
-	for {
-		time.Sleep(24 * time.Hour)
-		cleanupDisabledAccounts()
-	}
 }
 
 // sendNotification function: sends notifications based on user preference
@@ -153,90 +140,19 @@ func sendNotification(discord *discordgo.Session, account models.Account, embed 
 		channelID = account.ChannelID
 	}
 
-	for attempt := 0; attempt < maxRetryAttempts; attempt++ {
-		_, err = discord.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
-			Embed:   embed,
-			Content: content,
-		})
-		if err != nil {
-			if isDiscordError(err, 10003, 50001, 50007) {
-				logger.Log.WithError(err).Errorf("Discord API error for account %s (attempt %d/%d)", account.Title, attempt+1, maxRetryAttempts)
-				if attempt == maxRetryAttempts-1 {
-					// Max attempts reached, update failed attempts count
-					if err := incrementFailedAttempts(account); err != nil {
-						logger.Log.WithError(err).Error("Failed to increment failed attempts")
-					}
-					return err
-				}
-				time.Sleep(retryDelay)
-				continue
-			}
-			logger.Log.WithError(err).Error("Failed to send notification")
-			return err
-		}
-		// Message sent successfully
+	_, err = discord.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
+		Embed:   embed,
+		Content: content,
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to send notification")
+	} else {
 		logger.Log.Infof("%s notification sent to user %s", notificationType, account.UserID)
 		userNotificationMutex.Lock()
 		userNotificationTimestamps[account.UserID] = time.Now()
 		userNotificationMutex.Unlock()
-		// Reset failed attempts on successful send
-		if err := resetFailedAttempts(account); err != nil {
-			logger.Log.WithError(err).Error("Failed to reset failed attempts")
-		}
-		return nil
 	}
-	return fmt.Errorf("failed to send notification after %d attempts", maxRetryAttempts)
-}
-
-func isDiscordError(err error, codes ...int) bool {
-	for _, code := range codes {
-		if strings.Contains(err.Error(), fmt.Sprintf("\"code\": %d", code)) {
-			return true
-		}
-	}
-	return false
-}
-
-func incrementFailedAttempts(account models.Account) error {
-	account.FailedAttempts++
-	if account.FailedAttempts >= maxFailedAttempts {
-		account.IsErrorDisabled = true
-		logger.Log.Warnf("Account %s automatically disabled due to persistent notification failures", account.Title)
-		notifyAdminAboutErrorDisabledAccount(account)
-	}
-	return database.DB.Save(&account).Error
-}
-
-func notifyAdminAboutErrorDisabledAccount(account models.Account) {
-	adminID := os.Getenv("DEVELOPER_ID")
-	if adminID == "" {
-		logger.Log.Error("DEVELOPER_ID not set in environment variables")
-		return
-	}
-
-	discord, err := discordgo.New("Bot " + os.Getenv("DISCORD_TOKEN"))
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to create Discord session")
-		return
-	}
-	defer discord.Close()
-
-	channel, err := discord.UserChannelCreate(adminID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to create DM channel with admin")
-		return
-	}
-
-	message := fmt.Sprintf("Account '%s' (ID: %d) has been automatically disabled due to persistent notification failures. Please review and take appropriate action.", account.Title, account.ID)
-	_, err = discord.ChannelMessageSend(channel.ID, message)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to send notification to admin")
-	}
-}
-
-func resetFailedAttempts(account models.Account) error {
-	account.FailedAttempts = 0
-	return database.DB.Save(&account).Error
+	return err
 }
 
 // sendDailyUpdate function: sends a daily update message for a given account.
@@ -293,9 +209,8 @@ func CheckAccounts(s *discordgo.Session) {
 		// Iterate through each account and perform checks
 		for _, account := range accounts {
 			// Skip disabled accounts
-			if account.IsCheckDisabled || account.IsErrorDisabled {
-				logger.Log.Infof("Skipping check for disabled account: %s (User disabled: %v, Error disabled: %v)",
-					account.Title, account.IsCheckDisabled, account.IsErrorDisabled)
+			if account.IsCheckDisabled {
+				logger.Log.Infof("Skipping check for disabled account: %s", account.Title)
 				continue
 			}
 
@@ -739,22 +654,4 @@ func calculateBanDuration(banStartTime time.Time) string {
 	days := int(duration.Hours() / 24)
 	hours := int(duration.Hours()) % 24
 	return fmt.Sprintf("%d days, %d hours", days, hours)
-}
-
-func cleanupDisabledAccounts() {
-	var errorDisabledAccounts []models.Account
-	if err := database.DB.Where("is_error_disabled = ?", true).Find(&errorDisabledAccounts).Error; err != nil {
-		logger.Log.WithError(err).Error("Failed to fetch error-disabled accounts")
-		return
-	}
-
-	for _, account := range errorDisabledAccounts {
-		notifyAdminAboutErrorDisabledAccount(account)
-	}
-}
-
-func notifyUserAboutDisabledAccount(account models.Account) error {
-	logger.Log.Infof("Account %s was automatically disabled due to persistent errors. User should be notified.", account.Title)
-	// Implement the actual notification logic here
-	return nil
 }
