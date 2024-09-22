@@ -47,7 +47,7 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	logger.Log.Infof("User %s initiated a check. Custom API Key set: %v", userID, userSettings.CaptchaAPIKey != "")
+	logger.Log.Infof("User %s initiated a check. API Key set: %v", userID, userSettings.CaptchaAPIKey != "")
 
 	if userSettings.CaptchaAPIKey == "" {
 		if !checkRateLimit(userID) {
@@ -81,7 +81,7 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	if len(accounts) == 1 || accountTitle != "" {
 		// If only one account, or a specific account was requested, check it immediately.
-		checkAccount(s, i, accounts[0], userSettings)
+		checkAccounts(s, i, accounts)
 	} else {
 		// If multiple accounts and no specific account was requested, show buttons.
 		showAccountButtons(s, i, accounts)
@@ -148,13 +148,6 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	userID := parts[2]
 	accountIDOrAll := parts[3]
 
-	userSettings, err := services.GetUserSettings(userID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error fetching user settings")
-		respondToInteraction(s, i, "Error fetching user settings. Please try again later.")
-		return
-	}
-
 	if accountIDOrAll == "all" {
 		var accounts []models.Account
 		result := database.DB.Where("user_id = ?", userID).Find(&accounts)
@@ -163,9 +156,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 			respondToInteraction(s, i, "Error fetching accounts. Please try again later.")
 			return
 		}
-		for _, account := range accounts {
-			checkAccount(s, i, account, userSettings)
-		}
+		checkAccounts(s, i, accounts)
 		return
 	}
 
@@ -184,7 +175,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		return
 	}
 
-	checkAccount(s, i, account, userSettings)
+	checkAccounts(s, i, []models.Account{account})
 }
 
 func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, accounts []models.Account) {
@@ -198,15 +189,8 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 		logger.Log.WithError(err).Error("Failed to defer interaction response")
 		return
 	}
-	var embeds []*discordgo.MessageEmbed
 
-	userID := getUserID(i)
-	userSettings, err := services.GetUserSettings(userID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to get user settings")
-		respondToInteraction(s, i, "An error occurred while processing your request.")
-		return
-	}
+	var embeds []*discordgo.MessageEmbed
 
 	for _, account := range accounts {
 		logger.Log.Infof("Checking account %s for user %s", account.Title, account.UserID)
@@ -216,17 +200,6 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 				Title:       fmt.Sprintf("%s - Expired Cookie", account.Title),
 				Description: "The SSO cookie for this account has expired. Please update it using the /updateaccount command.",
 				Color:       0xFF0000, // Red color for expired cookie
-			}
-			embeds = append(embeds, embed)
-			continue
-		}
-
-		if !canCheckAccount(account, userSettings) {
-			timeUntilNextCheck := getTimeUntilNextCheck(account)
-			embed := &discordgo.MessageEmbed{
-				Title:       fmt.Sprintf("%s - Rate Limited", account.Title),
-				Description: fmt.Sprintf("This account is rate limited. Please wait %v before checking again.", timeUntilNextCheck),
-				Color:       0xFFA500, // Orange color for rate limit
 			}
 			embeds = append(embeds, embed)
 			continue
@@ -274,9 +247,6 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 			},
 		}
 		embeds = append(embeds, embed)
-
-		// Update rate limiter
-		updateAccountRateLimit(account.ID)
 	}
 
 	// Send embeds in batches of 10 (Discord's limit)
@@ -293,33 +263,6 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 			logger.Log.WithError(err).Error("Failed to send follow-up message")
 		}
 	}
-}
-
-func getTimeUntilNextCheck(account models.Account) time.Duration {
-	accountRateLimiterLock.Lock()
-	defer accountRateLimiterLock.Unlock()
-
-	lastCheck, exists := accountRateLimiter[account.ID]
-	if !exists {
-		return 0
-	}
-	return defaultRateLimit - time.Since(lastCheck)
-}
-
-func canCheckAccount(account models.Account, userSettings models.UserSettings) bool {
-	if userSettings.CaptchaAPIKey != "" {
-		return true // Users with custom API keys can always check
-	}
-
-	accountRateLimiterLock.Lock()
-	defer accountRateLimiterLock.Unlock()
-
-	lastCheck, exists := accountRateLimiter[account.ID]
-	if !exists || time.Since(lastCheck) >= defaultRateLimit {
-		accountRateLimiter[account.ID] = time.Now()
-		return true
-	}
-	return false
 }
 
 func checkRateLimit(userID string) bool {
