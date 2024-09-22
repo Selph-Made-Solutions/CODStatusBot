@@ -204,6 +204,9 @@ func sendDailyUpdate(account models.Account, discord *discordgo.Session) {
 
 // CheckAccounts function: periodically checks all accounts for status changes
 func CheckAccounts(s *discordgo.Session) {
+	cleanupTicker := time.NewTicker(24 * time.Hour) // Run cleanup once a day
+	defer cleanupTicker.Stop()
+
 	for {
 		logger.Log.Info("Starting periodic account check")
 		var accounts []models.Account
@@ -222,6 +225,13 @@ func CheckAccounts(s *discordgo.Session) {
 		// Process accounts for each user
 		for userID, userAccounts := range accountsByUser {
 			go processUserAccounts(s, userID, userAccounts)
+		}
+
+		select {
+		case <-cleanupTicker.C:
+			go cleanupInactiveAccounts(s)
+		default:
+			// Continue with regular account checks
 		}
 
 		time.Sleep(time.Duration(sleepDuration) * time.Minute)
@@ -745,5 +755,83 @@ func sendConsolidatedDailyUpdate(accounts []models.Account, discord *discordgo.S
 				logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
 			}
 		}
+	}
+}
+
+func cleanupInactiveAccounts(s *discordgo.Session) {
+	logger.Log.Info("Starting cleanup of inactive accounts")
+
+	var accounts []models.Account
+	if err := database.DB.Find(&accounts).Error; err != nil {
+		logger.Log.WithError(err).Error("Failed to fetch accounts for cleanup")
+		return
+	}
+
+	for _, account := range accounts {
+		if err := checkAccountAccess(s, &account); err != nil {
+			logger.Log.WithError(err).Warnf("Lost access to account %s for user %s", account.Title, account.UserID)
+
+			// Disable the account from normal checks
+			account.IsCheckDisabled = true
+
+			// You might want to add a new field to the Account model to track the reason for disabling
+			account.DisabledReason = "Bot removed from server/channel"
+
+			// Optionally, you could delete the account instead of disabling it
+			// if err := database.DB.Delete(&account).Error; err != nil {
+			//     logger.Log.WithError(err).Errorf("Failed to delete inactive account %s", account.Title)
+			// }
+
+			if err := database.DB.Save(&account).Error; err != nil {
+				logger.Log.WithError(err).Errorf("Failed to update account %s status during cleanup", account.Title)
+			}
+
+			// Attempt to notify the user via DM about the account being disabled
+			notifyUserAboutDisabledAccount(s, account)
+		}
+	}
+
+	logger.Log.Info("Completed cleanup of inactive accounts")
+}
+
+func checkAccountAccess(s *discordgo.Session, account *models.Account) error {
+	var channelID string
+
+	if account.NotificationType == "dm" {
+		channel, err := s.UserChannelCreate(account.UserID)
+		if err != nil {
+			return fmt.Errorf("failed to create DM channel: %v", err)
+		}
+		channelID = channel.ID
+	} else {
+		channelID = account.ChannelID
+	}
+
+	// Attempt to send a test message
+	_, err := s.ChannelMessageSend(channelID, "This is a test message to verify bot access. You can ignore this message.")
+	if err != nil {
+		return fmt.Errorf("failed to send test message: %v", err)
+	}
+
+	return nil
+}
+func notifyUserAboutDisabledAccount(s *discordgo.Session, account models.Account) {
+	channel, err := s.UserChannelCreate(account.UserID)
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to create DM channel for user %s", account.UserID)
+		return
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title: "Account Disabled - Bot Access Lost",
+		Description: fmt.Sprintf("Your account '%s' has been disabled because the bot has lost access to the associated server or channel. "+
+			"To re-enable monitoring, please add the bot back to the server or use the appropriate commands to update your account settings.", account.Title),
+		Color:     0xFF0000, // Red color for alert
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+
+	_, err = s.ChannelMessageSendEmbed(channel.ID, embed)
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to send account disabled notification to user %s", account.UserID)
 	}
 }
