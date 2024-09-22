@@ -133,6 +133,7 @@ func sendNotification(discord *discordgo.Session, account models.Account, embed 
 	if account.NotificationType == "dm" {
 		channel, err := discord.UserChannelCreate(account.UserID)
 		if err != nil {
+			logger.Log.WithError(err).Errorf("Failed to create DM channel for user %s", account.UserID)
 			return fmt.Errorf("failed to create DM channel: %v", err)
 		}
 		channelID = channel.ID
@@ -145,14 +146,20 @@ func sendNotification(discord *discordgo.Session, account models.Account, embed 
 		Content: content,
 	})
 	if err != nil {
+		if strings.Contains(err.Error(), "Missing Access") || strings.Contains(err.Error(), "Unknown Channel") {
+			logger.Log.Warnf("Bot might have been removed from the channel or server for user %s", account.UserID)
+			// Consider updating the account status or notifying the user through alternative means
+			return fmt.Errorf("bot might have been removed: %v", err)
+		}
 		logger.Log.WithError(err).Error("Failed to send notification")
-	} else {
-		logger.Log.Infof("%s notification sent to user %s", notificationType, account.UserID)
-		userNotificationMutex.Lock()
-		userNotificationTimestamps[account.UserID] = time.Now()
-		userNotificationMutex.Unlock()
+		return err
 	}
-	return err
+
+	logger.Log.Infof("%s notification sent to user %s", notificationType, account.UserID)
+	userNotificationMutex.Lock()
+	userNotificationTimestamps[account.UserID] = time.Now()
+	userNotificationMutex.Unlock()
+	return nil
 }
 
 // sendDailyUpdate function: sends a daily update message for a given account.
@@ -264,7 +271,15 @@ func handlePermabannedAccount(account models.Account, s *discordgo.Session, user
 		}
 		err := sendNotification(s, account, embed, fmt.Sprintf("<@%s>", account.UserID), "permaban")
 		if err != nil {
-			logger.Log.WithError(err).Errorf("Failed to send permaban update for account %s", account.Title)
+			if strings.Contains(err.Error(), "bot might have been removed") {
+				logger.Log.Warnf("Bot removed for account %s. Considering account inactive.", account.Title)
+				account.IsCheckDisabled = true
+				if err := database.DB.Save(&account).Error; err != nil {
+					logger.Log.WithError(err).Errorf("Failed to update account status for %s", account.Title)
+				}
+			} else {
+				logger.Log.WithError(err).Errorf("Failed to send permaban update for account %s", account.Title)
+			}
 		} else {
 			account.LastNotification = time.Now().Unix()
 			if err := database.DB.Save(&account).Error; err != nil {
