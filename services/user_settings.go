@@ -84,8 +84,7 @@ func GetUserSettings(userID string) (models.UserSettings, error) {
 }
 
 func SetUserCaptchaKey(userID string, captchaKey string) error {
-	// Check if userID is not an API key
-	if len(userID) > 20 || !isValidUserID(userID) {
+	if !isValidUserID(userID) {
 		logger.Log.Error("Invalid userID provided")
 		return fmt.Errorf("invalid userID")
 	}
@@ -136,9 +135,12 @@ func SetUserCaptchaKey(userID string, captchaKey string) error {
 	return nil
 }
 
-// Add this helper function to validate userID
+// Helper function to validate userID
 func isValidUserID(userID string) bool {
 	// Check if userID consists of only digits (Discord user IDs are numeric).
+	if len(userID) < 17 || len(userID) > 20 {
+		return false
+	}
 	for _, char := range userID {
 		if char < '0' || char > '9' {
 			return false
@@ -148,6 +150,10 @@ func isValidUserID(userID string) bool {
 }
 
 func GetUserCaptchaKey(userID string) (string, error) {
+	if !isValidUserID(userID) {
+		return "", fmt.Errorf("invalid userID")
+	}
+
 	var settings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).First(&settings)
 	if result.Error != nil {
