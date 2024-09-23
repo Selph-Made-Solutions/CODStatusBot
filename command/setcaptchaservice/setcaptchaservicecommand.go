@@ -62,7 +62,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	// Validate the API key
 	if apiKey != "" {
-		isValid, err := services.ValidateCaptchaKey(apiKey)
+		isValid, balance, err := services.ValidateCaptchaKey(apiKey)
 		if err != nil {
 			logger.Log.WithError(err).Error("Error validating captcha key")
 			respondToInteraction(s, i, "Error validating the EZ-Captcha API key. Please try again.")
@@ -72,6 +72,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			respondToInteraction(s, i, "The provided EZ-Captcha API key is invalid. Please check and try again.")
 			return
 		}
+		logger.Log.Infof("Valid captcha key set for user: %s. Balance: %.2f points", userID, balance)
 	}
 
 	err := services.SetUserCaptchaKey(userID, apiKey)
