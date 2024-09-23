@@ -344,18 +344,48 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 		notifyCookieExpiringSoon(account, discord, timeUntilExpiration)
 	}
 
-	result, err := CheckAccount(account.SSOCookie, account.UserID)
+	userSettings, err := GetUserSettings(account.UserID)
 	if err != nil {
-		logger.Log.WithError(err).Errorf("Failed to check account %s: possible expired SSO Cookie", account.Title)
+		logger.Log.WithError(err).Errorf("Failed to get user settings for account %s", account.Title)
 		return
 	}
 
-	if result == models.StatusInvalidCookie {
-		handleInvalidCookie(account, discord)
+	result, err := CheckAccount(account.SSOCookie, account.UserID)
+	if err != nil {
+		handleCheckAccountError(account, discord, err)
 		return
 	}
 
 	updateAccountStatus(account, result, discord)
+}
+
+func handleCheckAccountError(account models.Account, discord *discordgo.Session, err error) {
+	switch {
+	case strings.Contains(err.Error(), "Missing Access") || strings.Contains(err.Error(), "Unknown Channel"):
+		disableAccount(account, discord, "Bot removed from server/channel")
+	case strings.Contains(err.Error(), "insufficient balance"):
+		disableAccount(account, discord, "Insufficient captcha balance")
+	case strings.Contains(err.Error(), "invalid captcha API key"):
+		disableAccount(account, discord, "Invalid captcha API key")
+	default:
+		logger.Log.WithError(err).Errorf("Failed to check account %s: possible expired SSO Cookie", account.Title)
+		notifyUserOfCheckError(account, discord, err)
+	}
+}
+
+func disableAccount(account models.Account, discord *discordgo.Session, reason string) {
+	account.IsCheckDisabled = true
+	account.DisabledReason = reason
+
+	if err := database.DB.Save(&account).Error; err != nil {
+		logger.Log.WithError(err).Errorf("Failed to disable account %s", account.Title)
+		return
+	}
+
+	logger.Log.Infof("Account %s has been disabled. Reason: %s", account.Title, reason)
+
+	// Attempt to notify user via DM
+	notifyUserAboutDisabledAccount(discord, account, reason)
 }
 
 func notifyCookieExpiringSoon(account models.Account, discord *discordgo.Session, timeUntilExpiration time.Duration) {
@@ -784,10 +814,11 @@ func cleanupInactiveAccounts(s *discordgo.Session) {
 
 			if err := database.DB.Save(&account).Error; err != nil {
 				logger.Log.WithError(err).Errorf("Failed to update account %s status during cleanup", account.Title)
+				continue
 			}
 
 			// Attempt to notify the user via DM about the account being disabled
-			notifyUserAboutDisabledAccount(s, account)
+			notifyUserAboutDisabledAccount(s, account, account.DisabledReason)
 		}
 	}
 
@@ -815,7 +846,8 @@ func checkAccountAccess(s *discordgo.Session, account *models.Account) error {
 
 	return nil
 }
-func notifyUserAboutDisabledAccount(s *discordgo.Session, account models.Account) {
+
+func notifyUserAboutDisabledAccount(s *discordgo.Session, account models.Account, reason string) {
 	channel, err := s.UserChannelCreate(account.UserID)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to create DM channel for user %s", account.UserID)
@@ -823,9 +855,9 @@ func notifyUserAboutDisabledAccount(s *discordgo.Session, account models.Account
 	}
 
 	embed := &discordgo.MessageEmbed{
-		Title: "Account Disabled - Bot Access Lost",
-		Description: fmt.Sprintf("Your account '%s' has been disabled because the bot has lost access to the associated server or channel. "+
-			"To re-enable monitoring, please add the bot back to the server or use the appropriate commands to update your account settings.", account.Title),
+		Title: "Account Disabled",
+		Description: fmt.Sprintf("Your account '%s' has been disabled. Reason: %s\n\n"+
+			"To re-enable monitoring, please address the issue and use the appropriate commands to update your account settings.", account.Title, reason),
 		Color:     0xFF0000, // Red color for alert
 		Timestamp: time.Now().Format(time.RFC3339),
 	}
@@ -833,5 +865,26 @@ func notifyUserAboutDisabledAccount(s *discordgo.Session, account models.Account
 	_, err = s.ChannelMessageSendEmbed(channel.ID, embed)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to send account disabled notification to user %s", account.UserID)
+	}
+}
+
+func notifyUserOfCheckError(account models.Account, discord *discordgo.Session, err error) {
+	channel, err := discord.UserChannelCreate(account.UserID)
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to create DM channel for user %s", account.UserID)
+		return
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title: "Account Check Error",
+		Description: fmt.Sprintf("There was an error checking your account '%s': %v\n\n"+
+			"Please check your account settings and try again.", account.Title, err),
+		Color:     0xFFA500, // Orange color for warning
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+
+	_, err = discord.ChannelMessageSendEmbed(channel.ID, embed)
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to send check error notification to user %s", account.UserID)
 	}
 }
