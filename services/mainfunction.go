@@ -49,6 +49,8 @@ func init() {
 	defaultRateLimit = time.Duration(getEnvInt("DEFAULT_RATE_LIMIT", 5)) * time.Minute
 	checkNowRateLimit = time.Duration(getEnvInt("CHECK_NOW_RATE_LIMIT", 3600)) * time.Second
 
+	defaultSettings.NotificationInterval = notificationInterval
+
 	logger.Log.Infof("Loaded config: CHECK_INTERVAL=%.2f, NOTIFICATION_INTERVAL=%.2f, COOLDOWN_DURATION=%.2f, SLEEP_DURATION=%d, COOKIE_CHECK_INTERVAL_PERMABAN=%.2f, STATUS_CHANGE_COOLDOWN=%.2f, GLOBAL_NOTIFICATION_COOLDOWN=%.2f, COOKIE_EXPIRATION_WARNING=%.2f, TEMP_BAN_UPDATE_INTERVAL=%.2f, CHECK_NOW_RATE_LIMIT=%v, DEFAULT_RATE_LIMIT=%v",
 		checkInterval, notificationInterval, cooldownDuration, sleepDuration, cookieCheckIntervalPermaban, statusChangeCooldown, globalNotificationCooldown, cookieExpirationWarning, tempBanUpdateInterval, checkNowRateLimit, defaultRateLimit)
 }
@@ -311,7 +313,6 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 
 // Updated handlePermabannedAccount function
 func handlePermabannedAccount(account models.Account, s *discordgo.Session) {
-	lastNotification := time.Unix(account.LastNotification, 0)
 	embed := &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%s - Permanent Ban Status", account.Title),
 		Description: fmt.Sprintf("The account %s is still permanently banned. Please remove this account from monitoring using the /removeaccount command.", account.Title),
@@ -338,8 +339,15 @@ func handlePermabannedAccount(account models.Account, s *discordgo.Session) {
 }
 
 // Handle accounts with expired cookies
-func handleExpiredCookieAccount(account models.Account, s *discordgo.Session, userSettings models.UserSettings) {
+func handleExpiredCookieAccount(account models.Account, s *discordgo.Session) {
 	logger.Log.WithField("account", account.Title).Info("Processing account with expired cookie")
+
+	userSettings, err := GetUserSettings(account.UserID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to get user settings, using default notification interval")
+		userSettings = defaultSettings
+	}
+
 	if time.Since(time.Unix(account.LastNotification, 0)).Hours() > userSettings.NotificationInterval {
 		go sendDailyUpdate(account, s)
 	} else {
@@ -359,11 +367,12 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 		notifyCookieExpiringSoon(account, discord, timeUntilExpiration)
 	}
 
-	userSettings, err := GetUserSettings(account.UserID)
-	if err != nil {
-		logger.Log.WithError(err).Errorf("Failed to get user settings for account %s", account.Title)
-		return
-	}
+	// Remove the unused userSettings variable
+	// userSettings, err := GetUserSettings(account.UserID)
+	// if err != nil {
+	// 	logger.Log.WithError(err).Errorf("Failed to get user settings for account %s", account.Title)
+	// 	return
+	// }
 
 	result, err := CheckAccount(account.SSOCookie, account.UserID)
 	if err != nil {
