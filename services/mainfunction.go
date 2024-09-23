@@ -238,10 +238,12 @@ func CheckAccounts(s *discordgo.Session) {
 	}
 }
 
+// Updated processUserAccounts function
 func processUserAccounts(s *discordgo.Session, userID string, accounts []models.Account) {
-	userSettings, err := GetUserSettings(userID)
+	// Get user's CaptchaAPIKey directly instead of full userSettings
+	userCaptchaKey, err := GetUserCaptchaKey(userID)
 	if err != nil {
-		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
+		logger.Log.WithError(err).Errorf("Failed to get user captcha key for user %s", userID)
 		return
 	}
 
@@ -255,18 +257,32 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 		}
 
 		if account.IsPermabanned {
-			handlePermabannedAccount(account, s, userSettings)
+			// Use the appropriate notification interval
+			notificationInterval := defaultSettings.NotificationInterval
+			if userCaptchaKey != "" {
+				userSettings, err := GetUserSettings(userID)
+				if err != nil {
+					logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
+					continue
+				}
+				notificationInterval = userSettings.NotificationInterval
+			}
+
+			lastNotification := time.Unix(account.LastNotification, 0)
+			if time.Since(lastNotification).Hours() >= notificationInterval {
+				handlePermabannedAccount(account, s)
+			}
 			continue
 		}
 
-		if account.IsExpiredCookie {
-			handleExpiredCookieAccount(account, s, userSettings)
-			continue
-		}
-
-		checkInterval := userSettings.CheckInterval
-		if userSettings.CaptchaAPIKey == "" {
-			checkInterval = int(defaultRateLimit.Minutes())
+		checkInterval := defaultSettings.CheckInterval
+		if userCaptchaKey != "" {
+			userSettings, err := GetUserSettings(userID)
+			if err != nil {
+				logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
+				continue
+			}
+			checkInterval = userSettings.CheckInterval
 		}
 
 		lastCheck := time.Unix(account.LastCheck, 0)
@@ -277,7 +293,7 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 
 		accountsToUpdate = append(accountsToUpdate, account)
 
-		if time.Since(time.Unix(account.LastNotification, 0)).Hours() > userSettings.NotificationInterval {
+		if time.Since(time.Unix(account.LastNotification, 0)).Hours() > notificationInterval {
 			dailyUpdateAccounts = append(dailyUpdateAccounts, account)
 		}
 	}
@@ -293,31 +309,30 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 	}
 }
 
-func handlePermabannedAccount(account models.Account, s *discordgo.Session, userSettings models.UserSettings) {
+// Updated handlePermabannedAccount function
+func handlePermabannedAccount(account models.Account, s *discordgo.Session) {
 	lastNotification := time.Unix(account.LastNotification, 0)
-	if time.Since(lastNotification).Hours() >= 24 { // Send a reminder every 24 hours.
-		embed := &discordgo.MessageEmbed{
-			Title:       fmt.Sprintf("%s - Permanent Ban Status", account.Title),
-			Description: fmt.Sprintf("The account %s is still permanently banned. Please remove this account from monitoring using the /removeaccount command.", account.Title),
-			Color:       GetColorForStatus(models.StatusPermaban, false, account.IsCheckDisabled),
-			Timestamp:   time.Now().Format(time.RFC3339),
-		}
-		err := sendNotification(s, account, embed, fmt.Sprintf("<@%s>", account.UserID), "permaban")
-		if err != nil {
-			if strings.Contains(err.Error(), "bot might have been removed") {
-				logger.Log.Warnf("Bot removed for account %s. Considering account inactive.", account.Title)
-				account.IsCheckDisabled = true
-				if err := database.DB.Save(&account).Error; err != nil {
-					logger.Log.WithError(err).Errorf("Failed to update account status for %s", account.Title)
-				}
-			} else {
-				logger.Log.WithError(err).Errorf("Failed to send permaban update for account %s", account.Title)
+	embed := &discordgo.MessageEmbed{
+		Title:       fmt.Sprintf("%s - Permanent Ban Status", account.Title),
+		Description: fmt.Sprintf("The account %s is still permanently banned. Please remove this account from monitoring using the /removeaccount command.", account.Title),
+		Color:       GetColorForStatus(models.StatusPermaban, false, account.IsCheckDisabled),
+		Timestamp:   time.Now().Format(time.RFC3339),
+	}
+	err := sendNotification(s, account, embed, fmt.Sprintf("<@%s>", account.UserID), "permaban")
+	if err != nil {
+		if strings.Contains(err.Error(), "bot might have been removed") {
+			logger.Log.Warnf("Bot removed for account %s. Considering account inactive.", account.Title)
+			account.IsCheckDisabled = true
+			if err := database.DB.Save(&account).Error; err != nil {
+				logger.Log.WithError(err).Errorf("Failed to update account status for %s", account.Title)
 			}
 		} else {
-			account.LastNotification = time.Now().Unix()
-			if err := database.DB.Save(&account).Error; err != nil {
-				logger.Log.WithError(err).Errorf("Failed to update LastNotification for account %s", account.Title)
-			}
+			logger.Log.WithError(err).Errorf("Failed to send permaban update for account %s", account.Title)
+		}
+	} else {
+		account.LastNotification = time.Now().Unix()
+		if err := database.DB.Save(&account).Error; err != nil {
+			logger.Log.WithError(err).Errorf("Failed to update LastNotification for account %s", account.Title)
 		}
 	}
 }
