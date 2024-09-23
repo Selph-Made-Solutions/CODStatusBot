@@ -60,13 +60,13 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 	captchaAPIKey, err := GetUserCaptchaKey(userID)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to get user's captcha API key")
-		return models.StatusUnknown, fmt.Errorf("failed to get user's captcha API key: %v", err)
+		return models.StatusUnknown, fmt.Errorf("failed to get user's captcha API key: %w", err)
 	}
 
 	gRecaptchaResponse, err := SolveReCaptchaV2WithKey(captchaAPIKey)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to solve reCAPTCHA")
-		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %v", err)
+		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %w", err)
 	}
 
 	// Further processing of gRecaptchaResponse can be done here
@@ -162,7 +162,7 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 	err = json.Unmarshal(body, &data)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to decode JSON response")
-		return models.StatusUnknown, fmt.Errorf("failed to decode JSON response: %v", err)
+		return models.StatusUnknown, fmt.Errorf("failed to decode JSON response: %w", err)
 	}
 	logger.Log.WithField("data", data).Info("Parsed ban data")
 
