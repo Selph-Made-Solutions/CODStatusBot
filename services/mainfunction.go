@@ -30,8 +30,8 @@ var (
 	globalNotificationCooldown  float64 // Global cooldown for notifications per user (in hours).
 	cookieExpirationWarning     float64 // Time before cookie expiration to send a warning (in hours).
 	tempBanUpdateInterval       float64 // Interval for temporary ban update notifications (in hours).
-	userNotificationTimestamps  = make(map[string]time.Time)
 	userNotificationMutex       sync.Mutex
+	userNotificationTimestamps  = make(map[string]map[string]time.Time)
 	DBMutex                     sync.Mutex
 	defaultRateLimit            time.Duration // Default rate limit for checks (in minutes).
 	checkNowRateLimit           time.Duration // Rate limit for the check now command (in seconds).
@@ -65,7 +65,7 @@ func init() {
 var notificationConfigs = map[string]NotificationConfig{
 	"status_change":        {Cooldown: time.Hour, AllowConsolidated: false},
 	"permaban":             {Cooldown: 24 * time.Hour, AllowConsolidated: false},
-	"daily_update":         {Cooldown: 0, AllowConsolidated: true}, // Cooldown will be set from user preferences
+	"daily_update":         {Cooldown: 0, AllowConsolidated: true},
 	"invalid_cookie":       {Cooldown: 6 * time.Hour, AllowConsolidated: true},
 	"cookie_expiring_soon": {Cooldown: 24 * time.Hour, AllowConsolidated: true},
 	"temp_ban_update":      {Cooldown: time.Hour, AllowConsolidated: false},
@@ -124,18 +124,15 @@ func sendNotification(discord *discordgo.Session, account models.Account, embed 
 	}
 
 	userNotificationMutex.Lock()
-	lastNotification, exists := userNotificationTimestamps[account.UserID]
-	var shouldSend bool
-	if !exists {
-		shouldSend = true
-	} else {
-		shouldSend = time.Since(lastNotification) >= config.Cooldown
+	if _, exists := userNotificationTimestamps[account.UserID]; !exists {
+		userNotificationTimestamps[account.UserID] = make(map[string]time.Time)
 	}
+	lastNotification, exists := userNotificationTimestamps[account.UserID][notificationType]
+	shouldSend := !exists || time.Since(lastNotification) >= config.Cooldown
 	if shouldSend {
-		userNotificationTimestamps[account.UserID] = time.Now()
+		userNotificationTimestamps[account.UserID][notificationType] = time.Now()
 	}
 	userNotificationMutex.Unlock()
-
 	shouldSend = true
 	var cooldownDuration time.Duration
 
@@ -191,7 +188,7 @@ func sendNotification(discord *discordgo.Session, account models.Account, embed 
 
 	logger.Log.Infof("%s notification sent to user %s", notificationType, account.UserID)
 	userNotificationMutex.Lock()
-	userNotificationTimestamps[account.UserID] = time.Now()
+	userNotificationTimestamps[account.UserID][notificationType] = time.Now()
 	userNotificationMutex.Unlock()
 	return nil
 }
@@ -585,15 +582,12 @@ func handleStatusChange(account models.Account, newStatus models.Status, discord
 	notificationType := "status_change"
 	if newStatus == models.StatusPermaban {
 		notificationType = "permaban"
-	} else if newStatus == models.StatusGood && account.LastStatus != models.StatusGood {
-		embed.Description += "\n\nYour account has returned to good standing."
 	}
 
 	err := sendNotification(discord, account, embed, fmt.Sprintf("<@%s>", account.UserID), notificationType)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to send status update message for account %s", account.Title)
 	}
-
 	if newStatus == models.StatusTempban {
 		go scheduleTempBanNotification(account, ban.TempBanDuration, discord)
 	}
@@ -625,7 +619,6 @@ func scheduleTempBanNotification(account models.Account, duration string, discor
 			Color:       GetColorForStatus(models.StatusTempban, false, account.IsCheckDisabled),
 			Timestamp:   time.Now().Format(time.RFC3339),
 		}
-
 		err := sendNotification(discord, account, embed, "", "temp_ban_update")
 		if err != nil {
 			logger.Log.WithError(err).Errorf("Failed to send temporary ban update for account %s", account.Title)
