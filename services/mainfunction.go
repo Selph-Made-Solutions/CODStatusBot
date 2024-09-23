@@ -14,6 +14,12 @@ import (
 	"time"
 )
 
+type NotificationConfig struct {
+	Type              string
+	Cooldown          time.Duration
+	AllowConsolidated bool
+}
+
 var (
 	checkInterval               float64 // Check interval for accounts (in minutes).
 	notificationInterval        float64 // Notification interval for daily updates (in hours).
@@ -29,6 +35,7 @@ var (
 	DBMutex                     sync.Mutex
 	defaultRateLimit            time.Duration // Default rate limit for checks (in minutes).
 	checkNowRateLimit           time.Duration // Rate limit for the check now command (in seconds).
+
 )
 
 func init() {
@@ -53,6 +60,15 @@ func init() {
 
 	logger.Log.Infof("Loaded config: CHECK_INTERVAL=%.2f, NOTIFICATION_INTERVAL=%.2f, COOLDOWN_DURATION=%.2f, SLEEP_DURATION=%d, COOKIE_CHECK_INTERVAL_PERMABAN=%.2f, STATUS_CHANGE_COOLDOWN=%.2f, GLOBAL_NOTIFICATION_COOLDOWN=%.2f, COOKIE_EXPIRATION_WARNING=%.2f, TEMP_BAN_UPDATE_INTERVAL=%.2f, CHECK_NOW_RATE_LIMIT=%v, DEFAULT_RATE_LIMIT=%v",
 		checkInterval, notificationInterval, cooldownDuration, sleepDuration, cookieCheckIntervalPermaban, statusChangeCooldown, globalNotificationCooldown, cookieExpirationWarning, tempBanUpdateInterval, checkNowRateLimit, defaultRateLimit)
+}
+
+var notificationConfigs = map[string]NotificationConfig{
+	"status_change":        {Cooldown: time.Hour, AllowConsolidated: false},
+	"permaban":             {Cooldown: 24 * time.Hour, AllowConsolidated: false},
+	"daily_update":         {Cooldown: 0, AllowConsolidated: true}, // Cooldown will be set from user preferences
+	"invalid_cookie":       {Cooldown: 6 * time.Hour, AllowConsolidated: true},
+	"cookie_expiring_soon": {Cooldown: 24 * time.Hour, AllowConsolidated: true},
+	"temp_ban_update":      {Cooldown: time.Hour, AllowConsolidated: false},
 }
 
 func getEnvFloat(key string, fallback float64) float64 {
@@ -95,15 +111,32 @@ func getEnvIntRaw(key string, fallback int) int {
 func sendNotification(discord *discordgo.Session, account models.Account, embed *discordgo.MessageEmbed, content string, notificationType string) error {
 	userSettings, err := GetUserSettings(account.UserID)
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to get user settings")
-		return err
+		return fmt.Errorf("failed to get user settings: %w", err)
+	}
+
+	config, ok := notificationConfigs[notificationType]
+	if !ok {
+		return fmt.Errorf("unknown notification type: %s", notificationType)
+	}
+
+	if config.Cooldown == 0 {
+		config.Cooldown = time.Duration(userSettings.NotificationInterval) * time.Hour
 	}
 
 	userNotificationMutex.Lock()
 	lastNotification, exists := userNotificationTimestamps[account.UserID]
+	var shouldSend bool
+	if !exists {
+		shouldSend = true
+	} else {
+		shouldSend = time.Since(lastNotification) >= config.Cooldown
+	}
+	if shouldSend {
+		userNotificationTimestamps[account.UserID] = time.Now()
+	}
 	userNotificationMutex.Unlock()
 
-	shouldSend := true
+	shouldSend = true
 	var cooldownDuration time.Duration
 
 	switch notificationType {
@@ -136,7 +169,7 @@ func sendNotification(discord *discordgo.Session, account models.Account, embed 
 		channel, err := discord.UserChannelCreate(account.UserID)
 		if err != nil {
 			logger.Log.WithError(err).Errorf("Failed to create DM channel for user %s", account.UserID)
-			return fmt.Errorf("failed to create DM channel: %v", err)
+			return fmt.Errorf("failed to create DM channel: %w", err)
 		}
 		channelID = channel.ID
 	} else {
@@ -151,10 +184,9 @@ func sendNotification(discord *discordgo.Session, account models.Account, embed 
 		if strings.Contains(err.Error(), "Missing Access") || strings.Contains(err.Error(), "Unknown Channel") {
 			logger.Log.Warnf("Bot might have been removed from the channel or server for user %s", account.UserID)
 			// Consider updating the account status or notifying the user through alternative means
-			return fmt.Errorf("bot might have been removed: %v", err)
+			return fmt.Errorf("bot might have been removed: %w", err)
 		}
-		logger.Log.WithError(err).Error("Failed to send notification")
-		return err
+		return fmt.Errorf("failed to send notification: %w", err)
 	}
 
 	logger.Log.Infof("%s notification sent to user %s", notificationType, account.UserID)
@@ -164,6 +196,44 @@ func sendNotification(discord *discordgo.Session, account models.Account, embed 
 	return nil
 }
 
+func sendIndividualDailyUpdate(account models.Account, discord *discordgo.Session) {
+	logger.Log.Infof("Sending individual daily update for account %s", account.Title)
+
+	var description string
+	if account.IsExpiredCookie {
+		description = fmt.Sprintf("The SSO cookie for account %s has expired. Please update the cookie using the /updateaccount command or delete the account using the /removeaccount command.", account.Title)
+	} else {
+		timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
+		if err != nil {
+			logger.Log.WithError(err).Errorf("Error checking SSO cookie expiration for account %s", account.Title)
+			description = fmt.Sprintf("An error occurred while checking the SSO cookie expiration for account %s. Please check the account status manually.", account.Title)
+		} else if timeUntilExpiration > 0 {
+			description = fmt.Sprintf("The last status of account %s was %s. SSO cookie will expire in %s.", account.Title, account.LastStatus, FormatExpirationTime(account.SSOCookieExpiration))
+		} else {
+			description = fmt.Sprintf("The SSO cookie for account %s has expired. Please update the cookie using the /updateaccount command or delete the account using the /removeaccount command.", account.Title)
+		}
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title:       fmt.Sprintf("%.2f Hour Update - %s", notificationInterval, account.Title),
+		Description: description,
+		Color:       GetColorForStatus(account.LastStatus, account.IsExpiredCookie, account.IsCheckDisabled),
+		Timestamp:   time.Now().Format(time.RFC3339),
+	}
+
+	err := sendNotification(discord, account, embed, "", "daily_update")
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to send individual daily update message for account %s", account.Title)
+	} else {
+		account.LastCheck = time.Now().Unix()
+		account.LastNotification = time.Now().Unix()
+		if err := database.DB.Save(&account).Error; err != nil {
+			logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
+		}
+	}
+}
+
+/*
 // sendDailyUpdate function: sends a daily update message for a given account.
 func sendDailyUpdate(account models.Account, discord *discordgo.Session) {
 	logger.Log.Infof("Attempting to send daily update for account %s", account.Title)
@@ -203,6 +273,7 @@ func sendDailyUpdate(account models.Account, discord *discordgo.Session) {
 		}
 	}
 }
+*/
 
 // CheckAccounts function: periodically checks all accounts for status changes
 func CheckAccounts(s *discordgo.Session) {
@@ -349,7 +420,7 @@ func handleExpiredCookieAccount(account models.Account, s *discordgo.Session) {
 	}
 
 	if time.Since(time.Unix(account.LastNotification, 0)).Hours() > userSettings.NotificationInterval {
-		go sendDailyUpdate(account, s)
+		go sendIndividualDailyUpdate(account, s)
 	} else {
 		logger.Log.WithField("account", account.Title).Infof("Owner of %s recently notified within %.2f hours already, skipping", account.Title, userSettings.NotificationInterval)
 	}
@@ -474,6 +545,7 @@ func updateAccountStatus(account models.Account, result models.Status, discord *
 	}
 }
 
+// Update the handleStatusChange function
 func handleStatusChange(account models.Account, newStatus models.Status, discord *discordgo.Session) {
 	DBMutex.Lock()
 	account.LastStatus = newStatus
@@ -758,6 +830,7 @@ func calculateBanDuration(banStartTime time.Time) string {
 	return fmt.Sprintf("%d days, %d hours", days, hours)
 }
 
+// Update the sendConsolidatedDailyUpdate function
 func sendConsolidatedDailyUpdate(accounts []models.Account, discord *discordgo.Session) {
 	if len(accounts) == 0 {
 		return
@@ -770,7 +843,7 @@ func sendConsolidatedDailyUpdate(accounts []models.Account, discord *discordgo.S
 	for _, account := range accounts {
 		var description string
 		if account.IsExpiredCookie {
-			description = fmt.Sprintf("SSO cookie has expired. Please update using /updateaccount command.")
+			description = "SSO cookie has expired. Please update using /updateaccount command."
 		} else {
 			timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
 			if err != nil {
