@@ -107,7 +107,6 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 		logger.Log.WithError(err).Error("Error responding to interaction")
 	}
 }
-
 func getBalanceInfo(userID string) string {
 	apiKey, _, err := services.GetUserCaptchaKey(userID)
 	if err != nil {
