@@ -57,7 +57,7 @@ func VerifySSOCookie(ssoCookie string) bool {
 func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 	logger.Log.Info("Starting CheckAccount function")
 
-	captchaAPIKey, err := GetUserCaptchaKey(userID)
+	captchaAPIKey, _, err := GetUserCaptchaKey(userID)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to get user's captcha API key")
 		return models.StatusUnknown, fmt.Errorf("failed to get user's captcha API key: %w", err)
