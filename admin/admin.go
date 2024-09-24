@@ -56,8 +56,6 @@ func StartAdminPanel() {
 
 	r.HandleFunc("/admin", dashboardHandler).Methods("GET")
 	r.HandleFunc("/admin/stats", statsHandler).Methods("GET")
-
-	// Serve static files
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 
 	port := os.Getenv("ADMIN_PORT")
@@ -112,98 +110,49 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func dashboardHandler(w http.ResponseWriter, r *http.Request) {
+	logger.Log.Info("Dashboard handler called")
 	httpError := tollbooth.LimitByRequest(statsLimiter, w, r)
 	if httpError != nil {
+		logger.Log.WithError(httpError).Error("Rate limit exceeded")
 		http.Error(w, httpError.Message, httpError.StatusCode)
 		return
 	}
 
 	stats := GetCachedStats()
+	logger.Log.WithField("stats", stats).Info("Retrieved cached stats")
+
 	tmpl, err := template.ParseFiles("templates/dashboard.html")
 	if err != nil {
+		logger.Log.WithError(err).Error("Failed to parse dashboard template")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	err = tmpl.Execute(w, stats)
 	if err != nil {
+		logger.Log.WithError(err).Error("Failed to execute dashboard template")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+	logger.Log.Info("Dashboard rendered successfully")
 }
 
 func getStats() (Stats, error) {
 	var stats Stats
-	var err error
 
-	stats.TotalAccounts, err = getTotalAccounts()
-	if err != nil {
-		return stats, err
-	}
-
-	stats.ActiveAccounts, err = getActiveAccounts()
-	if err != nil {
-		return stats, err
-	}
-
-	stats.TotalUsers, err = getTotalUsers()
-	if err != nil {
-		return stats, err
-	}
-
-	stats.ChecksLast24Hours, err = getChecksInTimeRange(24 * time.Hour)
-	if err != nil {
-		return stats, err
-	}
-
-	stats.TotalBans, err = getTotalBans()
-	if err != nil {
-		return stats, err
-	}
-
-	stats.RecentBans, err = getRecentBans(24 * time.Hour)
-	if err != nil {
-		return stats, err
-	}
-
-	stats.AverageChecksPerDay, err = getAverageChecksPerDay()
-	if err != nil {
-		return stats, err
-	}
-
-	stats.TotalNotifications, err = getTotalNotifications()
-	if err != nil {
-		return stats, err
-	}
-
-	stats.RecentNotifications, err = getRecentNotifications(24 * time.Hour)
-	if err != nil {
-		return stats, err
-	}
-
-	stats.UsersWithCustomAPIKey, err = getUsersWithCustomAPIKey()
-	if err != nil {
-		return stats, err
-	}
-
-	stats.AverageAccountsPerUser, err = getAverageAccountsPerUser()
-	if err != nil {
-		return stats, err
-	}
-
-	stats.OldestAccount, stats.NewestAccount, err = getAccountAgeRange()
-	if err != nil {
-		return stats, err
-	}
-
-	stats.TotalShadowbans, err = getTotalBansByType(models.StatusShadowban)
-	if err != nil {
-		return stats, err
-	}
-
-	stats.TotalTempbans, err = getTotalBansByType(models.StatusTempban)
-	if err != nil {
-		return stats, err
-	}
+	stats.TotalAccounts, _ = getTotalAccounts()
+	stats.ActiveAccounts, _ = getActiveAccounts()
+	stats.TotalUsers, _ = getTotalUsers()
+	stats.ChecksLast24Hours, _ = getChecksInTimeRange(24 * time.Hour)
+	stats.TotalBans, _ = getTotalBans()
+	stats.RecentBans, _ = getRecentBans(24 * time.Hour)
+	stats.AverageChecksPerDay, _ = getAverageChecksPerDay()
+	stats.TotalNotifications, _ = getTotalNotifications()
+	stats.RecentNotifications, _ = getRecentNotifications(24 * time.Hour)
+	stats.UsersWithCustomAPIKey, _ = getUsersWithCustomAPIKey()
+	stats.AverageAccountsPerUser, _ = getAverageAccountsPerUser()
+	stats.OldestAccount, stats.NewestAccount, _ = getAccountAgeRange()
+	stats.TotalShadowbans, _ = getTotalBansByType(models.StatusShadowban)
+	stats.TotalTempbans, _ = getTotalBansByType(models.StatusTempban)
 
 	return stats, nil
 }
@@ -249,7 +198,11 @@ func getAverageChecksPerDay() (float64, error) {
 	var result struct {
 		AvgChecks float64
 	}
-	err := database.DB.Model(&models.Account{}).Select("AVG(checks_count) as avg_checks").Scan(&result).Error
+	oneDayAgo := time.Now().Add(-24 * time.Hour).Unix()
+	err := database.DB.Model(&models.Account{}).
+		Select("COUNT(*) / 1.0 as avg_checks").
+		Where("last_check > ?", oneDayAgo).
+		Scan(&result).Error
 	return result.AvgChecks, err
 }
 
