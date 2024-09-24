@@ -4,6 +4,7 @@ import (
 	"CODStatusBot/command/accountage"
 	"CODStatusBot/command/accountlogs"
 	"CODStatusBot/command/addaccount"
+	"CODStatusBot/command/captchabalance"
 	"CODStatusBot/command/checknow"
 	"CODStatusBot/command/feedback"
 	"CODStatusBot/command/globalannouncement"
@@ -35,6 +36,11 @@ func RegisterCommands(s *discordgo.Session) error {
 		{
 			Name:         "setcaptchaservice",
 			Description:  "Set your EZ-Captcha API key",
+			DMPermission: BoolPtr(true),
+		},
+		{
+			Name:         "captchabalance",
+			Description:  "Check your EZ-Captcha balance",
 			DMPermission: BoolPtr(true),
 		},
 		{
@@ -117,6 +123,7 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["globalannouncement"] = globalannouncement.CommandGlobalAnnouncement
 	Handlers["setcaptchaservice"] = setcaptchaservice.CommandSetCaptchaService
 	Handlers["setcheckinterval"] = setcheckinterval.CommandSetCheckInterval
+	Handlers["captchabalance"] = captchabalance.CommandCaptchaBalance
 	Handlers["addaccount"] = addaccount.CommandAddAccount
 	Handlers["helpcookie"] = helpcookie.CommandHelpCookie
 	Handlers["helpapi"] = helpapi.CommandHelpApi
