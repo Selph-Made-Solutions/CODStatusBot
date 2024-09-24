@@ -182,7 +182,10 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Update the account
 	account.SSOCookie = newSSOCookie
 	account.SSOCookieExpiration = expirationTimestamp
-	account.IsExpiredCookie = false // Reset the expired cookie flag
+	account.IsExpiredCookie = false
+	account.IsCheckDisabled = false // Reset the disabled status
+	account.DisabledReason = ""     // Clear the disabled reason
+	account.ConsecutiveErrors = 0   // Reset consecutive errors
 
 	services.DBMutex.Lock()
 	if err := database.DB.Save(&account).Error; err != nil {
@@ -194,7 +197,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	services.DBMutex.Unlock()
 
 	formattedExpiration := services.FormatExpirationTime(expirationTimestamp)
-	message := fmt.Sprintf("Account '%s' has been successfully updated. New SSO cookie will expire in %s", account.Title, formattedExpiration)
+	message := fmt.Sprintf("Account '%s' has been successfully updated. New SSO cookie will expire in %s. Account checks have been re-enabled.", account.Title, formattedExpiration)
 	respondToInteraction(s, i, message)
 }
 

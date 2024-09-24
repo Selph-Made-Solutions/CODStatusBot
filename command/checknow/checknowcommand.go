@@ -311,3 +311,15 @@ func getUserID(i *discordgo.InteractionCreate) (string, error) {
 	}
 	return "", fmt.Errorf("unable to determine user ID")
 }
+
+func getBalanceInfo(userID string) string {
+	_, balance, err := services.GetUserCaptchaKey(userID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error getting user captcha key balance")
+		return ""
+	}
+	if balance > 0 {
+		return fmt.Sprintf("\nYour current EZ-Captcha balance: %.2f points", balance)
+	}
+	return ""
+}

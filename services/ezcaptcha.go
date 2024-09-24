@@ -134,7 +134,18 @@ func createTask() (string, error) {
 }
 
 func SolveReCaptchaV2WithKey(apiKey string) (string, error) {
-	logger.Log.Info("Starting to solve ReCaptcha V2 using EZ-Captcha with custom API key")
+	isValid, balance, err := ValidateCaptchaKey(apiKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to validate captcha key: %v", err)
+	}
+
+	if !isValid {
+		return "", fmt.Errorf("invalid captcha API key")
+	}
+
+	if balance <= 0 {
+		return "", fmt.Errorf("insufficient balance for captcha solving")
+	}
 
 	taskID, err := createTaskWithKey(apiKey)
 	if err != nil {
@@ -146,7 +157,6 @@ func SolveReCaptchaV2WithKey(apiKey string) (string, error) {
 		return "", err
 	}
 
-	logger.Log.Info("Successfully solved ReCaptcha V2 with custom API key")
 	return solution, nil
 }
 
@@ -277,40 +287,41 @@ func getTaskResult(taskID string) (string, error) {
 	return "", errors.New("max retries reached, captcha solving timed out")
 }
 
-func ValidateCaptchaKey(apiKey string) (bool, error) {
+func ValidateCaptchaKey(apiKey string) (bool, float64, error) {
+	url := "https://api.ez-captcha.com/getBalance"
 	payload := map[string]string{
 		"clientKey": apiKey,
 	}
 
 	jsonPayload, err := json.Marshal(payload)
 	if err != nil {
-		return false, fmt.Errorf("failed to marshal JSON payload: %v", err)
+		return false, 0, fmt.Errorf("failed to marshal JSON payload: %v", err)
 	}
 
-	resp, err := http.Post(EZCaptchaBalanceURL, "application/json", bytes.NewBuffer(jsonPayload))
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonPayload))
 	if err != nil {
-		return false, fmt.Errorf("failed to send getBalance request: %v", err)
+		return false, 0, fmt.Errorf("failed to send getBalance request: %v", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return false, fmt.Errorf("failed to read response body: %v", err)
+		return false, 0, fmt.Errorf("failed to read response body: %v", err)
 	}
 
 	var result struct {
-		ErrorID int     `json:"errorId"`
+		ErrorId int     `json:"errorId"`
 		Balance float64 `json:"balance"`
 	}
 
 	err = json.Unmarshal(body, &result)
 	if err != nil {
-		return false, fmt.Errorf("failed to parse JSON response: %v", err)
+		return false, 0, fmt.Errorf("failed to parse JSON response: %v", err)
 	}
 
-	if result.ErrorID != 0 {
-		return false, nil
+	if result.ErrorId != 0 {
+		return false, 0, nil
 	}
 
-	return true, nil
+	return true, result.Balance, nil
 }

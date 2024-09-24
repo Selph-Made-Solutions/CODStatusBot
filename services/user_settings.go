@@ -23,10 +23,14 @@ func init() {
 		checkInterval = 15
 	}
 
-	notificationInterval, err := strconv.ParseFloat(os.Getenv("NOTIFICATION_INTERVAL"), 64)
+	defaultInterval, err := strconv.ParseFloat(os.Getenv("NOTIFICATION_INTERVAL"), 64)
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to parse NOTIFICATION_INTERVAL, using default of 24 hours")
-		notificationInterval = 24
+		logger.Log.WithError(err).Error("Failed to parse NOTIFICATION_INTERVAL from .env, using default of 24 hours")
+		defaultInterval = 24
+
+		defaultSettings.NotificationInterval = defaultInterval
+
+		defaultInterval = 24
 	}
 
 	cooldownDuration, err := strconv.ParseFloat(os.Getenv("COOLDOWN_DURATION"), 64)
@@ -34,6 +38,7 @@ func init() {
 		logger.Log.WithError(err).Error("Failed to parse COOLDOWN_DURATION, using default of 6 hours")
 		cooldownDuration = 6
 	}
+	defaultSettings.NotificationInterval = defaultInterval
 
 	statusChangeCooldown, err := strconv.ParseFloat(os.Getenv("STATUS_CHANGE_COOLDOWN"), 64)
 	if err != nil {
@@ -51,8 +56,8 @@ func init() {
 
 	logger.Log.Infof("Default settings loaded: CheckInterval=%d, NotificationInterval=%.2f, CooldownDuration=%.2f, StatusChangeCooldown=%.2f",
 		defaultSettings.CheckInterval, defaultSettings.NotificationInterval, defaultSettings.CooldownDuration, defaultSettings.StatusChangeCooldown)
-}
 
+}
 func GetUserSettings(userID string) (models.UserSettings, error) {
 	logger.Log.Infof("Getting user settings for user: %s", userID)
 	var settings models.UserSettings
@@ -84,8 +89,7 @@ func GetUserSettings(userID string) (models.UserSettings, error) {
 }
 
 func SetUserCaptchaKey(userID string, captchaKey string) error {
-	// Check if userID is not an API key
-	if len(userID) > 20 || !isValidUserID(userID) {
+	if !isValidUserID(userID) {
 		logger.Log.Error("Invalid userID provided")
 		return fmt.Errorf("invalid userID")
 	}
@@ -136,9 +140,12 @@ func SetUserCaptchaKey(userID string, captchaKey string) error {
 	return nil
 }
 
-// Add this helper function to validate userID
+// Helper function to validate userID
 func isValidUserID(userID string) bool {
 	// Check if userID consists of only digits (Discord user IDs are numeric).
+	if len(userID) < 17 || len(userID) > 20 {
+		return false
+	}
 	for _, char := range userID {
 		if char < '0' || char > '9' {
 			return false
@@ -147,25 +154,36 @@ func isValidUserID(userID string) bool {
 	return true
 }
 
-func GetUserCaptchaKey(userID string) (string, error) {
+func GetUserCaptchaKey(userID string) (string, float64, error) {
+	if !isValidUserID(userID) {
+		return "", 0, fmt.Errorf("invalid userID")
+	}
+
 	var settings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).First(&settings)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error getting user settings")
-		return "", result.Error
+		return "", 0, result.Error
 	}
 
 	// If the user has a custom API key, return it
 	if settings.CaptchaAPIKey != "" {
-		return settings.CaptchaAPIKey, nil
+		isValid, balance, err := ValidateCaptchaKey(settings.CaptchaAPIKey)
+		if err != nil {
+			return "", 0, err
+		}
+		if !isValid {
+			return "", 0, fmt.Errorf("invalid captcha API key")
+		}
+		return settings.CaptchaAPIKey, balance, nil
 	}
 
 	// If the user doesn't have a custom API key, return the default key.
 	defaultKey := os.Getenv("EZCAPTCHA_CLIENT_KEY")
 	if defaultKey == "" {
-		return "", fmt.Errorf("default EZCAPTCHA_CLIENT_KEY not set in environment")
+		return "", 0, fmt.Errorf("default EZCAPTCHA_CLIENT_KEY not set in environment")
 	}
-	return defaultKey, nil
+	return defaultKey, 0, nil // Return 0 balance for default key
 }
 
 func GetDefaultSettings() (models.UserSettings, error) {

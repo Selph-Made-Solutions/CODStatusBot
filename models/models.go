@@ -2,6 +2,7 @@ package models
 
 import (
 	"gorm.io/gorm"
+	"time"
 )
 
 type Account struct {
@@ -21,19 +22,25 @@ type Account struct {
 	LastCookieCheck        int64  `gorm:"default:0"`       // The timestamp of the last cookie check for permanently banned accounts.
 	LastStatusChange       int64  `gorm:"default:0"`       // The timestamp of the last status change
 	IsCheckDisabled        bool   `gorm:"default:false"`   // A flag indicating if checks are disabled for this account
-	SSOCookieExpiration    int64  //
+	DisabledReason         string
+	SSOCookieExpiration    int64
+	ConsecutiveErrors      int `gorm:"default:0"`
+	LastSuccessfulCheck    time.Time
+	LastErrorTime          time.Time
 }
 
 type UserSettings struct {
 	gorm.Model
-	UserID               string  `gorm:"uniqueIndex"`
-	CaptchaAPIKey        string  // User's own API key, if provided
-	CheckInterval        int     // In minutes
-	NotificationInterval float64 // In hours
-	CooldownDuration     float64 // In hours
-	StatusChangeCooldown float64 // In hours
-	NotificationType     string  `gorm:"default:channel"` // User preference for location of notifications either channel or dm
-	HasSeenAnnouncement  bool    `gorm:"default:false"`   // Flag to track if the user has seen the global announcement.
+	UserID                  string    `gorm:"uniqueIndex"`
+	CaptchaAPIKey           string    // User's own API key, if provided
+	CheckInterval           int       // In minutes
+	NotificationInterval    float64   // In hours
+	CooldownDuration        float64   // In hours
+	NotificationType        string    `gorm:"default:channel"` // User preference for location of notifications either channel or dm
+	StatusChangeCooldown    float64   // In hours
+	HasSeenAnnouncement     bool      `gorm:"default:false"` // Flag to track if the user has seen the global announcement.
+	LastBalanceNotification time.Time // Timestamp of the last balance notification
+
 }
 
 type Ban struct {
@@ -48,10 +55,10 @@ type Ban struct {
 type Status string
 
 const (
-	StatusGood          Status = "good"           // The account status returned as good standing.
-	StatusPermaban      Status = "permaban"       // The account status returned as permanent ban.
-	StatusShadowban     Status = "shadowban"      // The account status returned as shadowban.
-	StatusUnknown       Status = "unknown"        // The account status not known.
-	StatusInvalidCookie Status = "invalid_cookie" // The account has an invalid SSO cookie.
-	StatusTempban       Status = "temporary"      // The account status returned as temporarily banned.
+	StatusGood          Status = "Good"           // The account status returned as good standing.
+	StatusPermaban      Status = "Permaban"       // The account status returned as permanent ban.
+	StatusShadowban     Status = "Shadowban"      // The account status returned as shadowban.
+	StatusUnknown       Status = "Unknown"        // The account status not known.
+	StatusInvalidCookie Status = "Invalid_Cookie" // The account has an invalid SSO cookie.
+	StatusTempban       Status = "Temporary"      // The account status returned as temporarily banned.
 )
