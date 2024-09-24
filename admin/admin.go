@@ -5,22 +5,32 @@ import (
 	"html/template"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 
+	"github.com/didip/tollbooth"
+	"github.com/didip/tollbooth/limiter"
 	"github.com/gorilla/mux"
+)
+
+var (
+	statsLimiter    *limiter.Limiter
+	cachedStats     Stats
+	cachedStatsLock sync.RWMutex
+	cacheInterval   = 15 * time.Minute
 )
 
 type Stats struct {
 	TotalAccounts          int
 	ActiveAccounts         int
-	ChecksLastHour         int
-	ChecksLast24Hours      int
 	BannedAccounts         int
 	TotalUsers             int
+	ChecksLastHour         int
+	ChecksLast24Hours      int
 	TotalBans              int
 	RecentBans             int
 	AverageChecksPerDay    float64
@@ -36,7 +46,12 @@ type Stats struct {
 	TotalTempbans          int
 }
 
+func init() {
+	statsLimiter = tollbooth.NewLimiter(1, &limiter.ExpirableOptions{DefaultExpirationTTL: time.Hour})
+}
+
 func StartAdminPanel() {
+	StartStatsCaching()
 	r := mux.NewRouter()
 
 	r.HandleFunc("/admin", dashboardHandler).Methods("GET")
@@ -57,25 +72,53 @@ func StartAdminPanel() {
 	}
 }
 
-func statsHandler(w http.ResponseWriter, r *http.Request) {
+func StartStatsCaching() {
+	go func() {
+		for {
+			updateCachedStats()
+			time.Sleep(cacheInterval)
+		}
+	}()
+}
+
+func updateCachedStats() {
 	stats, err := getStats()
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to get stats")
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		logger.Log.WithError(err).Error("Error updating cached stats")
 		return
 	}
 
+	cachedStatsLock.Lock()
+	cachedStats = stats
+	cachedStatsLock.Unlock()
+}
+
+func GetCachedStats() Stats {
+	cachedStatsLock.RLock()
+	defer cachedStatsLock.RUnlock()
+	return cachedStats
+}
+
+func statsHandler(w http.ResponseWriter, r *http.Request) {
+	httpError := tollbooth.LimitByRequest(statsLimiter, w, r)
+	if httpError != nil {
+		http.Error(w, httpError.Message, httpError.StatusCode)
+		return
+	}
+
+	stats := GetCachedStats()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(stats)
 }
 
 func dashboardHandler(w http.ResponseWriter, r *http.Request) {
-	stats, err := getStats()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	httpError := tollbooth.LimitByRequest(statsLimiter, w, r)
+	if httpError != nil {
+		http.Error(w, httpError.Message, httpError.StatusCode)
 		return
 	}
 
+	stats := GetCachedStats()
 	tmpl, err := template.ParseFiles("templates/dashboard.html")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -189,6 +232,7 @@ func getChecksInTimeRange(duration time.Duration) (int, error) {
 	err := database.DB.Model(&models.Account{}).Where("last_check > ?", timeThreshold).Count(&count).Error
 	return int(count), err
 }
+
 func getTotalBans() (int, error) {
 	var count int64
 	err := database.DB.Model(&models.Ban{}).Count(&count).Error
