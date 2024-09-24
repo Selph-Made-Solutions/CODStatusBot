@@ -31,14 +31,16 @@ type Account struct {
 
 type UserSettings struct {
 	gorm.Model
-	UserID               string  `gorm:"uniqueIndex"`
-	CaptchaAPIKey        string  // User's own API key, if provided
-	CheckInterval        int     // In minutes
-	NotificationInterval float64 // In hours
-	CooldownDuration     float64 // In hours
-	StatusChangeCooldown float64 // In hours
-	NotificationType     string  `gorm:"default:channel"` // User preference for location of notifications either channel or dm
-	HasSeenAnnouncement  bool    `gorm:"default:false"`   // Flag to track if the user has seen the global announcement.
+	UserID                  string    `gorm:"uniqueIndex"`
+	CaptchaAPIKey           string    // User's own API key, if provided
+	CheckInterval           int       // In minutes
+	NotificationInterval    float64   // In hours
+	CooldownDuration        float64   // In hours
+	NotificationType        string    `gorm:"default:channel"` // User preference for location of notifications either channel or dm
+	StatusChangeCooldown    float64   // In hours
+	HasSeenAnnouncement     bool      `gorm:"default:false"` // Flag to track if the user has seen the global announcement.
+	LastBalanceNotification time.Time // Timestamp of the last balance notification
+
 }
 
 type Ban struct {
