@@ -86,7 +86,6 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	message := "Your EZ-Captcha API key has been updated for all your accounts."
 	if apiKey == "" {
 		message += " The bot's default API key will be used. Your check interval and notification settings have been reset to default values."
 	} else {
@@ -95,7 +94,6 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	respondToInteraction(s, i, message)
 }
-
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
