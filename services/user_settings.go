@@ -154,29 +154,36 @@ func isValidUserID(userID string) bool {
 	return true
 }
 
-func GetUserCaptchaKey(userID string) (string, error) {
+func GetUserCaptchaKey(userID string) (string, float64, error) {
 	if !isValidUserID(userID) {
-		return "", fmt.Errorf("invalid userID")
+		return "", 0, fmt.Errorf("invalid userID")
 	}
 
 	var settings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).First(&settings)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error getting user settings")
-		return "", result.Error
+		return "", 0, result.Error
 	}
 
 	// If the user has a custom API key, return it
 	if settings.CaptchaAPIKey != "" {
-		return settings.CaptchaAPIKey, nil
+		isValid, balance, err := ValidateCaptchaKey(settings.CaptchaAPIKey)
+		if err != nil {
+			return "", 0, err
+		}
+		if !isValid {
+			return "", 0, fmt.Errorf("invalid captcha API key")
+		}
+		return settings.CaptchaAPIKey, balance, nil
 	}
 
 	// If the user doesn't have a custom API key, return the default key.
 	defaultKey := os.Getenv("EZCAPTCHA_CLIENT_KEY")
 	if defaultKey == "" {
-		return "", fmt.Errorf("default EZCAPTCHA_CLIENT_KEY not set in environment")
+		return "", 0, fmt.Errorf("default EZCAPTCHA_CLIENT_KEY not set in environment")
 	}
-	return defaultKey, nil
+	return defaultKey, 0, nil // Return 0 balance for default key
 }
 
 func GetDefaultSettings() (models.UserSettings, error) {
