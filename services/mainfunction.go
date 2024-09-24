@@ -14,6 +14,11 @@ import (
 	"time"
 )
 
+const (
+	maxConsecutiveErrors = 5
+	errorResetInterval   = 24 * time.Hour
+)
+
 type NotificationConfig struct {
 	Type              string
 	Cooldown          time.Duration
@@ -109,6 +114,11 @@ func getEnvIntRaw(key string, fallback int) int {
 
 // sendNotification function: sends notifications based on user preference
 func sendNotification(discord *discordgo.Session, account models.Account, embed *discordgo.MessageEmbed, content string, notificationType string) error {
+	if account.IsCheckDisabled {
+		logger.Log.Infof("Skipping notification for disabled account %s", account.Title)
+		return nil
+	}
+
 	userSettings, err := GetUserSettings(account.UserID)
 	if err != nil {
 		return fmt.Errorf("failed to get user settings: %w", err)
@@ -427,10 +437,16 @@ func handleExpiredCookieAccount(account models.Account, s *discordgo.Session) {
 func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 	logger.Log.Infof("Checking account: %s", account.Title)
 
+	if account.IsCheckDisabled {
+		logger.Log.Infof("Account %s is disabled. Reason: %s", account.Title, account.DisabledReason)
+		return
+	}
+
 	timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to check SSO cookie expiration for account %s", account.Title)
-		// Notify user if the cookie will expire within 24 hours.
+		handleCheckAccountError(account, discord, err)
+		return
 	} else if timeUntilExpiration > 0 && timeUntilExpiration <= 24*time.Hour {
 		notifyCookieExpiringSoon(account, discord, timeUntilExpiration)
 	}
@@ -448,10 +464,17 @@ func CheckSingleAccount(account models.Account, discord *discordgo.Session) {
 		return
 	}
 
+	// Reset consecutive errors if check is successful
+	account.ConsecutiveErrors = 0
+	account.LastSuccessfulCheck = time.Now()
+
 	updateAccountStatus(account, result, discord)
 }
 
 func handleCheckAccountError(account models.Account, discord *discordgo.Session, err error) {
+	account.ConsecutiveErrors++
+	account.LastErrorTime = time.Now()
+
 	switch {
 	case strings.Contains(err.Error(), "Missing Access") || strings.Contains(err.Error(), "Unknown Channel"):
 		disableAccount(account, discord, "Bot removed from server/channel")
@@ -460,8 +483,16 @@ func handleCheckAccountError(account models.Account, discord *discordgo.Session,
 	case strings.Contains(err.Error(), "invalid captcha API key"):
 		disableAccount(account, discord, "Invalid captcha API key")
 	default:
-		logger.Log.WithError(err).Errorf("Failed to check account %s: possible expired SSO Cookie", account.Title)
-		notifyUserOfCheckError(account, discord, err)
+		if account.ConsecutiveErrors >= maxConsecutiveErrors {
+			disableAccount(account, discord, fmt.Sprintf("Too many consecutive errors: %v", err))
+		} else {
+			logger.Log.WithError(err).Errorf("Failed to check account %s: possible expired SSO Cookie", account.Title)
+			notifyUserOfCheckError(account, discord, err)
+		}
+	}
+
+	if err := database.DB.Save(&account).Error; err != nil {
+		logger.Log.WithError(err).Errorf("Failed to update account %s after error", account.Title)
 	}
 }
 
@@ -947,11 +978,12 @@ func notifyUserAboutDisabledAccount(s *discordgo.Session, account models.Account
 	embed := &discordgo.MessageEmbed{
 		Title: "Account Disabled",
 		Description: fmt.Sprintf("Your account '%s' has been disabled. Reason: %s\n\n"+
-			"To re-enable monitoring, please address the issue and use the appropriate commands to update your account settings.", account.Title, reason),
+			"To re-enable monitoring, please address the issue and use the /togglecheck command to re-enable your account.", account.Title, reason),
 		Color:     0xFF0000, // Red color for alert
 		Timestamp: time.Now().Format(time.RFC3339),
 	}
 
+	_, err = s.ChannelMessageSendEmbed(channel.ID, embed)
 	_, err = s.ChannelMessageSendEmbed(channel.ID, embed)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to send account disabled notification to user %s", account.UserID)
@@ -968,7 +1000,7 @@ func notifyUserOfCheckError(account models.Account, discord *discordgo.Session, 
 	embed := &discordgo.MessageEmbed{
 		Title: "Account Check Error",
 		Description: fmt.Sprintf("There was an error checking your account '%s': %v\n\n"+
-			"Please check your account settings and try again.", account.Title, err),
+			"If this error persists, your account may be disabled. Please check your account settings and try again.", account.Title, err),
 		Color:     0xFFA500, // Orange color for warning
 		Timestamp: time.Now().Format(time.RFC3339),
 	}
