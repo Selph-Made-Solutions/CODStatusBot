@@ -2,6 +2,7 @@ package models
 
 import (
 	"gorm.io/gorm"
+	"time"
 )
 
 type Account struct {
@@ -22,7 +23,10 @@ type Account struct {
 	LastStatusChange       int64  `gorm:"default:0"`       // The timestamp of the last status change
 	IsCheckDisabled        bool   `gorm:"default:false"`   // A flag indicating if checks are disabled for this account
 	DisabledReason         string
-	SSOCookieExpiration    int64 // The time
+	SSOCookieExpiration    int64
+	ConsecutiveErrors      int `gorm:"default:0"`
+	LastSuccessfulCheck    time.Time
+	LastErrorTime          time.Time
 }
 
 type UserSettings struct {
