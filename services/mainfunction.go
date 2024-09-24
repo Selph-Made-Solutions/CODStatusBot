@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	maxConsecutiveErrors = 5
-	errorResetInterval   = 24 * time.Hour
+	maxConsecutiveErrors          = 5
+	maxUserErrorNotifications     = 3
+	userErrorNotificationCooldown = 24 * time.Hour
 )
 
 type NotificationConfig struct {
@@ -26,6 +27,8 @@ type NotificationConfig struct {
 }
 
 var (
+	userErrorNotifications      = make(map[string][]time.Time)
+	userErrorNotificationMutex  sync.Mutex
 	checkInterval               float64 // Check interval for accounts (in minutes).
 	notificationInterval        float64 // Notification interval for daily updates (in hours).
 	cooldownDuration            float64 // Cooldown duration for invalid cookie notifications (in hours).
@@ -968,4 +971,28 @@ func notifyUserOfCheckError(account models.Account, discord *discordgo.Session, 
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to send check error notification to user %s", account.UserID)
 	}
+}
+
+func notifyUserOfError(s *discordgo.Session, userID string, message string) {
+	userErrorNotificationMutex.Lock()
+	defer userErrorNotificationMutex.Unlock()
+
+	now := time.Now()
+	notifications := userErrorNotifications[userID]
+
+	// Remove old notifications
+	for len(notifications) > 0 && now.Sub(notifications[0]) > userErrorNotificationCooldown {
+		notifications = notifications[1:]
+	}
+
+	if len(notifications) < maxUserErrorNotifications {
+		// Send notification to user
+		channel, err := s.UserChannelCreate(userID)
+		if err == nil {
+			s.ChannelMessageSend(channel.ID, message)
+		}
+		notifications = append(notifications, now)
+	}
+
+	userErrorNotifications[userID] = notifications
 }
