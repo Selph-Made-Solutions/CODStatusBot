@@ -60,6 +60,10 @@ func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			account.LastStatus, checkStatus, account.NotificationType,
 			cookieExpiration, creationDate, lastCheckTime)
 
+		if account.IsCheckDisabled {
+			fieldValue += fmt.Sprintf("\nDisabled Reason: %s", account.DisabledReason)
+		}
+
 		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
 			Name:   account.Title,
 			Value:  fieldValue,
