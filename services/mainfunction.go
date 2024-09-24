@@ -240,48 +240,6 @@ func sendIndividualDailyUpdate(account models.Account, discord *discordgo.Sessio
 	}
 }
 
-/*
-// sendDailyUpdate function: sends a daily update message for a given account.
-func sendDailyUpdate(account models.Account, discord *discordgo.Session) {
-	logger.Log.Infof("Attempting to send daily update for account %s", account.Title)
-
-	// Prepare the description based on the account's cookie status
-	var description string
-	if account.IsExpiredCookie {
-		description = fmt.Sprintf("The SSO cookie for account %s has expired. Please update the cookie using the /updateaccount command or delete the account using the /removeaccount command.", account.Title)
-	} else {
-		timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
-		if err != nil {
-			logger.Log.WithError(err).Errorf("Error checking SSO cookie expiration for account %s", account.Title)
-			description = fmt.Sprintf("An error occurred while checking the SSO cookie expiration for account %s. Please check the account status manually.", account.Title)
-		} else if timeUntilExpiration > 0 {
-			description = fmt.Sprintf("The last status of account %s was %s. SSO cookie will expire in %s.", account.Title, account.LastStatus, FormatExpirationTime(account.SSOCookieExpiration))
-		} else {
-			description = fmt.Sprintf("The SSO cookie for account %s has expired. Please update the cookie using the /updateaccount command or delete the account using the /removeaccount command.", account.Title)
-		}
-	}
-
-	embed := &discordgo.MessageEmbed{
-		Title:       fmt.Sprintf("%.2f Hour Update - %s", notificationInterval, account.Title),
-		Description: description,
-		Color:       GetColorForStatus(account.LastStatus, account.IsExpiredCookie, account.IsCheckDisabled),
-		Timestamp:   time.Now().Format(time.RFC3339),
-	}
-
-	// Send the notification
-	err := sendNotification(discord, account, embed, "", "daily_update")
-	if err != nil {
-		logger.Log.WithError(err).Errorf("Failed to send scheduled update message for account %s", account.Title)
-	} else {
-		account.LastCheck = time.Now().Unix()
-		account.LastNotification = time.Now().Unix()
-		if err := database.DB.Save(&account).Error; err != nil {
-			logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
-		}
-	}
-}
-*/
-
 // CheckAccounts function: periodically checks all accounts for status changes
 func CheckAccounts(s *discordgo.Session) {
 	cleanupTicker := time.NewTicker(24 * time.Hour) // Run cleanup once a day
@@ -320,12 +278,13 @@ func CheckAccounts(s *discordgo.Session) {
 
 // Updated processUserAccounts function
 func processUserAccounts(s *discordgo.Session, userID string, accounts []models.Account) {
-	// Get user's CaptchaAPIKey directly instead of full userSettings
-	userCaptchaKey, err := GetUserCaptchaKey(userID)
+	captchaAPIKey, balance, err := GetUserCaptchaKey(userID)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to get user captcha key for user %s", userID)
-		return
+		return // Exit the function if we can't get the captcha key
 	}
+
+	logger.Log.Infof("User %s captcha balance: %.2f", userID, balance)
 
 	var accountsToUpdate []models.Account
 	var dailyUpdateAccounts []models.Account
@@ -339,7 +298,7 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 		if account.IsPermabanned {
 			// Use the appropriate notification interval
 			notificationInterval := defaultSettings.NotificationInterval
-			if userCaptchaKey != "" {
+			if captchaAPIKey != "" {
 				userSettings, err := GetUserSettings(userID)
 				if err != nil {
 					logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
@@ -356,7 +315,7 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 		}
 
 		checkInterval := defaultSettings.CheckInterval
-		if userCaptchaKey != "" {
+		if captchaAPIKey != "" {
 			userSettings, err := GetUserSettings(userID)
 			if err != nil {
 				logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
