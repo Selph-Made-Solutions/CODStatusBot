@@ -70,7 +70,6 @@ func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			Inline: false,
 		})
 
-		// Use the updated GetColorForStatus function
 		embedColor := services.GetColorForStatus(account.LastStatus, account.IsExpiredCookie, account.IsCheckDisabled)
 		if embedColor != 0x00ff00 {
 			embed.Color = embedColor
@@ -107,4 +106,23 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction")
 	}
+}
+
+func getBalanceInfo(userID string) string {
+	apiKey, _, err := services.GetUserCaptchaKey(userID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error getting user captcha key")
+		return ""
+	}
+
+	if apiKey != "" {
+		_, balance, err := services.ValidateCaptchaKey(apiKey)
+		if err != nil {
+			logger.Log.WithError(err).Error("Error validating captcha key")
+			return ""
+		}
+		return fmt.Sprintf("\nYour current EZ-Captcha balance: %.2f points", balance)
+	}
+
+	return ""
 }
