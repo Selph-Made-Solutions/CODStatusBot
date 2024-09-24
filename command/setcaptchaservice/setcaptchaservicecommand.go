@@ -1,6 +1,7 @@
 package setcaptchaservice
 
 import (
+	"fmt"
 	"strings"
 
 	"CODStatusBot/logger"
@@ -60,7 +61,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Validate the API key
+	var message string
 	if apiKey != "" {
 		isValid, balance, err := services.ValidateCaptchaKey(apiKey)
 		if err != nil {
@@ -73,6 +74,9 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			return
 		}
 		logger.Log.Infof("Valid captcha key set for user: %s. Balance: %.2f points", userID, balance)
+		message = fmt.Sprintf("Your EZ-Captcha API key has been updated for all your accounts. Your current balance is %.2f points.", balance)
+	} else {
+		message = "Your EZ-Captcha API key has been removed. The bot's default API key will be used. Your check interval and notification settings have been reset to default values."
 	}
 
 	err := services.SetUserCaptchaKey(userID, apiKey)
