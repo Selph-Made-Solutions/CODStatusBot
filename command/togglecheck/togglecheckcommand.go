@@ -100,7 +100,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		account.DisabledReason = "Manually disabled by user"
 		if err := database.DB.Save(&account).Error; err != nil {
 			logger.Log.WithError(err).Error("Error saving account changes")
-			respondToInteraction(s, i, "Error re-enabling account checks. Please try again.")
+			respondToInteraction(s, i, "Error toggling account checks. Please try again.")
 			return
 		}
 		respondToInteraction(s, i, fmt.Sprintf("Checks for account '%s' have been disabled.", account.Title))
@@ -143,6 +143,7 @@ func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	respondToInteraction(s, i, fmt.Sprintf("Checks for account '%s' have been re-enabled.", account.Title))
 }
+
 func showConfirmationButtons(s *discordgo.Session, i *discordgo.InteractionCreate, accountID uint, message string) {
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseUpdateMessage,
@@ -180,14 +181,33 @@ func getCheckStatus(isDisabled bool) string {
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseUpdateMessage,
-		Data: &discordgo.InteractionResponseData{
-			Content:    message,
-			Components: []discordgo.MessageComponent{},
-		},
-	})
+	var err error
+	if i.Type == discordgo.InteractionMessageComponent {
+		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseUpdateMessage,
+			Data: &discordgo.InteractionResponseData{
+				Content:    message,
+				Components: []discordgo.MessageComponent{},
+			},
+		})
+	} else {
+		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: message,
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+	}
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction")
+		// If we fail to respond to the interaction, try to send a follow-up message
+		_, followUpErr := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+			Content: "An error occurred while processing your request. Please try again.",
+			Flags:   discordgo.MessageFlagsEphemeral,
+		})
+		if followUpErr != nil {
+			logger.Log.WithError(followUpErr).Error("Error sending follow-up message")
+		}
 	}
 }
