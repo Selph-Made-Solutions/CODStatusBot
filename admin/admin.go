@@ -2,7 +2,6 @@ package admin
 
 import (
 	"encoding/json"
-	"fmt"
 	"html/template"
 	"net/http"
 	"os"
@@ -13,18 +12,13 @@ import (
 	"CODStatusBot/models"
 
 	"github.com/gorilla/mux"
-	"github.com/gorilla/sessions"
 )
-
-var store = sessions.NewCookieStore([]byte(os.Getenv("SESSION_KEY")))
 
 func StartAdminPanel() {
 	r := mux.NewRouter()
 
-	r.HandleFunc("/admin/login", loginHandler).Methods("GET", "POST")
-	r.HandleFunc("/admin/logout", logoutHandler).Methods("POST")
-	r.HandleFunc("/admin/stats", authMiddleware(statsHandler)).Methods("GET")
-	r.HandleFunc("/admin", authMiddleware(dashboardHandler)).Methods("GET")
+	r.HandleFunc("/admin", dashboardHandler).Methods("GET")
+	r.HandleFunc("/admin/stats", statsHandler).Methods("GET")
 
 	// Serve static files
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
@@ -38,50 +32,6 @@ func StartAdminPanel() {
 	err := http.ListenAndServe(":"+port, r)
 	if err != nil {
 		logger.Log.WithError(err).Fatal("Failed to start admin panel")
-	}
-}
-
-func loginHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "GET" {
-		// Serve login page
-		tmpl, err := template.ParseFiles("templates/login.html")
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		tmpl.Execute(w, nil)
-		return
-	}
-
-	username := r.FormValue("username")
-	password := r.FormValue("password")
-
-	if username == os.Getenv("ADMIN_USERNAME") && password == os.Getenv("ADMIN_PASSWORD") {
-		session, _ := store.Get(r, "admin-session")
-		session.Values["authenticated"] = true
-		session.Save(r, w)
-		http.Redirect(w, r, "/admin", http.StatusSeeOther)
-	} else {
-		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-	}
-}
-
-func logoutHandler(w http.ResponseWriter, r *http.Request) {
-	session, _ := store.Get(r, "admin-session")
-	session.Values["authenticated"] = false
-	session.Save(r, w)
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, "Logout successful")
-}
-
-func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		session, _ := store.Get(r, "admin-session")
-		if auth, ok := session.Values["authenticated"].(bool); !ok || !auth {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-		next.ServeHTTP(w, r)
 	}
 }
 
