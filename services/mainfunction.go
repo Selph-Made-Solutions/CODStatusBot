@@ -18,7 +18,11 @@ const (
 	maxConsecutiveErrors          = 5
 	maxUserErrorNotifications     = 3
 	userErrorNotificationCooldown = 24 * time.Hour
+	balanceNotificationThreshold = 1000 // Notify when balance is below this value
+	balanceNotificationInterval  = 24 * time.Hour // How often to notify about low balance
 )
+
+
 
 type NotificationConfig struct {
 	Type              string
@@ -286,68 +290,121 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 		logger.Log.WithError(err).Errorf("Failed to get user captcha key for user %s", userID)
 		return // Exit the function if we can't get the captcha key
 	}
+	if captchaAPIKey != "" {
+		checkAndNotifyBalance(s, userID, balance)
 
-	logger.Log.Infof("User %s captcha balance: %.2f", userID, balance)
+		logger.Log.Infof("User %s captcha balance: %.2f", userID, balance)
 
-	var accountsToUpdate []models.Account
-	var dailyUpdateAccounts []models.Account
+		var accountsToUpdate []models.Account
+		var dailyUpdateAccounts []models.Account
 
-	for _, account := range accounts {
-		if account.IsCheckDisabled {
-			logger.Log.Infof("Skipping check for disabled account: %s", account.Title)
-			continue
-		}
+		for _, account := range accounts {
+			if account.IsCheckDisabled {
+				logger.Log.Infof("Skipping check for disabled account: %s", account.Title)
+				continue
+			}
 
-		if account.IsPermabanned {
-			// Use the appropriate notification interval
-			notificationInterval := defaultSettings.NotificationInterval
+			if account.IsPermabanned {
+				// Use the appropriate notification interval
+				notificationInterval := defaultSettings.NotificationInterval
+				if captchaAPIKey != "" {
+					userSettings, err := GetUserSettings(userID)
+					if err != nil {
+						logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
+						continue
+					}
+					notificationInterval = userSettings.NotificationInterval
+				}
+
+				lastNotification := time.Unix(account.LastNotification, 0)
+				if time.Since(lastNotification).Hours() >= notificationInterval {
+					handlePermabannedAccount(account, s)
+				}
+				continue
+			}
+
+			checkInterval := defaultSettings.CheckInterval
 			if captchaAPIKey != "" {
 				userSettings, err := GetUserSettings(userID)
 				if err != nil {
 					logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
 					continue
 				}
-				notificationInterval = userSettings.NotificationInterval
+				checkInterval = userSettings.CheckInterval
 			}
 
-			lastNotification := time.Unix(account.LastNotification, 0)
-			if time.Since(lastNotification).Hours() >= notificationInterval {
-				handlePermabannedAccount(account, s)
-			}
-			continue
-		}
-
-		checkInterval := defaultSettings.CheckInterval
-		if captchaAPIKey != "" {
-			userSettings, err := GetUserSettings(userID)
-			if err != nil {
-				logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
+			lastCheck := time.Unix(account.LastCheck, 0)
+			if time.Since(lastCheck).Minutes() < float64(checkInterval) {
+				logger.Log.Infof("Skipping check for account %s (rate limit)", account.Title)
 				continue
 			}
-			checkInterval = userSettings.CheckInterval
+
+			accountsToUpdate = append(accountsToUpdate, account)
+
+			if time.Since(time.Unix(account.LastNotification, 0)).Hours() > notificationInterval {
+				dailyUpdateAccounts = append(dailyUpdateAccounts, account)
+			}
 		}
 
-		lastCheck := time.Unix(account.LastCheck, 0)
-		if time.Since(lastCheck).Minutes() < float64(checkInterval) {
-			logger.Log.Infof("Skipping check for account %s (rate limit)", account.Title)
-			continue
+		// Check and update accounts
+		for _, account := range accountsToUpdate {
+			go CheckSingleAccount(account, s)
 		}
 
-		accountsToUpdate = append(accountsToUpdate, account)
-
-		if time.Since(time.Unix(account.LastNotification, 0)).Hours() > notificationInterval {
-			dailyUpdateAccounts = append(dailyUpdateAccounts, account)
+		// Send consolidated daily update if needed
+		if len(dailyUpdateAccounts) > 0 {
+			go sendConsolidatedDailyUpdate(dailyUpdateAccounts, s)
 		}
 	}
 
-	// Check and update accounts
-	for _, account := range accountsToUpdate {
-		go CheckSingleAccount(account, s)
-	}
 
-	// Send consolidated daily update if needed
-	if len(dailyUpdateAccounts) > 0 {
-		go sendConsolidatedDailyUpdate(dailyUpdateAccounts, s)
+func checkAndNotifyBalance(s*discordgo.Session, userID
+	string, balance, err := GetUserCaptchaKey(userID)
+	float64){
+
+		userSettings, err := GetUserSettings(userID)
+		if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
+			return
+		}
+
+		now := time.Now()
+		if balance < balanceNotificationThreshold &&
+			(userSettings.LastBalanceNotification.IsZero() ||
+				now.Sub(userSettings.LastBalanceNotification) >= balanceNotificationInterval) {
+			embed := &discordgo.MessageEmbed{
+				Title:       "Low EZ-Captcha Balance Alert",
+				Description: fmt.Sprintf("Your EZ-Captcha balance is currently %.2f points, which is below the recommended threshold of %d points.", balance, balanceNotificationThreshold),
+				Color:       0xFFA500, // Orange color for warning
+				Fields: []*discordgo.MessageEmbedField{
+					{
+						Name:   "Action Required",
+						Value:  "Please recharge your EZ-Captcha balance to ensure uninterrupted service for your account checks.",
+						Inline: false,
+					},
+				},
+				Timestamp: now.Format(time.RFC3339),
+			}
+
+			// Use the first account's notification settings for this user
+			var account models.Account
+			if err := database.DB.Where("user_id = ?", userID).First(&account).Error; err != nil {
+				logger.Log.WithError(err).Errorf("Failed to get an account for user %s", userID)
+				return
+			}
+
+			err = sendNotification(s, account, embed, "", "balance_warning")
+			if err != nil {
+				logger.Log.WithError(err).Errorf("Failed to send balance notification to user %s", userID)
+				return
+			}
+
+			// Update last balance notification timestamp
+			userSettings.LastBalanceNotification = now
+			if err := database.DB.Save(&userSettings).Error; err != nil {
+				logger.Log.WithError(err).Errorf("Failed to update LastBalanceNotification for user %s", userID)
+			}
+		}
 	}
 }
 
