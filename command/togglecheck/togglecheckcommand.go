@@ -105,10 +105,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		}
 		respondToInteraction(s, i, fmt.Sprintf("Checks for account '%s' have been disabled.", account.Title))
 	}
-
-	respondToInteraction(s, i, fmt.Sprintf("Checks for account '%s' have been re-enabled.", account.Title))
 }
-
 func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
 
