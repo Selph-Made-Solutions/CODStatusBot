@@ -117,6 +117,9 @@ func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate
 	case strings.HasPrefix(customID, "toggle_check_"):
 		togglecheck.HandleAccountSelection(s, i)
 		logger.Log.Info("Handling toggle check selection")
+	case strings.HasPrefix(customID, "confirm_reenable_") || customID == "cancel_reenable":
+		togglecheck.HandleConfirmation(s, i)
+		logger.Log.Info("Handling toggle check confirmation")
 	default:
 		logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 	}
