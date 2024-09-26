@@ -19,6 +19,7 @@ const (
 	ValidationError
 	AuthenticationError
 	RateLimitError
+	DiscordError
 	UnknownError
 )
 
@@ -132,6 +133,16 @@ func NewRateLimitError(err error, limit string) *CustomError {
 		fmt.Sprintf("You've reached the rate limit for this action. Please wait %s before trying again.", limit),
 		fmt.Sprintf("Rate limit reached: %v", err),
 		true,
+	)
+}
+
+func NewDiscordError(err error, discordMsg string) *CustomError {
+	return NewError(
+		DiscordError,
+		err,
+		fmt.Sprintf("Unexpected Discord Error: Discord Response: %s", discordMsg),
+		fmt.Sprintf("Discord error: %v", err),
+		false,
 	)
 }
 
