@@ -1,6 +1,7 @@
 package main
 
 import (
+	"CODStatusBot/errorhandler"
 	"fmt"
 	"os"
 	"os/signal"
@@ -32,26 +33,36 @@ func main() {
 		logger.Log.WithError(err).Error("Bot encountered an error and is shutting down")
 		os.Exit(1)
 	}
+
+	adminToken := os.Getenv("DEVELOPER_ID")
+	if adminToken == "" {
+		logger.Log.Fatal("Developer ID not set in environment")
+	}
+
+	err := admin.InitAdminNotifications(adminToken)
+	if err != nil {
+		logger.Log.WithError(err).Fatal("Failed to initialize admin notifications")
+	}
 }
 
 func run() error {
 	if err := loadEnvironmentVariables(); err != nil {
-		return fmt.Errorf("failed to load environment variables: %w", err)
+		return errorhandler.NewValidationError(err, "environment variables")
 	}
 	logger.Log.Info("Environment variables loaded successfully")
 
 	if err := services.LoadEnvironmentVariables(); err != nil {
-		return fmt.Errorf("failed to initialize EZ-Captcha service: %w", err)
+		return errorhandler.NewValidationError(err, "EZ-Captcha service configuration")
 	}
 	logger.Log.Info("EZ-Captcha service initialized successfully")
 
 	if err := database.Databaselogin(); err != nil {
-		return fmt.Errorf("failed to connect to database: %w", err)
+		return errorhandler.NewDatabaseError(err, "connecting to database")
 	}
 	logger.Log.Info("Database connection established successfully")
 
 	if err := initializeDatabase(); err != nil {
-		return fmt.Errorf("failed to initialize database: %w", err)
+		return errorhandler.NewDatabaseError(err, "initializing database")
 	}
 	logger.Log.Info("Database initialized successfully")
 
@@ -62,7 +73,6 @@ func run() error {
 	}
 	logger.Log.Info("Discord bot started successfully")
 
-	// Start the admin panel
 	go admin.StartAdminPanel()
 
 	logger.Log.Info("Bot is running")
@@ -70,7 +80,6 @@ func run() error {
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-sc
 
-	// Gracefully close the Discord session
 	if err := discord.Close(); err != nil {
 		logger.Log.WithError(err).Error("Error closing Discord session")
 	}
