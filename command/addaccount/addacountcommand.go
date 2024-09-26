@@ -2,10 +2,12 @@ package addaccount
 
 import (
 	"fmt"
+	"gorm.io/gorm"
 	"strings"
 	"unicode"
 
 	"CODStatusBot/database"
+	"CODStatusBot/errorhandler"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
@@ -51,7 +53,7 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 							Style:       discordgo.TextInputParagraph,
 							Placeholder: "Enter the SSO cookie for this account",
 							Required:    true,
-							MinLength:   1,
+							MinLength:   35,
 							MaxLength:   100,
 						},
 					},
@@ -60,7 +62,7 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		},
 	})
 	if err != nil {
-		logger.Log.WithError(err).Error("Error responding with modal")
+		handleInteractionError(s, i, errorhandler.NewAPIError(err, "Discord", "Failed to create modal"))
 	}
 }
 
@@ -69,57 +71,30 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	title := utils.SanitizeInput(strings.TrimSpace(data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value))
 	ssoCookie := strings.TrimSpace(data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
-	logger.Log.Infof("Attempting to add account. Title: %s, SSO Cookie length: %d", title, len(ssoCookie))
 
-	// Verify SSO Cookie
 	if !services.VerifySSOCookie(ssoCookie) {
-		logger.Log.Error("Invalid SSO cookie provided")
-		respondToInteraction(s, i, "Invalid SSO cookie. Please make sure you've copied the entire cookie value.")
+		handleInteractionError(s, i, errorhandler.NewValidationError(fmt.Errorf("invalid SSO cookie"), "SSO cookie", "The provided SSO cookie is invalid. Please check and try again."))
 		return
 	}
 
-	// Get SSO Cookie expiration
 	expirationTimestamp, err := services.DecodeSSOCookie(ssoCookie)
 	if err != nil {
-		logger.Log.WithError(err).Error("Error decoding SSO cookie")
-		respondToInteraction(s, i, fmt.Sprintf("Error processing SSO cookie: %v", err))
+		handleInteractionError(s, i, errorhandler.NewValidationError(err, "SSO cookie", "Failed to process the SSO cookie. Please ensure it's correct and try again."))
 		return
 	}
 
-	var userID string
-	var channelID string
-	if i.Member != nil {
-		userID = i.Member.User.ID
-		channelID = i.ChannelID
-	} else if i.User != nil {
-		userID = i.User.ID
-		// For user applications, we'll use DM as the default channel.
-		channel, err := s.UserChannelCreate(userID)
-		if err != nil {
-			logger.Log.WithError(err).Error("Error creating DM channel")
-			respondToInteraction(s, i, "An error occurred while processing your request.")
-			return
-		}
-		channelID = channel.ID
-	} else {
-		logger.Log.Error("Interaction doesn't have Member or User")
-		respondToInteraction(s, i, "An error occurred while processing your request.")
+	userID, channelID, isUserApplication, err := getUserAndChannelID(s, i)
+	if err != nil {
+		handleInteractionError(s, i, err)
 		return
 	}
 
-	// Get the user's current notification preference
-	var existingAccount models.Account
-	result := database.DB.Where("user_id = ?", userID).First(&existingAccount)
-
-	notificationType := "channel" // Default to channel if no existing preference
-	if result.Error == nil {
-		notificationType = existingAccount.NotificationType
-	} else if i.User != nil {
-		// If it is a user application and no existing preference, default to DM.
-		notificationType = "dm"
+	notificationType, err := getNotificationType(userID, isUserApplication)
+	if err != nil {
+		handleInteractionError(s, i, err)
+		return
 	}
 
-	// Create new account
 	account := models.Account{
 		UserID:              userID,
 		Title:               title,
@@ -129,18 +104,59 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		NotificationType:    notificationType,
 	}
 
-	// Save to database
-	result = database.DB.Create(&account)
+	result := database.DB.Create(&account)
 	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error creating account")
-		respondToInteraction(s, i, "Error creating account. Please try again.")
+		handleInteractionError(s, i, errorhandler.NewDatabaseError(result.Error, "creating account", "Failed to create the account. Please try again later."))
 		return
 	}
 
-	logger.Log.Infof("Account added successfully. ID: %d, Title: %s, UserID: %s", account.ID, account.Title, account.UserID)
-
 	formattedExpiration := services.FormatExpirationTime(expirationTimestamp)
 	respondToInteraction(s, i, fmt.Sprintf("Account added successfully! SSO cookie will expire in %s", formattedExpiration))
+}
+
+func getUserAndChannelID(s *discordgo.Session, i *discordgo.InteractionCreate) (string, string, bool, error) {
+	var userID, channelID string
+	var isUserApplication bool
+
+	if i.Member != nil {
+		userID = i.Member.User.ID
+		channelID = i.ChannelID
+		isUserApplication = false
+	} else if i.User != nil {
+		userID = i.User.ID
+		isUserApplication = true
+		channel, err := s.UserChannelCreate(userID)
+		if err != nil {
+			return "", "", false, errorhandler.NewAPIError(err, "Discord", "Failed to create DM channel")
+		}
+		channelID = channel.ID
+	} else {
+		return "", "", false, errorhandler.NewValidationError(fmt.Errorf("interaction doesn't have Member or User"), "user identification", "Unable to identify the user. Please try again or contact support.")
+	}
+
+	return userID, channelID, isUserApplication, nil
+}
+
+func getNotificationType(userID string, isUserApplication bool) (string, error) {
+	var existingAccount models.Account
+	result := database.DB.Where("user_id = ?", userID).First(&existingAccount)
+
+	if result.Error == nil {
+		return existingAccount.NotificationType, nil
+	} else if result.Error == gorm.ErrRecordNotFound {
+		if isUserApplication {
+			return "dm", nil
+		} else {
+			return "channel", nil
+		}
+	} else {
+		return "", errorhandler.NewDatabaseError(result.Error, "fetching user preference", "Failed to retrieve notification preferences. Using default settings.")
+	}
+}
+
+func handleInteractionError(s *discordgo.Session, i *discordgo.InteractionCreate, err error) {
+	userMsg, _ := errorhandler.HandleError(err)
+	respondToInteraction(s, i, userMsg)
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
@@ -153,5 +169,6 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	})
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction")
+
 	}
 }
