@@ -37,19 +37,16 @@ func StartBot() (*discordgo.Session, error) {
 	var err error
 	discord, err = discordgo.New("Bot " + envToken)
 	if err != nil {
-		logger.Log.WithError(err).WithField("Bot startup", "Token").Error()
 		return nil, err
 	}
 
 	err = discord.Open()
 	if err != nil {
-		logger.Log.WithError(err).WithField("Bot startup", "Opening Session").Error()
 		return nil, err
 	}
 
 	err = discord.UpdateWatchStatus(0, "the Status of your Accounts so you dont have to.")
 	if err != nil {
-		logger.Log.WithError(err).WithField("Bot startup", "Setting Presence Status").Error()
 		return nil, err
 	}
 
@@ -89,7 +86,6 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
-
 	switch {
 	case strings.HasPrefix(customID, "feedback_"):
 		feedback.HandleFeedbackChoice(s, i)
@@ -109,12 +105,12 @@ func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate
 		checknow.HandleAccountSelection(s, i)
 	case strings.HasPrefix(customID, "toggle_check_"):
 		togglecheck.HandleAccountSelection(s, i)
-	case strings.HasPrefix(customID, "confirm_toggle_") ||
-		customID == "cancel_toggle":
+	case strings.HasPrefix(customID, "confirm_reenable_") || customID == "cancel_reenable":
 		togglecheck.HandleConfirmation(s, i)
 	default:
 		logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 	}
+
 }
 
 func init() {
