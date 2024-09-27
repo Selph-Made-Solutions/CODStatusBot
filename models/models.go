@@ -40,7 +40,7 @@ type UserSettings struct {
 	StatusChangeCooldown    float64   // In hours
 	HasSeenAnnouncement     bool      `gorm:"default:false"` // Flag to track if the user has seen the global announcement.
 	LastBalanceNotification time.Time // Timestamp of the last balance notification
-
+	IsBotInstalled          bool      `gorm:"default:false"` // Flag to track if the bot is installed in this guild
 }
 
 type Ban struct {
