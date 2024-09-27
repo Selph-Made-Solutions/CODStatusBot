@@ -1,10 +1,10 @@
 package database
 
 import (
-	"errors"
 	"fmt"
 	"os"
 
+	"CODStatusBot/errorhandler"
 	"CODStatusBot/models"
 
 	"CODStatusBot/logger"
@@ -24,26 +24,20 @@ func Databaselogin() error {
 	dbName := os.Getenv("DB_NAME")
 	dbVar := os.Getenv("DB_VAR")
 
-	var err error
-
 	if dbUser == "" || dbPassword == "" || dbHost == "" || dbPort == "" || dbName == "" || dbVar == "" {
-		err = errors.New("one or more environment variables for database not set or missing")
-		logger.Log.WithError(err).WithField("Bot Startup ", "database variables ").Error()
-		return err
+		return errorhandler.NewValidationError(fmt.Errorf("one or more environment variables for database not set or missing"), "database configuration")
 	}
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s%s", dbUser, dbPassword, dbHost, dbPort, dbName, dbVar)
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
-		logger.Log.WithError(err).WithField("Bot Startup ", "Mysql Config ").Error()
-		return err
+		return errorhandler.NewDatabaseError(err, "opening database connection")
 	}
 
 	DB = db
 
-	err = DB.AutoMigrate(&models.Account{}, &models.Ban{}, models.UserSettings{})
+	err = DB.AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{})
 	if err != nil {
-		logger.Log.WithError(err).WithField("Bot Startup ", "Database Models Problem ").Error()
-		return err
+		return errorhandler.NewDatabaseError(err, "auto-migrating database models")
 	}
 	return nil
 }
