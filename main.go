@@ -65,6 +65,9 @@ func run() error {
 	// Start the admin panel
 	go admin.StartAdminPanel()
 
+	// Start the balance check scheduler
+	go services.ScheduleBalanceChecks(discord)
+
 	logger.Log.Info("Bot is running")
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
