@@ -62,7 +62,7 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		},
 	})
 	if err != nil {
-		handleInteractionError(s, i, errorhandler.NewAPIError(err, "Discord"))
+		handleError(s, i, errorhandler.NewDiscordError(err, "creating add account modal"))
 	}
 }
 
@@ -73,25 +73,25 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	ssoCookie := strings.TrimSpace(data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
 
 	if !services.VerifySSOCookie(ssoCookie) {
-		handleInteractionError(s, i, errorhandler.NewValidationError(fmt.Errorf("invalid SSO cookie"), "SSO cookie"))
+		handleError(s, i, errorhandler.NewValidationError(fmt.Errorf("invalid SSO cookie"), "SSO cookie"))
 		return
 	}
 
 	expirationTimestamp, err := services.DecodeSSOCookie(ssoCookie)
 	if err != nil {
-		handleInteractionError(s, i, errorhandler.NewValidationError(err, "SSO cookie"))
+		handleError(s, i, errorhandler.NewValidationError(err, "SSO cookie"))
 		return
 	}
 
 	userID, channelID, isUserApplication, err := getUserAndChannelID(s, i)
 	if err != nil {
-		handleInteractionError(s, i, err)
+		handleError(s, i, err)
 		return
 	}
 
 	notificationType, err := getNotificationType(userID, isUserApplication)
 	if err != nil {
-		handleInteractionError(s, i, err)
+		handleError(s, i, err)
 		return
 	}
 
@@ -106,7 +106,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	result := database.DB.Create(&account)
 	if result.Error != nil {
-		handleInteractionError(s, i, errorhandler.NewDatabaseError(result.Error, "creating account"))
+		handleError(s, i, errorhandler.NewDatabaseError(result.Error, "creating account"))
 		return
 	}
 
@@ -128,7 +128,7 @@ func getUserAndChannelID(s *discordgo.Session, i *discordgo.InteractionCreate) (
 		// For user applications, we'll use DM as the default channel.
 		channel, err := s.UserChannelCreate(userID)
 		if err != nil {
-			return "", "", false, errorhandler.NewAPIError(err, "Discord")
+			return "", "", false, errorhandler.NewDiscordError(err, "creating DM channel")
 		}
 		channelID = channel.ID
 	} else {
@@ -151,14 +151,11 @@ func getNotificationType(userID string, isUserApplication bool) (string, error) 
 			return "channel", nil
 		}
 	} else {
-		return "", errorhandler.NewDatabaseError(
-			result.Error,
-			"fetching user preference",
-		)
+		return "", errorhandler.NewDatabaseError(result.Error, "fetching user preference")
 	}
 }
 
-func handleInteractionError(s *discordgo.Session, i *discordgo.InteractionCreate, err error) {
+func handleError(s *discordgo.Session, i *discordgo.InteractionCreate, err error) {
 	userMsg, _ := errorhandler.HandleError(err)
 	respondToInteraction(s, i, userMsg)
 }
