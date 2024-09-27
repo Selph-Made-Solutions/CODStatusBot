@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/bwmarrin/discordgo"
 	"io"
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
@@ -289,4 +291,28 @@ func CheckCaptchaKeyValidity(captchaKey string) (bool, float64, error) {
 	}
 
 	return true, result.Balance, nil
+}
+
+func ScheduleBalanceChecks(s *discordgo.Session) {
+	ticker := time.NewTicker(6 * time.Hour)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		var users []models.UserSettings
+		if err := database.DB.Find(&users).Error; err != nil {
+			logger.Log.WithError(err).Error("Failed to fetch users for balance check")
+			continue
+		}
+
+		for _, user := range users {
+			if user.CaptchaAPIKey != "" {
+				_, balance, err := ValidateCaptchaKey(user.CaptchaAPIKey)
+				if err != nil {
+					logger.Log.WithError(err).Errorf("Failed to validate captcha key for user %s", user.UserID)
+					continue
+				}
+				checkAndNotifyBalance(s, user.UserID, balance)
+			}
+		}
+	}
 }
