@@ -1,7 +1,6 @@
 package checknow
 
 import (
-	"CODStatusBot/errorhandler"
 	"fmt"
 	"os"
 	"strconv"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"CODStatusBot/database"
+	"CODStatusBot/errorhandler"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
@@ -36,14 +36,13 @@ func init() {
 func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	userID, err := getUserID(i)
 	if err != nil {
-		//logger.Log.WithError(err).Error("Failed to get user ID")
-		handleInteractionError(s, i, err)
+		handleError(s, i, err)
 		return
 	}
 
 	userSettings, err := services.GetUserSettings(userID)
 	if err != nil {
-		handleInteractionError(s, i, errorhandler.NewDatabaseError(err, "fetching user settings"))
+		handleError(s, i, errorhandler.NewDatabaseError(err, "fetching user settings"))
 		return
 	}
 
@@ -51,7 +50,7 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	if userSettings.CaptchaAPIKey == "" {
 		if !checkRateLimit(userID) {
-			handleInteractionError(s, i, errorhandler.NewRateLimitError(fmt.Errorf("rate limit exceeded"), fmt.Sprintf("%v", rateLimit)))
+			handleError(s, i, errorhandler.NewRateLimitError(fmt.Errorf("rate limit exceeded"), fmt.Sprintf("%v", rateLimit)))
 			return
 		}
 	}
@@ -63,8 +62,7 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	accounts, err := fetchAccounts(userID, accountTitle)
 	if err != nil {
-		//logger.Log.WithError(result.Error).Error("Error fetching accounts")
-		handleInteractionError(s, i, err)
+		handleError(s, i, err)
 		return
 	}
 
@@ -99,8 +97,7 @@ func fetchAccounts(userID, accountTitle string) ([]models.Account, error) {
 func showAccountButtons(s *discordgo.Session, i *discordgo.InteractionCreate, accounts []models.Account) {
 	userID, err := getUserID(i)
 	if err != nil {
-		//logger.Log.WithError(err).Error("Failed to get user ID")
-		handleInteractionError(s, i, err)
+		handleError(s, i, err)
 		return
 	}
 
@@ -139,7 +136,7 @@ func showAccountButtons(s *discordgo.Session, i *discordgo.InteractionCreate, ac
 		},
 	})
 	if err != nil {
-		handleInteractionError(s, i, errorhandler.NewAPIError(err, "Discord"))
+		handleError(s, i, errorhandler.NewDiscordError(err, "sending account selection message"))
 	}
 }
 
@@ -148,7 +145,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	parts := strings.Split(customID, "_")
 
 	if len(parts) != 4 {
-		handleInteractionError(s, i, errorhandler.NewValidationError(fmt.Errorf("invalid custom ID format"), "custom ID"))
+		handleError(s, i, errorhandler.NewValidationError(fmt.Errorf("invalid custom ID format"), "custom ID"))
 		return
 	}
 
@@ -158,8 +155,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	if accountIDOrAll == "all" {
 		accounts, err := fetchAccounts(userID, "")
 		if err != nil {
-			//logger.Log.WithError(result.Error).Error("Error fetching accounts")
-			handleInteractionError(s, i, err)
+			handleError(s, i, err)
 			return
 		}
 		checkAccounts(s, i, accounts)
@@ -168,14 +164,14 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 
 	accountID, err := strconv.Atoi(accountIDOrAll)
 	if err != nil {
-		handleInteractionError(s, i, errorhandler.NewValidationError(err, "account ID"))
+		handleError(s, i, errorhandler.NewValidationError(err, "account ID"))
 		return
 	}
 
 	var account models.Account
 	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
-		handleInteractionError(s, i, errorhandler.NewDatabaseError(result.Error, "fetching account"))
+		handleError(s, i, errorhandler.NewDatabaseError(result.Error, "fetching account"))
 		return
 	}
 
@@ -190,7 +186,7 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 		},
 	})
 	if err != nil {
-		handleInteractionError(s, i, errorhandler.NewAPIError(err, "Discord"))
+		handleError(s, i, errorhandler.NewDiscordError(err, "deferring response"))
 		return
 	}
 
@@ -293,6 +289,11 @@ func checkRateLimit(userID string) bool {
 		return true
 	}
 	return false
+}
+
+func handleError(s *discordgo.Session, i *discordgo.InteractionCreate, err error) {
+	userMsg, _ := errorhandler.HandleError(err)
+	respondToInteraction(s, i, userMsg)
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
