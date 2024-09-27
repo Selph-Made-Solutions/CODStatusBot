@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -13,8 +14,8 @@ import (
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
-
 	"github.com/bwmarrin/discordgo"
+	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 )
 
@@ -26,6 +27,32 @@ func main() {
 			logger.Log.Errorf("Recovered from panic: %v\n%s", r, debug.Stack())
 		}
 	}()
+
+	admin.StartStatsCaching()
+	r := mux.NewRouter()
+	r.HandleFunc("/admin", admin.DashboardHandler)
+	r.HandleFunc("/admin/stats", admin.StatsHandler)
+
+	staticDir := "/home/container/"
+	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
+
+	port := os.Getenv("ADMIN_PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	go func() {
+		logger.Log.Infof("Admin dashboard starting on port %s", port)
+		if err := http.ListenAndServe(":"+port, r); err != nil {
+			logger.Log.WithError(err).Fatal("Failed to start admin dashboard")
+		}
+	}()
+
+	discord, err := bot.StartBot()
+	if err != nil {
+		logger.Log.WithError(err).Fatal("Failed to start Discord bot")
+	}
+	defer discord.Close()
 
 	logger.Log.Info("Bot starting...")
 	if err := run(); err != nil {
@@ -61,9 +88,6 @@ func run() error {
 		return fmt.Errorf("failed to start Discord bot: %w", err)
 	}
 	logger.Log.Info("Discord bot started successfully")
-
-	// Start the admin panel
-	go admin.StartAdminPanel()
 
 	// Start the balance check scheduler
 	go services.ScheduleBalanceChecks(discord)
