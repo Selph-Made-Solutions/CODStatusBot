@@ -8,6 +8,7 @@ import (
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
+	"CODStatusBot/utils"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -20,7 +21,7 @@ func CommandToggleCheck(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		userID = i.User.ID
 	} else {
 		logger.Log.Error("Interaction doesn't have Member or User")
-		respondToInteraction(s, i, "An error occurred while processing your request.")
+		utils.RespondToInteraction(s, i, "An error occurred while processing your request.")
 		return
 	}
 
@@ -28,12 +29,12 @@ func CommandToggleCheck(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
-		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
+		utils.RespondToInteraction(s, i, "Error fetching your accounts. Please try again.")
 		return
 	}
 
 	if len(accounts) == 0 {
-		respondToInteraction(s, i, "You don't have any monitored accounts.")
+		utils.RespondToInteraction(s, i, "You don't have any monitored accounts.")
 		return
 	}
 
@@ -82,7 +83,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	accountID, err := strconv.Atoi(strings.TrimPrefix(customID, "toggle_check_"))
 	if err != nil {
 		logger.Log.WithError(err).Error("Error parsing account ID")
-		respondToInteraction(s, i, "Error processing your selection. Please try again.")
+		utils.RespondToInteraction(s, i, "Error processing your selection. Please try again.")
 		return
 	}
 
@@ -90,7 +91,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
-		respondToInteraction(s, i, "Error: Account not found")
+		utils.RespondToInteraction(s, i, "Error: Account not found")
 		return
 	}
 
@@ -107,14 +108,14 @@ func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
 
 	if customID == "cancel_toggle" {
-		respondToInteraction(s, i, "Action cancelled.")
+		utils.RespondToInteraction(s, i, "Action cancelled.")
 		return
 	}
 
 	parts := strings.Split(customID, "_")
 	if len(parts) != 3 {
 		logger.Log.Error("Invalid custom ID format")
-		respondToInteraction(s, i, "Error processing your confirmation. Please try again.")
+		utils.RespondToInteraction(s, i, "Error processing your confirmation. Please try again.")
 		return
 	}
 
@@ -122,7 +123,7 @@ func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	accountID, err := strconv.Atoi(parts[2])
 	if err != nil {
 		logger.Log.WithError(err).Error("Error parsing account ID")
-		respondToInteraction(s, i, "Error processing your confirmation. Please try again.")
+		utils.RespondToInteraction(s, i, "Error processing your confirmation. Please try again.")
 		return
 	}
 
@@ -130,7 +131,7 @@ func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
-		respondToInteraction(s, i, "Error: Account not found")
+		utils.RespondToInteraction(s, i, "Error: Account not found")
 		return
 	}
 
@@ -141,21 +142,21 @@ func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		account.ConsecutiveErrors = 0
 		if err := database.DB.Save(&account).Error; err != nil {
 			logger.Log.WithError(err).Error("Error saving account changes")
-			respondToInteraction(s, i, "Error re-enabling account checks. Please try again.")
+			utils.RespondToInteraction(s, i, "Error re-enabling account checks. Please try again.")
 			return
 		}
-		respondToInteraction(s, i, fmt.Sprintf("Checks for account '%s' have been re-enabled.", account.Title))
+		utils.RespondToInteraction(s, i, fmt.Sprintf("Checks for account '%s' have been re-enabled.", account.Title))
 	case "disable":
 		account.IsCheckDisabled = true
 		account.DisabledReason = "Manually disabled by user"
 		if err := database.DB.Save(&account).Error; err != nil {
 			logger.Log.WithError(err).Error("Error saving account changes")
-			respondToInteraction(s, i, "Error disabling account checks. Please try again.")
+			utils.RespondToInteraction(s, i, "Error disabling account checks. Please try again.")
 			return
 		}
-		respondToInteraction(s, i, fmt.Sprintf("Checks for account '%s' have been disabled.", account.Title))
+		utils.RespondToInteraction(s, i, fmt.Sprintf("Checks for account '%s' have been disabled.", account.Title))
 	default:
-		respondToInteraction(s, i, "Invalid action. Please try again.")
+		utils.RespondToInteraction(s, i, "Invalid action. Please try again.")
 	}
 }
 
@@ -184,7 +185,7 @@ func showConfirmationButtons(s *discordgo.Session, i *discordgo.InteractionCreat
 	})
 	if err != nil {
 		logger.Log.WithError(err).Error("Error showing confirmation buttons")
-		respondToInteraction(s, i, "An error occurred. Please try again.")
+		utils.RespondToInteraction(s, i, "An error occurred. Please try again.")
 	}
 }
 
