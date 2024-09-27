@@ -118,15 +118,14 @@ func getEnvIntRaw(key string, fallback int) int {
 	return fallback
 }
 
-// sendNotification function: sends notifications based on user preference
 func sendNotification(discord *discordgo.Session, account models.Account, embed *discordgo.MessageEmbed, content string, notificationType string) error {
 	if account.IsCheckDisabled {
 		logger.Log.Infof("Skipping notification for disabled account %s", account.Title)
 		return nil
 	}
 
-	userSettings, err := GetUserSettings(account.UserID)
-	if err != nil {
+	var userSettings models.UserSettings
+	if err := database.DB.Where("user_id = ?", account.UserID).First(&userSettings).Error; err != nil {
 		return fmt.Errorf("failed to get user settings: %w", err)
 	}
 
@@ -178,10 +177,9 @@ func sendNotification(discord *discordgo.Session, account models.Account, embed 
 	}
 
 	var channelID string
-	if account.NotificationType == "dm" {
+	if userSettings.NotificationType == "dm" {
 		channel, err := discord.UserChannelCreate(account.UserID)
 		if err != nil {
-			logger.Log.WithError(err).Errorf("Failed to create DM channel for user %s", account.UserID)
 			return fmt.Errorf("failed to create DM channel: %w", err)
 		}
 		channelID = channel.ID
@@ -189,7 +187,7 @@ func sendNotification(discord *discordgo.Session, account models.Account, embed 
 		channelID = account.ChannelID
 	}
 
-	_, err = discord.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
+	_, err := discord.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
 		Embed:   embed,
 		Content: content,
 	})
@@ -210,6 +208,12 @@ func sendNotification(discord *discordgo.Session, account models.Account, embed 
 }
 
 func sendIndividualDailyUpdate(account models.Account, discord *discordgo.Session) {
+	now := time.Now()
+	if now.Sub(account.Last24HourNotification) < 24*time.Hour {
+		logger.Log.Infof("Skipping daily update for account %s as last notification was less than 24 hours ago", account.Title)
+		return
+	}
+
 	logger.Log.Infof("Sending individual daily update for account %s", account.Title)
 
 	var description string
@@ -243,6 +247,11 @@ func sendIndividualDailyUpdate(account models.Account, discord *discordgo.Sessio
 		if err := database.DB.Save(&account).Error; err != nil {
 			logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
 		}
+	}
+
+	account.Last24HourNotification = now
+	if err := database.DB.Save(&account).Error; err != nil {
+		logger.Log.WithError(err).Errorf("Failed to update Last24HourNotification for account %s", account.Title)
 	}
 }
 
