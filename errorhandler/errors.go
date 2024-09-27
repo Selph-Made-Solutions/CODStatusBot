@@ -8,8 +8,6 @@ import (
 	"CODStatusBot/logger"
 )
 
-// ErrorCategory represents the category of an error
-
 type ErrorCategory int
 
 const (
@@ -22,8 +20,6 @@ const (
 	UnknownError
 )
 
-// CustomError represents a custom error with additional context
-
 type CustomError struct {
 	Category         ErrorCategory
 	OriginalErr      error
@@ -32,25 +28,19 @@ type CustomError struct {
 	IsUserActionable bool
 }
 
-// Error implements the error interface
-
 func (e *CustomError) Error() string {
 	return e.OriginalErr.Error()
 }
 
-// NewError creates a new CustomError
-
-func NewError(category ErrorCategory, err error, userMsg, adminMsg string, isUserActionable bool) *CustomError {
+func NewError(category ErrorCategory, err error, context string, userMsg string, isUserActionable bool) *CustomError {
 	return &CustomError{
 		Category:         category,
 		OriginalErr:      err,
 		UserMessage:      userMsg,
-		AdminMessage:     adminMsg,
+		AdminMessage:     fmt.Sprintf("%s: %v", context, err),
 		IsUserActionable: isUserActionable,
 	}
 }
-
-// HandleError processes the error and returns appropriate messages
 
 func HandleError(err error) (string, bool) {
 	if customErr, ok := err.(*CustomError); ok {
@@ -73,24 +63,22 @@ func HandleError(err error) (string, bool) {
 	return "An unexpected error occurred. Our team has been notified and is working on it.", false
 }
 
-// Helper functions for common errors
-
-func NewNetworkError(err error, details string) *CustomError {
+func NewNetworkError(err error, context string) *CustomError {
 	return NewError(
 		NetworkError,
 		err,
+		fmt.Sprintf("Network error: %s", context),
 		"We're having trouble connecting to our servers. Please try again later.",
-		fmt.Sprintf("Network error: %v. Details: %s", err, details),
 		false,
 	)
 }
 
-func NewDatabaseError(err error, operation string) *CustomError {
+func NewDatabaseError(err error, context string) *CustomError {
 	return NewError(
 		DatabaseError,
 		err,
+		fmt.Sprintf("Database error: %s", context),
 		"We're experiencing database issues. Please try again later.",
-		fmt.Sprintf("Database error during %s: %v", operation, err),
 		false,
 	)
 }
@@ -99,8 +87,8 @@ func NewAPIError(err error, api string) *CustomError {
 	return NewError(
 		APIError,
 		err,
+		fmt.Sprintf("%s API error", api),
 		fmt.Sprintf("We're having trouble communicating with the %s API. Please try again later.", api),
-		fmt.Sprintf("%s API error: %v", api, err),
 		false,
 	)
 }
@@ -109,8 +97,8 @@ func NewValidationError(err error, field string) *CustomError {
 	return NewError(
 		ValidationError,
 		err,
+		fmt.Sprintf("Validation error: %s", field),
 		fmt.Sprintf("The %s you provided is not valid. Please check and try again.", field),
-		fmt.Sprintf("Validation error for %s: %v", field, err),
 		true,
 	)
 }
@@ -119,8 +107,8 @@ func NewAuthenticationError(err error) *CustomError {
 	return NewError(
 		AuthenticationError,
 		err,
+		"Authentication error",
 		"Your session has expired or is invalid. Please log in again.",
-		fmt.Sprintf("Authentication error: %v", err),
 		true,
 	)
 }
@@ -129,8 +117,8 @@ func NewRateLimitError(err error, limit string) *CustomError {
 	return NewError(
 		RateLimitError,
 		err,
+		fmt.Sprintf("Rate limit reached: %s", limit),
 		fmt.Sprintf("You've reached the rate limit for this action. Please wait %s before trying again.", limit),
-		fmt.Sprintf("Rate limit reached: %v", err),
 		true,
 	)
 }
