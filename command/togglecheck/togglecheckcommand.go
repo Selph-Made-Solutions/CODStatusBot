@@ -43,9 +43,13 @@ func CommandToggleCheck(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	for _, account := range accounts {
 		label := fmt.Sprintf("%s (%s)", account.Title, getCheckStatus(account.IsCheckDisabled))
+		style := discordgo.SuccessButton
+		if account.IsCheckDisabled {
+			style = discordgo.DangerButton
+		}
 		currentRow = append(currentRow, discordgo.Button{
 			Label:    label,
-			Style:    discordgo.PrimaryButton,
+			Style:    style,
 			CustomID: fmt.Sprintf("toggle_check_%d", account.ID),
 		})
 
