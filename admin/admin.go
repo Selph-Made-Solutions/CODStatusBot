@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"html/template"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
@@ -14,7 +13,6 @@ import (
 
 	"github.com/didip/tollbooth"
 	"github.com/didip/tollbooth/limiter"
-	"github.com/gorilla/mux"
 )
 
 var (
@@ -44,30 +42,12 @@ type Stats struct {
 	NewestAccount          time.Time
 	TotalShadowbans        int
 	TotalTempbans          int
+	BanDates               []string `json:"banDates"`
+	BanCounts              []int    `json:"banCounts"`
 }
 
 func init() {
 	statsLimiter = tollbooth.NewLimiter(1, &limiter.ExpirableOptions{DefaultExpirationTTL: time.Hour})
-}
-
-func StartAdminPanel() {
-	StartStatsCaching()
-	r := mux.NewRouter()
-
-	r.HandleFunc("/admin", dashboardHandler).Methods("GET")
-	r.HandleFunc("/admin/stats", statsHandler).Methods("GET")
-	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
-
-	port := os.Getenv("ADMIN_PORT")
-	if port == "" {
-		port = "8080"
-	}
-
-	logger.Log.Infof("Admin panel starting on port %s", port)
-	err := http.ListenAndServe(":"+port, r)
-	if err != nil {
-		logger.Log.WithError(err).Fatal("Failed to start admin panel")
-	}
 }
 
 func StartStatsCaching() {
@@ -97,7 +77,7 @@ func GetCachedStats() Stats {
 	return cachedStats
 }
 
-func statsHandler(w http.ResponseWriter, r *http.Request) {
+func StatsHandler(w http.ResponseWriter, r *http.Request) {
 	httpError := tollbooth.LimitByRequest(statsLimiter, w, r)
 	if httpError != nil {
 		http.Error(w, httpError.Message, httpError.StatusCode)
@@ -109,7 +89,7 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(stats)
 }
 
-func dashboardHandler(w http.ResponseWriter, r *http.Request) {
+func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	logger.Log.Info("Dashboard handler called")
 	httpError := tollbooth.LimitByRequest(statsLimiter, w, r)
 	if httpError != nil {
@@ -153,6 +133,25 @@ func getStats() (Stats, error) {
 	stats.OldestAccount, stats.NewestAccount, _ = getAccountAgeRange()
 	stats.TotalShadowbans, _ = getTotalBansByType(models.StatusShadowban)
 	stats.TotalTempbans, _ = getTotalBansByType(models.StatusTempban)
+
+	var banData []struct {
+		Date  time.Time
+		Count int
+	}
+	err := database.DB.Model(&models.Ban{}).
+		Select("DATE(created_at) as date, COUNT(*) as count").
+		Where("created_at > ?", time.Now().AddDate(0, 0, -30)).
+		Group("DATE(created_at)").
+		Order("date").
+		Scan(&banData).Error
+	if err != nil {
+		return stats, err
+	}
+
+	for _, data := range banData {
+		stats.BanDates = append(stats.BanDates, data.Date.Format("2006-01-02"))
+		stats.BanCounts = append(stats.BanCounts, data.Count)
+	}
 
 	return stats, nil
 }
