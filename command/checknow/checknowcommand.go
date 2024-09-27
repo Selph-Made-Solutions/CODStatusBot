@@ -1,6 +1,7 @@
 package checknow
 
 import (
+	"CODStatusBot/errorhandler"
 	"fmt"
 	"os"
 	"strconv"
@@ -35,15 +36,14 @@ func init() {
 func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	userID, err := getUserID(i)
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to get user ID")
-		respondToInteraction(s, i, "An error occurred while processing your request.")
+		//logger.Log.WithError(err).Error("Failed to get user ID")
+		handleInteractionError(s, i, err)
 		return
 	}
 
 	userSettings, err := services.GetUserSettings(userID)
 	if err != nil {
-		logger.Log.WithError(err).Error("Error fetching user settings")
-		respondToInteraction(s, i, "Error fetching user settings. Please try again later.")
+		handleInteractionError(s, i, errorhandler.NewDatabaseError(err, "fetching user settings"))
 		return
 	}
 
@@ -51,7 +51,7 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	if userSettings.CaptchaAPIKey == "" {
 		if !checkRateLimit(userID) {
-			respondToInteraction(s, i, fmt.Sprintf("You're using this command too frequently. Please wait %v before trying again, or set up your own API key for unlimited use.", rateLimit))
+			handleInteractionError(s, i, errorhandler.NewRateLimitError(fmt.Errorf("rate limit exceeded"), fmt.Sprintf("%v", rateLimit)))
 			return
 		}
 	}
@@ -61,16 +61,10 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		accountTitle = i.ApplicationCommandData().Options[0].StringValue()
 	}
 
-	var accounts []models.Account
-	query := database.DB.Where("user_id = ?", userID)
-	if accountTitle != "" {
-		query = query.Where("title = ?", accountTitle)
-	}
-	result := query.Find(&accounts)
-
-	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error fetching accounts")
-		respondToInteraction(s, i, "Error fetching accounts. Please try again later.")
+	accounts, err := fetchAccounts(userID, accountTitle)
+	if err != nil {
+		//logger.Log.WithError(result.Error).Error("Error fetching accounts")
+		handleInteractionError(s, i, err)
 		return
 	}
 
@@ -88,11 +82,25 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 }
 
+func fetchAccounts(userID, accountTitle string) ([]models.Account, error) {
+	var accounts []models.Account
+	query := database.DB.Where("user_id = ?", userID)
+	if accountTitle != "" {
+		query = query.Where("title = ?", accountTitle)
+	}
+	result := query.Find(&accounts)
+
+	if result.Error != nil {
+		return nil, errorhandler.NewDatabaseError(result.Error, "fetching accounts")
+	}
+	return accounts, nil
+}
+
 func showAccountButtons(s *discordgo.Session, i *discordgo.InteractionCreate, accounts []models.Account) {
 	userID, err := getUserID(i)
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to get user ID")
-		respondToInteraction(s, i, "An error occurred while processing your request.")
+		//logger.Log.WithError(err).Error("Failed to get user ID")
+		handleInteractionError(s, i, err)
 		return
 	}
 
@@ -131,7 +139,7 @@ func showAccountButtons(s *discordgo.Session, i *discordgo.InteractionCreate, ac
 		},
 	})
 	if err != nil {
-		logger.Log.WithError(err).Error("Error responding with account selection")
+		handleInteractionError(s, i, errorhandler.NewAPIError(err, "Discord"))
 	}
 }
 
@@ -140,8 +148,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	parts := strings.Split(customID, "_")
 
 	if len(parts) != 4 {
-		logger.Log.Error("Invalid custom ID format")
-		respondToInteraction(s, i, "An error occurred while processing your request.")
+		handleInteractionError(s, i, errorhandler.NewValidationError(fmt.Errorf("invalid custom ID format"), "custom ID"))
 		return
 	}
 
@@ -149,11 +156,10 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	accountIDOrAll := parts[3]
 
 	if accountIDOrAll == "all" {
-		var accounts []models.Account
-		result := database.DB.Where("user_id = ?", userID).Find(&accounts)
-		if result.Error != nil {
-			logger.Log.WithError(result.Error).Error("Error fetching accounts")
-			respondToInteraction(s, i, "Error fetching accounts. Please try again later.")
+		accounts, err := fetchAccounts(userID, "")
+		if err != nil {
+			//logger.Log.WithError(result.Error).Error("Error fetching accounts")
+			handleInteractionError(s, i, err)
 			return
 		}
 		checkAccounts(s, i, accounts)
@@ -162,16 +168,14 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 
 	accountID, err := strconv.Atoi(accountIDOrAll)
 	if err != nil {
-		logger.Log.WithError(err).Error("Error parsing account ID")
-		respondToInteraction(s, i, "Error processing your selection. Please try again.")
+		handleInteractionError(s, i, errorhandler.NewValidationError(err, "account ID"))
 		return
 	}
 
 	var account models.Account
 	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error fetching account")
-		respondToInteraction(s, i, "Error: Account not found or you don't have permission to check it.")
+		handleInteractionError(s, i, errorhandler.NewDatabaseError(result.Error, "fetching account"))
 		return
 	}
 
@@ -186,7 +190,7 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 		},
 	})
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to defer interaction response")
+		handleInteractionError(s, i, errorhandler.NewAPIError(err, "Discord"))
 		return
 	}
 
@@ -249,6 +253,10 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 		embeds = append(embeds, embed)
 	}
 
+	sendEmbeds(s, i, embeds)
+}
+
+func sendEmbeds(s *discordgo.Session, i *discordgo.InteractionCreate, embeds []*discordgo.MessageEmbed) {
 	// Send embeds in batches of 10 (Discord's limit)
 	for j := 0; j < len(embeds); j += 10 {
 		end := j + 10
@@ -261,6 +269,16 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 		})
 		if err != nil {
 			logger.Log.WithError(err).Error("Failed to send follow-up message")
+			// Attempt to notify the user of the error
+			errorEmbed := &discordgo.MessageEmbed{
+				Title:       "Error",
+				Description: "Failed to send some results. Please try again or contact support if the issue persists.",
+				Color:       0xFF0000, // Red color for error
+			}
+			_, _ = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+				Embeds: []*discordgo.MessageEmbed{errorEmbed},
+				Flags:  discordgo.MessageFlagsEphemeral,
+			})
 		}
 	}
 }
@@ -309,7 +327,12 @@ func getUserID(i *discordgo.InteractionCreate) (string, error) {
 	if i.User != nil {
 		return i.User.ID, nil
 	}
-	return "", fmt.Errorf("unable to determine user ID")
+	return "", errorhandler.NewValidationError(fmt.Errorf("unable to determine user ID"), "user identification")
+}
+
+func handleInteractionError(s *discordgo.Session, i *discordgo.InteractionCreate, err error) {
+	userMsg, _ := errorhandler.HandleError(err)
+	respondToInteraction(s, i, userMsg)
 }
 
 func getBalanceInfo(userID string) string {
