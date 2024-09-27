@@ -39,7 +39,7 @@ func main() {
 		logger.Log.Fatal("Developer ID not set in environment")
 	}
 
-	err := admin.InitAdminNotifications(adminToken)
+	err := errorhandler.InitAdminNotifications(adminToken)
 	if err != nil {
 		logger.Log.WithError(err).Fatal("Failed to initialize admin notifications")
 	}
