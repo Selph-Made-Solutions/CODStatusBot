@@ -152,9 +152,7 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["feedback_with_id"] = feedback.HandleFeedbackChoice
 
 	// Confirmation handlers
-	Handlers["confirm_remove"] = removeaccount.HandleConfirmation
-	Handlers["confirm_reenable"] = togglecheck.HandleConfirmation
-	Handlers["confirm_disable"] = togglecheck.HandleConfirmation
+	Handlers["confirm_toggle"] = togglecheck.HandleConfirmation
 	Handlers["cancel_toggle"] = togglecheck.HandleConfirmation
 
 	logger.Log.Info("Global commands registered and handlers set up")
