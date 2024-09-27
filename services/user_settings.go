@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"CODStatusBot/database"
+	"CODStatusBot/errorhandler"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 )
@@ -56,15 +57,14 @@ func init() {
 
 	logger.Log.Infof("Default settings loaded: CheckInterval=%d, NotificationInterval=%.2f, CooldownDuration=%.2f, StatusChangeCooldown=%.2f",
 		defaultSettings.CheckInterval, defaultSettings.NotificationInterval, defaultSettings.CooldownDuration, defaultSettings.StatusChangeCooldown)
-
 }
+
 func GetUserSettings(userID string) (models.UserSettings, error) {
 	logger.Log.Infof("Getting user settings for user: %s", userID)
 	var settings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
 	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error getting user settings")
-		return settings, result.Error
+		return settings, errorhandler.NewDatabaseError(result.Error, "fetching user settings")
 	}
 
 	// If the user doesn't have custom settings, use default settings.
@@ -90,27 +90,23 @@ func GetUserSettings(userID string) (models.UserSettings, error) {
 
 func SetUserCaptchaKey(userID string, captchaKey string) error {
 	if !isValidUserID(userID) {
-		logger.Log.Error("Invalid userID provided")
-		return fmt.Errorf("invalid userID")
+		return errorhandler.NewValidationError(fmt.Errorf("invalid userID"), "user identification")
 	}
 
 	var settings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
 	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error setting user settings")
-		return result.Error
+		return errorhandler.NewDatabaseError(result.Error, "fetching user settings")
 	}
 
 	if captchaKey != "" {
 		// Validate the captcha key before setting it and get balance
 		isValid, balance, err := CheckCaptchaKeyValidity(captchaKey)
 		if err != nil {
-			logger.Log.WithError(err).Error("Error validating captcha key")
-			return err
+			return errorhandler.NewAPIError(err, "validating captcha key")
 		}
 		if !isValid {
-			logger.Log.Error("Invalid captcha key provided")
-			return fmt.Errorf("invalid captcha key")
+			return errorhandler.NewValidationError(fmt.Errorf("invalid captcha key"), "captcha key validation")
 		}
 
 		settings.CaptchaAPIKey = captchaKey
@@ -132,8 +128,7 @@ func SetUserCaptchaKey(userID string, captchaKey string) error {
 	}
 
 	if err := database.DB.Save(&settings).Error; err != nil {
-		logger.Log.WithError(err).Error("Error saving user settings")
-		return err
+		return errorhandler.NewDatabaseError(err, "saving user settings")
 	}
 
 	logger.Log.Infof("Updated captcha key and settings for user: %s", userID)
@@ -156,14 +151,13 @@ func isValidUserID(userID string) bool {
 
 func GetUserCaptchaKey(userID string) (string, float64, error) {
 	if !isValidUserID(userID) {
-		return "", 0, fmt.Errorf("invalid userID")
+		return "", 0, errorhandler.NewValidationError(fmt.Errorf("invalid userID"), "user identification")
 	}
 
 	var settings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).First(&settings)
 	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error getting user settings")
-		return "", 0, result.Error
+		return "", 0, errorhandler.NewDatabaseError(result.Error, "fetching user settings")
 	}
 
 	// If the user has a custom API key, return it
@@ -173,7 +167,7 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 			return "", 0, err
 		}
 		if !isValid {
-			return "", 0, fmt.Errorf("invalid captcha API key")
+			return "", 0, errorhandler.NewValidationError(fmt.Errorf("invalid captcha API key"), "captcha key validation")
 		}
 		return settings.CaptchaAPIKey, balance, nil
 	}
@@ -181,7 +175,7 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 	// If the user doesn't have a custom API key, return the default key.
 	defaultKey := os.Getenv("EZCAPTCHA_CLIENT_KEY")
 	if defaultKey == "" {
-		return "", 0, fmt.Errorf("default EZCAPTCHA_CLIENT_KEY not set in environment")
+		return "", 0, errorhandler.NewValidationError(fmt.Errorf("default EZCAPTCHA_CLIENT_KEY not set in environment"), "captcha key configuration")
 	}
 	return defaultKey, 0, nil // Return 0 balance for default key
 }
@@ -194,8 +188,7 @@ func RemoveCaptchaKey(userID string) error {
 	var settings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).First(&settings)
 	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error removing apikey in settings")
-		return result.Error
+		return errorhandler.NewDatabaseError(result.Error, "fetching user settings")
 	}
 
 	settings.CaptchaAPIKey = ""
@@ -206,8 +199,7 @@ func RemoveCaptchaKey(userID string) error {
 	// Keep the user's notification type preference
 
 	if err := database.DB.Save(&settings).Error; err != nil {
-		logger.Log.WithError(err).Error("Error saving user settings")
-		return err
+		return errorhandler.NewDatabaseError(err, "saving user settings")
 	}
 
 	logger.Log.Infof("Removed captcha key and reset settings for user: %s", userID)
@@ -218,8 +210,7 @@ func UpdateUserSettings(userID string, newSettings models.UserSettings) error {
 	var settings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
 	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error updating user settings")
-		return result.Error
+		return errorhandler.NewDatabaseError(result.Error, "fetching user settings")
 	}
 
 	// User can only update settings if they have a valid API key.
@@ -244,8 +235,7 @@ func UpdateUserSettings(userID string, newSettings models.UserSettings) error {
 	}
 
 	if err := database.DB.Save(&settings).Error; err != nil {
-		logger.Log.WithError(err).Error("Error updating user settings")
-		return err
+		return errorhandler.NewDatabaseError(err, "saving user settings")
 	}
 
 	logger.Log.Infof("Updated settings for user: %s", userID)
@@ -260,18 +250,19 @@ func CheckCaptchaKeyValidity(captchaKey string) (bool, float64, error) {
 
 	jsonPayload, err := json.Marshal(payload)
 	if err != nil {
-		return false, 0, fmt.Errorf("failed to marshal JSON payload: %v", err)
+		return false, 0, errorhandler.NewValidationError(err, "marshalling JSON payload")
 	}
 
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonPayload))
 	if err != nil {
-		return false, 0, fmt.Errorf("failed to send getBalance request: %v", err)
+		return false, 0, errorhandler.NewNetworkError(err, "sending getBalance request")
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
+
 	if err != nil {
-		return false, 0, fmt.Errorf("failed to read response body: %v", err)
+		return false, 0, errorhandler.NewNetworkError(err, "reading response body")
 	}
 
 	var result struct {
@@ -281,7 +272,7 @@ func CheckCaptchaKeyValidity(captchaKey string) (bool, float64, error) {
 
 	err = json.Unmarshal(body, &result)
 	if err != nil {
-		return false, 0, fmt.Errorf("failed to parse JSON response: %v", err)
+		return false, 0, errorhandler.NewAPIError(err, "parsing JSON response")
 	}
 
 	if result.ErrorId != 0 {
