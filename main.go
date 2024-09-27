@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"runtime/debug"
 	"syscall"
+	"time"
 
 	"CODStatusBot/admin"
 	"CODStatusBot/bot"
@@ -28,7 +29,6 @@ func main() {
 		}
 	}()
 
-	admin.StartStatsCaching()
 	r := mux.NewRouter()
 	r.HandleFunc("/admin", admin.DashboardHandler)
 	r.HandleFunc("/admin/stats", admin.StatsHandler)
@@ -89,6 +89,9 @@ func run() error {
 	}
 	logger.Log.Info("Discord bot started successfully")
 
+	// Start stats caching
+	beginStatsCaching()
+
 	// Start the balance check scheduler
 	go services.ScheduleBalanceChecks(discord)
 
@@ -140,4 +143,9 @@ func initializeDatabase() error {
 		return fmt.Errorf("failed to migrate database tables: %w", err)
 	}
 	return nil
+}
+
+func beginStatsCaching() {
+	time.Sleep(60 * time.Second)
+	admin.StartStatsCaching()
 }
