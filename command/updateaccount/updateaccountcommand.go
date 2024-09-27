@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"CODStatusBot/database"
+	"CODStatusBot/errorhandler"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
@@ -15,22 +16,16 @@ import (
 )
 
 func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	var userID string
-	if i.Member != nil {
-		userID = i.Member.User.ID
-	} else if i.User != nil {
-		userID = i.User.ID
-	} else {
-		logger.Log.Error("Interaction doesn't have Member or User")
-		respondToInteraction(s, i, "An error occurred while processing your request.")
+	userID, err := getUserID(i)
+	if err != nil {
+		handleError(s, i, err)
 		return
 	}
 
 	var accounts []models.Account
 	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
 	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
-		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
+		handleError(s, i, errorhandler.NewDatabaseError(result.Error, "fetching user accounts"))
 		return
 	}
 
@@ -61,8 +56,7 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		components = append(components, discordgo.ActionsRow{Components: currentRow})
 	}
 
-	// Send a message with account buttons.
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content:    "Select an account to update:",
@@ -71,7 +65,7 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		},
 	})
 	if err != nil {
-		logger.Log.WithError(err).Error("Error responding with account selection")
+		handleError(s, i, errorhandler.NewDiscordError(err, "sending account selection message"))
 	}
 }
 
@@ -79,8 +73,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	customID := i.MessageComponentData().CustomID
 	accountID, err := strconv.Atoi(strings.TrimPrefix(customID, "update_account_"))
 	if err != nil {
-		logger.Log.WithError(err).Error("Error parsing account ID")
-		respondToInteraction(s, i, "Error processing your selection. Please try again.")
+		handleError(s, i, errorhandler.NewValidationError(err, "account ID"))
 		return
 	}
 
@@ -107,7 +100,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		},
 	})
 	if err != nil {
-		logger.Log.WithError(err).Error("Error responding with modal")
+		handleError(s, i, errorhandler.NewDiscordError(err, "sending update account modal"))
 	}
 }
 
@@ -117,8 +110,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	accountIDStr := strings.TrimPrefix(data.CustomID, "update_account_modal_")
 	accountID, err := strconv.Atoi(accountIDStr)
 	if err != nil {
-		logger.Log.WithError(err).Error("Error converting account ID from modal custom ID")
-		respondToInteraction(s, i, "Error processing your update. Please try again.")
+		handleError(s, i, errorhandler.NewValidationError(err, "account ID"))
 		return
 	}
 
@@ -135,47 +127,39 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	if newSSOCookie == "" {
-		respondToInteraction(s, i, "Error: New SSO cookie must be provided.")
+		handleError(s, i, errorhandler.NewValidationError(fmt.Errorf("empty SSO cookie"), "SSO cookie"))
 		return
 	}
 
 	// Verify the new SSO cookie
 	if !services.VerifySSOCookie(newSSOCookie) {
-		respondToInteraction(s, i, "Error: The provided SSO cookie is invalid. Please check and try again.")
+		handleError(s, i, errorhandler.NewValidationError(fmt.Errorf("invalid SSO cookie"), "SSO cookie"))
 		return
 	}
 
 	var account models.Account
 	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error fetching account")
-		respondToInteraction(s, i, "Error: Account not found or you don't have permission to update it.")
+		handleError(s, i, errorhandler.NewDatabaseError(result.Error, "fetching account"))
 		return
 	}
 
 	// Verify that the user owns this account
-	var userID string
-	if i.Member != nil {
-		userID = i.Member.User.ID
-	} else if i.User != nil {
-		userID = i.User.ID
-	} else {
-		logger.Log.Error("Interaction doesn't have Member or User")
-		respondToInteraction(s, i, "An error occurred while processing your request.")
+	userID, err := getUserID(i)
+	if err != nil {
+		handleError(s, i, err)
 		return
 	}
 
 	if account.UserID != userID {
-		logger.Log.Error("User attempted to update an account they don't own")
-		respondToInteraction(s, i, "Error: You don't have permission to update this account.")
+		handleError(s, i, errorhandler.NewAuthenticationError(fmt.Errorf("user doesn't own this account")))
 		return
 	}
 
 	// Get SSO Cookie expiration
 	expirationTimestamp, err := services.DecodeSSOCookie(newSSOCookie)
 	if err != nil {
-		logger.Log.WithError(err).Error("Error decoding SSO cookie")
-		respondToInteraction(s, i, fmt.Sprintf("Error processing SSO cookie: %v", err))
+		handleError(s, i, errorhandler.NewValidationError(err, "SSO cookie"))
 		return
 	}
 
@@ -190,8 +174,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	services.DBMutex.Lock()
 	if err := database.DB.Save(&account).Error; err != nil {
 		services.DBMutex.Unlock()
-		logger.Log.WithError(err).Error("Error updating account")
-		respondToInteraction(s, i, "Error updating account. Please try again.")
+		handleError(s, i, errorhandler.NewDatabaseError(err, "updating account"))
 		return
 	}
 	services.DBMutex.Unlock()
@@ -199,6 +182,11 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	formattedExpiration := services.FormatExpirationTime(expirationTimestamp)
 	message := fmt.Sprintf("Account '%s' has been successfully updated. New SSO cookie will expire in %s. Account checks have been re-enabled.", account.Title, formattedExpiration)
 	respondToInteraction(s, i, message)
+}
+
+func handleError(s *discordgo.Session, i *discordgo.InteractionCreate, err error) {
+	userMsg, _ := errorhandler.HandleError(err)
+	respondToInteraction(s, i, userMsg)
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
@@ -224,4 +212,14 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction")
 	}
+}
+
+func getUserID(i *discordgo.InteractionCreate) (string, error) {
+	if i.Member != nil && i.Member.User != nil {
+		return i.Member.User.ID, nil
+	}
+	if i.User != nil {
+		return i.User.ID, nil
+	}
+	return "", errorhandler.NewValidationError(fmt.Errorf("unable to determine user ID"), "user identification")
 }
