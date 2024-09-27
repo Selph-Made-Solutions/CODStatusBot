@@ -1,6 +1,7 @@
 package services
 
 import (
+	"CODStatusBot/admin"
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
@@ -937,21 +938,16 @@ func cleanupInactiveAccounts(s *discordgo.Session) {
 		if err := checkAccountAccess(s, &account); err != nil {
 			logger.Log.WithError(err).Warnf("Lost access to account %s for user %s", account.Title, account.UserID)
 
-			// Disable the account from normal checks
 			account.IsCheckDisabled = true
-
-			// You might want to add a new field to the Account model to track the reason for disabling
 			account.DisabledReason = "Bot removed from server/channel"
-
-			// Optionally, you could delete the account instead of disabling it
-			// if err := database.DB.Delete(&account).Error; err != nil {
-			//     logger.Log.WithError(err).Errorf("Failed to delete inactive account %s", account.Title)
-			// }
 
 			if err := database.DB.Save(&account).Error; err != nil {
 				logger.Log.WithError(err).Errorf("Failed to update account %s status during cleanup", account.Title)
 				continue
 			}
+
+			// Notify developer about the disabled account
+			admin.NotifyAdmin(fmt.Sprintf("Account disabled during cleanup: %s (ID: %d, User: %s)", account.Title, account.ID, account.UserID))
 
 			// Attempt to notify the user via DM about the account being disabled
 			notifyUserAboutDisabledAccount(s, account, account.DisabledReason)
@@ -1006,24 +1002,45 @@ func notifyUserAboutDisabledAccount(s *discordgo.Session, account models.Account
 }
 
 func notifyUserOfCheckError(account models.Account, discord *discordgo.Session, err error) {
-	channel, err := discord.UserChannelCreate(account.UserID)
-	if err != nil {
-		logger.Log.WithError(err).Errorf("Failed to create DM channel for user %s", account.UserID)
-		return
+	// Send notification to developer
+	admin.NotifyAdmin(fmt.Sprintf("Error checking account %s (ID: %d): %v", account.Title, account.ID, err))
+
+	// Only notify user if it's a critical error
+	if isCriticalError(err) {
+		channel, err := discord.UserChannelCreate(account.UserID)
+		if err != nil {
+			logger.Log.WithError(err).Errorf("Failed to create DM channel for user %s", account.UserID)
+			return
+		}
+
+		embed := &discordgo.MessageEmbed{
+			Title: "Critical Account Check Error",
+			Description: fmt.Sprintf("There was a critical error checking your account '%s'. "+
+				"The bot developer has been notified and will investigate the issue.", account.Title),
+			Color:     0xFF0000, // Red color for critical error
+			Timestamp: time.Now().Format(time.RFC3339),
+		}
+
+		_, err = discord.ChannelMessageSendEmbed(channel.ID, embed)
+		if err != nil {
+			logger.Log.WithError(err).Errorf("Failed to send critical error notification to user %s", account.UserID)
+		}
+	}
+}
+
+func isCriticalError(err error) bool {
+	criticalErrors := []string{
+		"invalid captcha API key",
+		"insufficient balance",
+		"bot removed from server/channel",
 	}
 
-	embed := &discordgo.MessageEmbed{
-		Title: "Account Check Error",
-		Description: fmt.Sprintf("There was an error checking your account '%s': %v\n\n"+
-			"If this error persists, your account may be disabled. Please check your account settings and try again.", account.Title, err),
-		Color:     0xFFA500, // Orange color for warning
-		Timestamp: time.Now().Format(time.RFC3339),
+	for _, criticalErr := range criticalErrors {
+		if strings.Contains(err.Error(), criticalErr) {
+			return true
+		}
 	}
-
-	_, err = discord.ChannelMessageSendEmbed(channel.ID, embed)
-	if err != nil {
-		logger.Log.WithError(err).Errorf("Failed to send check error notification to user %s", account.UserID)
-	}
+	return false
 }
 
 func notifyUserOfError(s *discordgo.Session, userID string, message string) {
