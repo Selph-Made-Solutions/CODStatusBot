@@ -109,8 +109,7 @@ func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate
 		checknow.HandleAccountSelection(s, i)
 	case strings.HasPrefix(customID, "toggle_check_"):
 		togglecheck.HandleAccountSelection(s, i)
-	case strings.HasPrefix(customID, "confirm_reenable_") ||
-		strings.HasPrefix(customID, "confirm_disable_") ||
+	case strings.HasPrefix(customID, "confirm_toggle_") ||
 		customID == "cancel_toggle":
 		togglecheck.HandleConfirmation(s, i)
 	default:
