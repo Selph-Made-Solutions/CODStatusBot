@@ -2,22 +2,21 @@ package services
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
 
+	"CODStatusBot/errorhandler"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 )
 
 var (
-	url1 = "https://support.activision.com/api/bans/v2/appeal?locale=en" // Replacement Endpoint for checking account bans
-	url2 = "https://support.activision.com/api/profile?accts=false"      // Endpoint for retrieving profile information
+	url1 = "https://support.activision.com/api/bans/v2/appeal?locale=en"
+	url2 = "https://support.activision.com/api/profile?accts=false"
 )
 
-// VerifySSOCookie checks if the provided SSO cookie is valid.
 func VerifySSOCookie(ssoCookie string) bool {
 	logger.Log.Infof("Verifying SSO cookie: %s", ssoCookie)
 	req, err := http.NewRequest("GET", url2, nil)
@@ -45,7 +44,7 @@ func VerifySSOCookie(ssoCookie string) bool {
 		logger.Log.WithError(err).Error("Error reading verification response body")
 		return false
 	}
-	if len(body) == 0 { // Check if the response body is empty
+	if len(body) == 0 {
 		logger.Log.Error("Invalid SSOCookie, response body is empty")
 		return false
 	}
@@ -53,33 +52,27 @@ func VerifySSOCookie(ssoCookie string) bool {
 	return true
 }
 
-// CheckAccount checks the account status associated with the provided SSO cookie.
 func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 	logger.Log.Info("Starting CheckAccount function")
 
 	captchaAPIKey, _, err := GetUserCaptchaKey(userID)
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to get user's captcha API key")
-		return models.StatusUnknown, fmt.Errorf("failed to get user's captcha API key: %w", err)
+		return models.StatusUnknown, errorhandler.NewDatabaseError(err, "fetching user's captcha API key")
 	}
 
 	gRecaptchaResponse, err := SolveReCaptchaV2WithKey(captchaAPIKey)
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to solve reCAPTCHA")
-		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %w", err)
+		return models.StatusUnknown, errorhandler.NewAPIError(err, "EZ-Captcha")
 	}
 
-	// Further processing of gRecaptchaResponse can be done here
 	logger.Log.Info("Successfully solved reCAPTCHA")
 
-	// Construct the ban appeal URL with the reCAPTCHA response
 	banAppealUrl := url1 + "&g-cc=" + gRecaptchaResponse
 	logger.Log.WithField("url", banAppealUrl).Info("Constructed ban appeal URL")
 
 	req, err := http.NewRequest("GET", banAppealUrl, nil)
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to create HTTP request")
-		return models.StatusUnknown, errors.New("failed to create HTTP request to check account")
+		return models.StatusUnknown, errorhandler.NewNetworkError(err, "creating HTTP request")
 	}
 
 	headers := GenerateHeaders(ssoCookie)
@@ -99,9 +92,8 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 		logger.Log.Infof("Sending HTTP request to check account (attempt %d/%d)", i+1, maxRetries)
 		resp, err = client.Do(req)
 		if err != nil {
-			logger.Log.WithError(err).Error("Failed to send HTTP request")
 			if i == maxRetries-1 {
-				return models.StatusUnknown, errors.New("failed to send HTTP request to check account after multiple attempts")
+				return models.StatusUnknown, errorhandler.NewNetworkError(err, "sending HTTP request")
 			}
 			time.Sleep(time.Duration(i+1) * time.Second)
 			continue
@@ -112,9 +104,8 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 
 		body, err = io.ReadAll(resp.Body)
 		if err != nil {
-			logger.Log.WithError(err).Error("Failed to read response body")
 			if i == maxRetries-1 {
-				return models.StatusUnknown, errors.New("failed to read response body from check account request after multiple attempts")
+				return models.StatusUnknown, errorhandler.NewNetworkError(err, "reading response body")
 			}
 			time.Sleep(time.Duration(i+1) * time.Second)
 			continue
@@ -124,7 +115,6 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 
 	logger.Log.WithField("body", string(body)).Info("Read response body")
 
-	// Check for specific error responses
 	var errorResponse struct {
 		Timestamp string `json:"timestamp"`
 		Path      string `json:"path"`
@@ -137,12 +127,10 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 	if err := json.Unmarshal(body, &errorResponse); err == nil {
 		logger.Log.WithField("errorResponse", errorResponse).Info("Parsed error response")
 		if errorResponse.Status == 400 && errorResponse.Path == "/api/bans/v2/appeal" {
-			logger.Log.Error("Invalid request to new endpoint, possibly missing or invalid reCAPTCHA")
-			return models.StatusUnknown, errors.New("invalid request to new endpoint, possibly missing or invalid reCAPTCHA")
+			return models.StatusUnknown, errorhandler.NewAPIError(fmt.Errorf("invalid request to new endpoint"), "Activision API")
 		}
 	}
 
-	// If not an error response, proceed with parsing the actual ban data.
 	var data struct {
 		Error     string `json:"error"`
 		Success   string `json:"success"`
@@ -161,8 +149,7 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 
 	err = json.Unmarshal(body, &data)
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to decode JSON response")
-		return models.StatusUnknown, fmt.Errorf("failed to decode JSON response: %w", err)
+		return models.StatusUnknown, errorhandler.NewAPIError(err, "decoding JSON response")
 	}
 	logger.Log.WithField("data", data).Info("Parsed ban data")
 
@@ -190,12 +177,11 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 	return models.StatusUnknown, nil
 }
 
-// CheckAccountAge retrieves the age of the account associated with the provided SSO cookie.
 func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 	logger.Log.Info("Starting CheckAccountAge function")
 	req, err := http.NewRequest("GET", url2, nil)
 	if err != nil {
-		return 0, 0, 0, 0, errors.New("failed to create HTTP request to check account age")
+		return 0, 0, 0, 0, errorhandler.NewNetworkError(err, "creating HTTP request")
 	}
 	headers := GenerateHeaders(ssoCookie)
 	for k, v := range headers {
@@ -204,7 +190,7 @@ func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return 0, 0, 0, 0, errors.New("failed to send HTTP request to check account age")
+		return 0, 0, 0, 0, errorhandler.NewNetworkError(err, "sending HTTP request")
 	}
 	defer resp.Body.Close()
 
@@ -213,21 +199,19 @@ func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 	}
 	err = json.NewDecoder(resp.Body).Decode(&data)
 	if err != nil {
-		return 0, 0, 0, 0, errors.New("failed to decode JSON response from check account age request")
+		return 0, 0, 0, 0, errorhandler.NewAPIError(err, "decoding JSON response")
 	}
 
 	logger.Log.Infof("Account created date: %s", data.Created)
 
 	created, err := time.Parse(time.RFC3339, data.Created)
 	if err != nil {
-		return 0, 0, 0, 0, errors.New("failed to parse created date in check account age request")
+		return 0, 0, 0, 0, errorhandler.NewValidationError(err, "parsing created date")
 	}
 
-	// Convert to UTC and get epoch timestamp
 	createdUTC := created.UTC()
 	createdEpoch := createdUTC.Unix()
 
-	// Calculate age
 	now := time.Now().UTC()
 	age := now.Sub(createdUTC)
 	years := int(age.Hours() / 24 / 365.25)
