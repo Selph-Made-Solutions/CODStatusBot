@@ -91,30 +91,31 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 
 	if account.IsCheckDisabled {
-		// If the account is disabled, show the reason and ask for confirmation before re-enabling
 		confirmMessage := fmt.Sprintf("Account '%s' is currently disabled. Reason: %s\n\nAre you sure you want to re-enable checks for this account?", account.Title, account.DisabledReason)
-		showConfirmationButtons(s, i, account.ID, confirmMessage)
+		showConfirmationButtons(s, i, account.ID, confirmMessage, "reenable")
 	} else {
-		// If the account is enabled, disable it
-		account.IsCheckDisabled = true
-		account.DisabledReason = "Manually disabled by user"
-		if err := database.DB.Save(&account).Error; err != nil {
-			logger.Log.WithError(err).Error("Error saving account changes")
-			respondToInteraction(s, i, "Error toggling account checks. Please try again.")
-			return
-		}
-		respondToInteraction(s, i, fmt.Sprintf("Checks for account '%s' have been disabled.", account.Title))
+		confirmMessage := fmt.Sprintf("Are you sure you want to disable checks for account '%s'?", account.Title)
+		showConfirmationButtons(s, i, account.ID, confirmMessage, "disable")
 	}
 }
+
 func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
 
-	if customID == "cancel_reenable" {
-		respondToInteraction(s, i, "Re-enabling cancelled.")
+	if customID == "cancel_toggle" {
+		respondToInteraction(s, i, "Action cancelled.")
 		return
 	}
 
-	accountID, err := strconv.Atoi(strings.TrimPrefix(customID, "confirm_reenable_"))
+	parts := strings.Split(customID, "_")
+	if len(parts) != 3 {
+		logger.Log.Error("Invalid custom ID format")
+		respondToInteraction(s, i, "Error processing your confirmation. Please try again.")
+		return
+	}
+
+	action := parts[1]
+	accountID, err := strconv.Atoi(parts[2])
 	if err != nil {
 		logger.Log.WithError(err).Error("Error parsing account ID")
 		respondToInteraction(s, i, "Error processing your confirmation. Please try again.")
@@ -129,19 +130,32 @@ func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	account.IsCheckDisabled = false
-	account.DisabledReason = ""
-	account.ConsecutiveErrors = 0
-	if err := database.DB.Save(&account).Error; err != nil {
-		logger.Log.WithError(err).Error("Error saving account changes")
-		respondToInteraction(s, i, "Error re-enabling account checks. Please try again.")
-		return
+	switch action {
+	case "reenable":
+		account.IsCheckDisabled = false
+		account.DisabledReason = ""
+		account.ConsecutiveErrors = 0
+		if err := database.DB.Save(&account).Error; err != nil {
+			logger.Log.WithError(err).Error("Error saving account changes")
+			respondToInteraction(s, i, "Error re-enabling account checks. Please try again.")
+			return
+		}
+		respondToInteraction(s, i, fmt.Sprintf("Checks for account '%s' have been re-enabled.", account.Title))
+	case "disable":
+		account.IsCheckDisabled = true
+		account.DisabledReason = "Manually disabled by user"
+		if err := database.DB.Save(&account).Error; err != nil {
+			logger.Log.WithError(err).Error("Error saving account changes")
+			respondToInteraction(s, i, "Error disabling account checks. Please try again.")
+			return
+		}
+		respondToInteraction(s, i, fmt.Sprintf("Checks for account '%s' have been disabled.", account.Title))
+	default:
+		respondToInteraction(s, i, "Invalid action. Please try again.")
 	}
-
-	respondToInteraction(s, i, fmt.Sprintf("Checks for account '%s' have been re-enabled.", account.Title))
 }
 
-func showConfirmationButtons(s *discordgo.Session, i *discordgo.InteractionCreate, accountID uint, message string) {
+func showConfirmationButtons(s *discordgo.Session, i *discordgo.InteractionCreate, accountID uint, message, action string) {
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseUpdateMessage,
 		Data: &discordgo.InteractionResponseData{
@@ -150,14 +164,14 @@ func showConfirmationButtons(s *discordgo.Session, i *discordgo.InteractionCreat
 				discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
 						discordgo.Button{
-							Label:    "Confirm Re-enable",
+							Label:    fmt.Sprintf("Confirm %s", strings.Title(action)),
 							Style:    discordgo.SuccessButton,
-							CustomID: fmt.Sprintf("confirm_reenable_%d", accountID),
+							CustomID: fmt.Sprintf("confirm_%s_%d", action, accountID),
 						},
 						discordgo.Button{
 							Label:    "Cancel",
 							Style:    discordgo.DangerButton,
-							CustomID: "cancel_reenable",
+							CustomID: "cancel_toggle",
 						},
 					},
 				},
