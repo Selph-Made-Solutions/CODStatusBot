@@ -1,142 +1,177 @@
 package bot
 
 import (
-	"errors"
-	"os"
-	"strings"
-
 	"CODStatusBot/command"
+	"CODStatusBot/command/accountage"
 	"CODStatusBot/command/accountlogs"
 	"CODStatusBot/command/addaccount"
+	"CODStatusBot/command/checknow"
 	"CODStatusBot/command/feedback"
 	"CODStatusBot/command/removeaccount"
 	"CODStatusBot/command/setcaptchaservice"
 	"CODStatusBot/command/setcheckinterval"
 	"CODStatusBot/command/togglecheck"
 	"CODStatusBot/command/updateaccount"
-	"CODStatusBot/errorhandler"
+	"CODStatusBot/database"
 	"CODStatusBot/logger"
+	"CODStatusBot/models"
+	"CODStatusBot/services"
+	"errors"
+	"os"
+	"strings"
+	"time"
+
 	"github.com/bwmarrin/discordgo"
 )
 
 var discord *discordgo.Session
 
+func init() {
+	// Initialize the database connection
+	err := database.Databaselogin()
+	if err != nil {
+		logger.Log.WithError(err).Fatal("Failed to initialize database connection")
+	}
+
+	// Create or update the UserSettings table
+	err = database.DB.AutoMigrate(&models.UserSettings{})
+	if err != nil {
+		logger.Log.WithError(err).Fatal("Failed to create or update UserSettings table")
+	}
+}
+
 func StartBot() (*discordgo.Session, error) {
 	envToken := os.Getenv("DISCORD_TOKEN")
 	if envToken == "" {
-		return nil, errorhandler.NewValidationError(errors.New("DISCORD_TOKEN not set"), "Discord token")
+		err := errors.New("DISCORD_TOKEN environment variable not set")
+		logger.Log.WithError(err).WithField("env", "DISCORD_TOKEN").Error()
+		return nil, err
 	}
 
 	var err error
 	discord, err = discordgo.New("Bot " + envToken)
 	if err != nil {
-		return nil, errorhandler.NewAPIError(err, "Discord")
+		logger.Log.WithError(err).WithField("Bot startup", "Token").Error()
+		return nil, err
 	}
 
 	err = discord.Open()
 	if err != nil {
-		return nil, errorhandler.NewAPIError(err, "Discord")
+		logger.Log.WithError(err).WithField("Bot startup", "Opening Session").Error()
+		return nil, err
 	}
 
 	err = discord.UpdateWatchStatus(0, "the Status of your Accounts so you dont have to.")
 	if err != nil {
-		return nil, errorhandler.NewDiscordError(err, "Discord")
+		logger.Log.WithError(err).WithField("Bot startup", "Setting Presence Status").Error()
+		return nil, err
 	}
 
 	command.RegisterCommands(discord)
 	logger.Log.Info("Registering global commands")
 
-	discord.AddHandler(
-		func(s *discordgo.Session, i *discordgo.InteractionCreate) {
-			switch i.Type {
-			case discordgo.InteractionApplicationCommand:
-				command.HandleCommand(s, i)
-			case discordgo.InteractionModalSubmit:
-				handleModalSubmit(s, i)
-			case discordgo.InteractionMessageComponent:
-				handleMessageComponent(s, i)
-			}
+	discord.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		switch i.Type {
+		case discordgo.InteractionApplicationCommand:
+			command.HandleCommand(s, i)
+		case discordgo.InteractionModalSubmit:
+			handleModalSubmit(s, i)
+		case discordgo.InteractionMessageComponent:
+			handleMessageComponent(s, i)
 		}
-	)
+	})
+
+	// Add new event handler for GUILD_DELETE
+	discord.AddHandler(handleGuildDelete)
 
 	go services.CheckAccounts(discord)
+	go periodicUserCheck(discord) // Start periodic check for user applications
+
 	return discord, nil
 }
+
 func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.ModalSubmitData().CustomID
-	var err error
 	switch {
 	case customID == "set_captcha_service_modal":
-		err = setcaptchaservice.HandleModalSubmit(s, i)
+		setcaptchaservice.HandleModalSubmit(s, i)
 	case customID == "add_account_modal":
-		err = addaccount.HandleModalSubmit(s, i)
+		addaccount.HandleModalSubmit(s, i)
 	case strings.HasPrefix(customID, "update_account_modal_"):
-		err = updateaccount.HandleModalSubmit(s, i)
+		updateaccount.HandleModalSubmit(s, i)
 	case customID == "set_check_interval_modal":
-		err = setcheckinterval.HandleModalSubmit(s, i)
+		setcheckinterval.HandleModalSubmit(s, i)
 	default:
-		err = errorhandler.NewValidationError(fmt.Errorf("unknown modal submission: %s", customID), "modal submission")
-	}
-
-	if err != nil {
-		userMsg, _ := errorhandler.HandleError(err)
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: userMsg,
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
+		logger.Log.WithField("customID", customID).Error("Unknown modal submission")
 	}
 }
 
 func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
-	var err error
 	switch {
 	case strings.HasPrefix(customID, "feedback_"):
-		err = feedback.HandleFeedbackChoice(s, i)
-		//logger.Log.Info("Handling feedback choice")
+		feedback.HandleFeedbackChoice(s, i)
+		logger.Log.Info("Handling feedback choice")
 	case strings.HasPrefix(customID, "account_age_"):
-		err = accountage.HandleAccountSelection(s, i)
-		//logger.Log.Info("Handling account age selection")
+		accountage.HandleAccountSelection(s, i)
+		logger.Log.Info("Handling account age selection")
 	case strings.HasPrefix(customID, "account_logs_"):
-		err = accountlogs.HandleAccountSelection(s, i)
-		//logger.Log.Info("Handling account logs selection")
+		accountlogs.HandleAccountSelection(s, i)
+		logger.Log.Info("Handling account logs selection")
 	case customID == "account_logs_all":
-		err = accountlogs.HandleAccountSelection(s, i)
-		//logger.Log.Info("Handling account logs selection")
+		accountlogs.HandleAccountSelection(s, i)
+		logger.Log.Info("Handling account logs selection")
 	case strings.HasPrefix(customID, "update_account_"):
-		err = updateaccount.HandleAccountSelection(s, i)
-		//logger.Log.Info("Handling update account selection")
+		updateaccount.HandleAccountSelection(s, i)
+		logger.Log.Info("Handling update account selection")
 	case strings.HasPrefix(customID, "remove_account_"):
-		err = removeaccount.HandleAccountSelection(s, i)
-		//logger.Log.Info("Handling remove account selection")
+		removeaccount.HandleAccountSelection(s, i)
+		logger.Log.Info("Handling remove account selection")
 	case customID == "cancel_remove" || strings.HasPrefix(customID, "confirm_remove_"):
-		err = removeaccount.HandleConfirmation(s, i)
-		//logger.Log.Info("Handling remove account confirmation")
+		removeaccount.HandleConfirmation(s, i)
+		logger.Log.Info("Handling remove account confirmation")
 	case strings.HasPrefix(customID, "check_now_"):
-		err = checknow.HandleAccountSelection(s, i)
-		//logger.Log.Info("Handling check now selection")
+		checknow.HandleAccountSelection(s, i)
+		logger.Log.Info("Handling check now selection")
 	case strings.HasPrefix(customID, "toggle_check_"):
-		err = togglecheck.HandleAccountSelection(s, i)
-		//logger.Log.Info("Handling toggle check selection")
-	case strings.HasPrefix(customID, "confirm_reenable_") || customID == "cancel_reenable":
-		err = togglecheck.HandleConfirmation(s, i)
-		//logger.Log.Info("Handling toggle check confirmation")
+		togglecheck.HandleAccountSelection(s, i)
+		logger.Log.Info("Handling toggle check selection")
 	default:
-		err = errorhandler.NewValidationError(fmt.Errorf("unknown message component interaction: %s", customID), "message component")
-		//logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
+		logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 	}
+}
+
+func handleGuildDelete(s *discordgo.Session, g *discordgo.GuildDelete) {
+	logger.Log.Infof("Bot removed from guild: %s", g.ID)
+
+	// Update all UserSettings for this guild
+	err := database.DB.Model(&models.UserSettings{}).
+		Where("install_type = ? AND user_id IN (SELECT user_id FROM accounts WHERE channel_id LIKE ?)",
+			"guild", g.ID+"%").
+		Updates(map[string]interface{}{"is_bot_installed": false}).Error
 
 	if err != nil {
-		userMsg, _ := errorhandler.HandleError(err)
-		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: userMsg,
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
+		logger.Log.WithError(err).Error("Failed to update UserSettings after guild removal")
+	}
+}
+
+func periodicUserCheck(s *discordgo.Session) {
+	ticker := time.NewTicker(24 * time.Hour) // Check once a day
+	for range ticker.C {
+		var userSettings []models.UserSettings
+		err := database.DB.Where("install_type = ? AND is_bot_installed = ?", "user", true).Find(&userSettings).Error
+		if err != nil {
+			logger.Log.WithError(err).Error("Failed to fetch user applications for periodic check")
+			continue
+		}
+
+		for _, settings := range userSettings {
+			_, err := s.UserChannelCreate(settings.UserID)
+			if err != nil {
+				logger.Log.WithError(err).Infof("Failed to create DM channel with user %s, marking as uninstalled", settings.UserID)
+				settings.IsBotInstalled = false
+				database.DB.Save(&settings)
+			}
+		}
 	}
 }
