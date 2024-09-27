@@ -89,39 +89,30 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
+
 	switch {
 	case strings.HasPrefix(customID, "feedback_"):
 		feedback.HandleFeedbackChoice(s, i)
-		logger.Log.Info("Handling feedback choice")
 	case strings.HasPrefix(customID, "account_age_"):
 		accountage.HandleAccountSelection(s, i)
-		logger.Log.Info("Handling account age selection")
 	case strings.HasPrefix(customID, "account_logs_"):
 		accountlogs.HandleAccountSelection(s, i)
-		logger.Log.Info("Handling account logs selection")
 	case customID == "account_logs_all":
 		accountlogs.HandleAccountSelection(s, i)
-		logger.Log.Info("Handling account logs selection")
 	case strings.HasPrefix(customID, "update_account_"):
 		updateaccount.HandleAccountSelection(s, i)
-		logger.Log.Info("Handling update account selection")
 	case strings.HasPrefix(customID, "remove_account_"):
 		removeaccount.HandleAccountSelection(s, i)
-		logger.Log.Info("Handling remove account selection")
 	case customID == "cancel_remove" || strings.HasPrefix(customID, "confirm_remove_"):
 		removeaccount.HandleConfirmation(s, i)
-		logger.Log.Info("Handling remove account confirmation")
 	case strings.HasPrefix(customID, "check_now_"):
 		checknow.HandleAccountSelection(s, i)
-		logger.Log.Info("Handling check now selection")
 	case strings.HasPrefix(customID, "toggle_check_"):
 		togglecheck.HandleAccountSelection(s, i)
-		logger.Log.Info("Handling toggle check selection")
 	case strings.HasPrefix(customID, "confirm_reenable_") ||
 		strings.HasPrefix(customID, "confirm_disable_") ||
 		customID == "cancel_toggle":
 		togglecheck.HandleConfirmation(s, i)
-		logger.Log.Info("Handling toggle check confirmation")
 	default:
 		logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 	}
