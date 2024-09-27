@@ -62,7 +62,7 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		},
 	})
 	if err != nil {
-		handleInteractionError(s, i, errorhandler.NewAPIError(err, "Discord", "Failed to create modal"))
+		handleInteractionError(s, i, errorhandler.NewAPIError(err, "Discord"))
 	}
 }
 
@@ -73,13 +73,13 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	ssoCookie := strings.TrimSpace(data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
 
 	if !services.VerifySSOCookie(ssoCookie) {
-		handleInteractionError(s, i, errorhandler.NewValidationError(fmt.Errorf("invalid SSO cookie"), "SSO cookie", "The provided SSO cookie is invalid. Please check and try again."))
+		handleInteractionError(s, i, errorhandler.NewValidationError(fmt.Errorf("invalid SSO cookie"), "SSO cookie"))
 		return
 	}
 
 	expirationTimestamp, err := services.DecodeSSOCookie(ssoCookie)
 	if err != nil {
-		handleInteractionError(s, i, errorhandler.NewValidationError(err, "SSO cookie", "Failed to process the SSO cookie. Please ensure it's correct and try again."))
+		handleInteractionError(s, i, errorhandler.NewValidationError(err, "SSO cookie"))
 		return
 	}
 
@@ -106,7 +106,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	result := database.DB.Create(&account)
 	if result.Error != nil {
-		handleInteractionError(s, i, errorhandler.NewDatabaseError(result.Error, "creating account", "Failed to create the account. Please try again later."))
+		handleInteractionError(s, i, errorhandler.NewDatabaseError(result.Error, "creating account"))
 		return
 	}
 
@@ -125,13 +125,14 @@ func getUserAndChannelID(s *discordgo.Session, i *discordgo.InteractionCreate) (
 	} else if i.User != nil {
 		userID = i.User.ID
 		isUserApplication = true
+		// For user applications, we'll use DM as the default channel.
 		channel, err := s.UserChannelCreate(userID)
 		if err != nil {
-			return "", "", false, errorhandler.NewAPIError(err, "Discord", "Failed to create DM channel")
+			return "", "", false, errorhandler.NewAPIError(err, "Discord")
 		}
 		channelID = channel.ID
 	} else {
-		return "", "", false, errorhandler.NewValidationError(fmt.Errorf("interaction doesn't have Member or User"), "user identification", "Unable to identify the user. Please try again or contact support.")
+		return "", "", false, errorhandler.NewValidationError(fmt.Errorf("interaction doesn't have Member or User"), "user identification")
 	}
 
 	return userID, channelID, isUserApplication, nil
@@ -150,7 +151,10 @@ func getNotificationType(userID string, isUserApplication bool) (string, error) 
 			return "channel", nil
 		}
 	} else {
-		return "", errorhandler.NewDatabaseError(result.Error, "fetching user preference", "Failed to retrieve notification preferences. Using default settings.")
+		return "", errorhandler.NewDatabaseError(
+			result.Error,
+			"fetching user preference",
+		)
 	}
 }
 
