@@ -1,11 +1,11 @@
 package errorhandler
 
 import (
-	"fmt"
-	"strings"
-
-	"CODStatusBot/admin"
 	"CODStatusBot/logger"
+	"fmt"
+	"github.com/bwmarrin/discordgo"
+	"os"
+	"strings"
 )
 
 type ErrorCategory int
@@ -17,6 +17,7 @@ const (
 	ValidationError
 	AuthenticationError
 	RateLimitError
+	DiscordError
 	UnknownError
 )
 
@@ -28,8 +29,37 @@ type CustomError struct {
 	IsUserActionable bool
 }
 
+var adminSession *discordgo.Session
+
 func (e *CustomError) Error() string {
 	return e.OriginalErr.Error()
+}
+
+func init() {
+	InitAdminNotifications(os.Getenv("ADMIN_TOKEN"))
+}
+
+func InitAdminNotifications(token string) error {
+	var err error
+	adminSession, err = discordgo.New("Bot " + token)
+	if err != nil {
+		return err
+	}
+	return adminSession.Open()
+}
+
+func NotifyAdmin(message string) {
+	adminID := os.Getenv("DEVELOPER_ID")
+	if adminID == "" {
+		return
+	}
+
+	channel, err := adminSession.UserChannelCreate(adminID)
+	if err != nil {
+		return
+	}
+
+	_, _ = adminSession.ChannelMessageSend(channel.ID, fmt.Sprintf("Admin Notification: %s", message))
 }
 
 func NewError(category ErrorCategory, err error, context string, userMsg string, isUserActionable bool) *CustomError {
@@ -50,16 +80,15 @@ func HandleError(err error) (string, bool) {
 			Error(customErr.AdminMessage)
 
 		if !customErr.IsUserActionable {
-			admin.NotifyAdmin(fmt.Sprintf("Critical error: %s", customErr.AdminMessage))
+			NotifyAdmin(fmt.Sprintf("Critical error: %s", customErr.AdminMessage))
 			return "An unexpected error occurred. Our team has been notified and is working on it.", false
 		}
 
 		return customErr.UserMessage, true
 	}
 
-	// For non-custom errors, log and notify admin
 	logger.Log.WithError(err).Error("Unexpected error occurred")
-	admin.NotifyAdmin(fmt.Sprintf("Unexpected error: %v", err))
+	NotifyAdmin(fmt.Sprintf("Unexpected error: %v", err))
 	return "An unexpected error occurred. Our team has been notified and is working on it.", false
 }
 
@@ -120,6 +149,16 @@ func NewRateLimitError(err error, limit string) *CustomError {
 		fmt.Sprintf("Rate limit reached: %s", limit),
 		fmt.Sprintf("You've reached the rate limit for this action. Please wait %s before trying again.", limit),
 		true,
+	)
+}
+
+func NewDiscordError(err error, context string) *CustomError {
+	return NewError(
+		DiscordError,
+		err,
+		fmt.Sprintf("Discord error: %s", context),
+		"We're having trouble communicating with Discord. Please try again later.",
+		false,
 	)
 }
 
