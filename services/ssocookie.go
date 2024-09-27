@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"CODStatusBot/errorhandler"
 	"CODStatusBot/logger"
 )
 
@@ -21,14 +22,14 @@ func DecodeSSOCookie(encodedStr string) (int64, error) {
 
 	decodedBytes, err := base64.StdEncoding.DecodeString(encodedStr)
 	if err != nil {
-		return 0, fmt.Errorf("failed to decode base64: %v", err)
+		return 0, errorhandler.NewValidationError(err, "decoding base64 SSO cookie")
 	}
 
 	decodedStr := string(decodedBytes)
 	parts := strings.Split(decodedStr, ":")
 
 	if len(parts) < 2 {
-		return 0, fmt.Errorf("invalid cookie format")
+		return 0, errorhandler.NewValidationError(fmt.Errorf("invalid cookie format"), "SSO cookie structure")
 	}
 
 	expirationStr := parts[1]
@@ -37,7 +38,7 @@ func DecodeSSOCookie(encodedStr string) (int64, error) {
 
 	expirationTimestamp, err := strconv.ParseInt(expirationStr, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse expiration timestamp: %v", err)
+		return 0, errorhandler.NewValidationError(err, "parsing expiration timestamp")
 	}
 
 	// Convert milliseconds to seconds if necessary
@@ -47,7 +48,7 @@ func DecodeSSOCookie(encodedStr string) (int64, error) {
 
 	// Check if the timestamp is in the past
 	if expirationTimestamp < time.Now().Unix() {
-		return 0, fmt.Errorf("SSO cookie has already expired")
+		return 0, errorhandler.NewValidationError(fmt.Errorf("SSO cookie has already expired"), "SSO cookie expiration")
 	}
 
 	return expirationTimestamp, nil
@@ -62,7 +63,7 @@ func CheckSSOCookieExpiration(expirationTimestamp int64) (time.Duration, error) 
 	logger.Log.Infof("Time until expiration: %v", timeUntilExpiration)
 
 	if timeUntilExpiration <= 0 {
-		return 0, fmt.Errorf("cookie has expired")
+		return 0, errorhandler.NewValidationError(fmt.Errorf("cookie has expired"), "SSO cookie expiration")
 	}
 
 	maxDuration := 14 * 24 * time.Hour // 14 days
