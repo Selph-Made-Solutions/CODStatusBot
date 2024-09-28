@@ -163,7 +163,6 @@ func startPeriodicTasks(s *discordgo.Session) {
 	go admin.StartStatsCaching()
 	go services.ScheduleBalanceChecks(s)
 
-	// Start global announcement check
 	go func() {
 		for {
 			if err := services.SendAnnouncementToAllUsers(s); err != nil {
