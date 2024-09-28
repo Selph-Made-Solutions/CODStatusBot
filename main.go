@@ -1,23 +1,22 @@
 package main
 
 import (
-	"fmt"
-	"net/http"
-	"os"
-	"os/signal"
-	"runtime/debug"
-	"syscall"
-	"time"
-
 	"CODStatusBot/admin"
 	"CODStatusBot/bot"
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
+	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
+	"net/http"
+	"os"
+	"os/signal"
+	"runtime/debug"
+	"syscall"
+	"time"
 )
 
 var discord *discordgo.Session
@@ -29,32 +28,6 @@ func main() {
 		}
 	}()
 
-	r := mux.NewRouter()
-	r.HandleFunc("/admin", admin.DashboardHandler)
-	r.HandleFunc("/admin/stats", admin.StatsHandler)
-
-	staticDir := "/home/container/"
-	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
-
-	port := os.Getenv("ADMIN_PORT")
-	if port == "" {
-		port = "8080"
-	}
-
-	go func() {
-		logger.Log.Infof("Admin dashboard starting on port %s", port)
-		if err := http.ListenAndServe(":"+port, r); err != nil {
-			logger.Log.WithError(err).Fatal("Failed to start admin dashboard")
-		}
-	}()
-
-	discord, err := bot.StartBot()
-	if err != nil {
-		logger.Log.WithError(err).Fatal("Failed to start Discord bot")
-	}
-	defer discord.Close()
-
-	logger.Log.Info("Bot starting...")
 	if err := run(); err != nil {
 		logger.Log.WithError(err).Error("Bot encountered an error and is shutting down")
 		os.Exit(1)
@@ -62,6 +35,8 @@ func main() {
 }
 
 func run() error {
+	logger.Log.Info("Starting COD Status Bot...")
+
 	if err := loadEnvironmentVariables(); err != nil {
 		return fmt.Errorf("failed to load environment variables: %w", err)
 	}
@@ -82,6 +57,8 @@ func run() error {
 	}
 	logger.Log.Info("Database initialized successfully")
 
+	startAdminDashboard()
+
 	var err error
 	discord, err = bot.StartBot()
 	if err != nil {
@@ -89,18 +66,15 @@ func run() error {
 	}
 	logger.Log.Info("Discord bot started successfully")
 
-	// Start stats caching
-	beginStatsCaching()
+	go startPeriodicTasks(discord)
 
-	// Start the balance check scheduler
-	go services.ScheduleBalanceChecks(discord)
+	logger.Log.Info("COD Status Bot startup complete")
 
-	logger.Log.Info("Bot is running")
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-sc
 
-	// Gracefully close the Discord session
+	logger.Log.Info("Shutting down COD Status Bot...")
 	if err := discord.Close(); err != nil {
 		logger.Log.WithError(err).Error("Error closing Discord session")
 	}
@@ -145,7 +119,37 @@ func initializeDatabase() error {
 	return nil
 }
 
-func beginStatsCaching() {
-	time.Sleep(60 * time.Second)
-	admin.StartStatsCaching()
+func startAdminDashboard() {
+	r := mux.NewRouter()
+	r.HandleFunc("/admin", admin.DashboardHandler)
+	r.HandleFunc("/admin/stats", admin.StatsHandler)
+
+	staticDir := "/home/container/"
+	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
+
+	port := os.Getenv("ADMIN_PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	go func() {
+		logger.Log.Infof("Admin dashboard starting on port %s", port)
+		if err := http.ListenAndServe(":"+port, r); err != nil {
+			logger.Log.WithError(err).Fatal("Failed to start admin dashboard")
+		}
+	}()
+}
+
+func startPeriodicTasks(s *discordgo.Session) {
+	go func() {
+		for {
+			services.CheckAccounts(s)
+			time.Sleep(time.Duration(services.GetEnvInt("SLEEP_DURATION", 3)) * time.Minute)
+		}
+	}()
+
+	go admin.StartStatsCaching()
+	go services.ScheduleBalanceChecks(s)
+
+	logger.Log.Info("Periodic tasks started successfully")
 }
