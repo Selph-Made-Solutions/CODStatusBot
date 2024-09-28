@@ -8,15 +8,16 @@ import (
 	"CODStatusBot/models"
 	"CODStatusBot/services"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
-	"github.com/gorilla/mux"
-	"github.com/joho/godotenv"
 	"net/http"
 	"os"
 	"os/signal"
 	"runtime/debug"
 	"syscall"
 	"time"
+
+	"github.com/bwmarrin/discordgo"
+	"github.com/gorilla/mux"
+	"github.com/joho/godotenv"
 )
 
 var discord *discordgo.Session
@@ -101,6 +102,16 @@ func loadEnvironmentVariables() error {
 		"DB_NAME",
 		"DB_VAR",
 		"DEVELOPER_ID",
+		"ADMIN_PORT",
+		"CHECK_INTERVAL",
+		"NOTIFICATION_INTERVAL",
+		"COOLDOWN_DURATION",
+		"SLEEP_DURATION",
+		"COOKIE_CHECK_INTERVAL_PERMABAN",
+		"STATUS_CHANGE_COOLDOWN",
+		"GLOBAL_NOTIFICATION_COOLDOWN",
+		"COOKIE_EXPIRATION_WARNING",
+		"TEMP_BAN_UPDATE_INTERVAL",
 	}
 
 	for _, envVar := range requiredEnvVars {
@@ -144,12 +155,23 @@ func startPeriodicTasks(s *discordgo.Session) {
 	go func() {
 		for {
 			services.CheckAccounts(s)
-			time.Sleep(time.Duration(services.GetEnvInt("SLEEP_DURATION", 3)) * time.Minute)
+			sleepDuration := time.Duration(services.GetEnvInt("SLEEP_DURATION", 3)) * time.Minute
+			time.Sleep(sleepDuration)
 		}
 	}()
 
 	go admin.StartStatsCaching()
 	go services.ScheduleBalanceChecks(s)
+
+	// Start global announcement check
+	go func() {
+		for {
+			if err := services.SendAnnouncementToAllUsers(s); err != nil {
+				logger.Log.WithError(err).Error("Failed to send global announcement")
+			}
+			time.Sleep(24 * time.Hour) // Check once a day
+		}
+	}()
 
 	logger.Log.Info("Periodic tasks started successfully")
 }
