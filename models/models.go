@@ -44,6 +44,13 @@ type UserSettings struct {
 
 }
 
+type NotificationCooldown struct {
+	gorm.Model
+	UserID           string `gorm:"index"`
+	NotificationType string `gorm:"index"`
+	LastNotification time.Time
+}
+
 type Ban struct {
 	gorm.Model
 	Account         Account // The account that has a status history.
