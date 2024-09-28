@@ -16,10 +16,12 @@ import (
 )
 
 var (
-	statsLimiter    *limiter.Limiter
-	cachedStats     Stats
-	cachedStatsLock sync.RWMutex
-	cacheInterval   = 15 * time.Minute
+	statsLimiter          *limiter.Limiter
+	cachedStats           Stats
+	cachedStatsLock       sync.RWMutex
+	cacheInterval         = 15 * time.Minute
+	NotificationCooldowns = make(map[string]time.Time)
+	NotificationMutex     sync.Mutex
 )
 
 type Stats struct {
