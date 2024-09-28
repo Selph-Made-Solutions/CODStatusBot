@@ -255,9 +255,8 @@ func sendIndividualDailyUpdate(account models.Account, discord *discordgo.Sessio
 	}
 }
 
-// CheckAccounts function: periodically checks all accounts for status changes
 func CheckAccounts(s *discordgo.Session) {
-	cleanupTicker := time.NewTicker(24 * time.Hour) // Run cleanup once a day
+	cleanupTicker := time.NewTicker(24 * time.Hour)
 	defer cleanupTicker.Stop()
 
 	for {
@@ -269,13 +268,11 @@ func CheckAccounts(s *discordgo.Session) {
 			continue
 		}
 
-		// Group accounts by user
 		accountsByUser := make(map[string][]models.Account)
 		for _, account := range accounts {
 			accountsByUser[account.UserID] = append(accountsByUser[account.UserID], account)
 		}
 
-		// Process accounts for each user
 		for userID, userAccounts := range accountsByUser {
 			go processUserAccounts(s, userID, userAccounts)
 		}
@@ -284,19 +281,18 @@ func CheckAccounts(s *discordgo.Session) {
 		case <-cleanupTicker.C:
 			go cleanupInactiveAccounts(s)
 		default:
-			// Continue with regular account checks
+
 		}
 
 		time.Sleep(time.Duration(sleepDuration) * time.Minute)
 	}
 }
 
-// Updated processUserAccounts function
 func processUserAccounts(s *discordgo.Session, userID string, accounts []models.Account) {
 	captchaAPIKey, balance, err := GetUserCaptchaKey(userID)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to get user captcha key for user %s", userID)
-		return // Exit the function if we can't get the captcha key
+		return
 	}
 
 	logger.Log.Infof("User %s captcha balance: %.2f", userID, balance)
