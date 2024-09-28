@@ -16,11 +16,7 @@ import (
 	"CODStatusBot/command/setcheckinterval"
 	"CODStatusBot/command/togglecheck"
 	"CODStatusBot/command/updateaccount"
-	"CODStatusBot/database"
 	"CODStatusBot/logger"
-	"CODStatusBot/models"
-	"CODStatusBot/services"
-
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -64,7 +60,6 @@ func StartBot() (*discordgo.Session, error) {
 		}
 	})
 
-	go services.CheckAccounts(discord)
 	return discord, nil
 }
 
@@ -111,18 +106,4 @@ func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate
 		logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 	}
 
-}
-
-func init() {
-	// Initialize the database connection
-	err := database.Databaselogin()
-	if err != nil {
-		logger.Log.WithError(err).Fatal("Failed to initialize database connection")
-	}
-
-	// Create or update the UserSettings table
-	err = database.DB.AutoMigrate(&models.UserSettings{})
-	if err != nil {
-		logger.Log.WithError(err).Fatal("Failed to create or update UserSettings table")
-	}
 }
