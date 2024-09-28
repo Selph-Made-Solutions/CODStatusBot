@@ -54,17 +54,17 @@ func init() {
 		logger.Log.WithError(err).Error("Failed to load .env file")
 	}
 
-	checkInterval = getEnvFloat("CHECK_INTERVAL", 15)
-	notificationInterval = getEnvFloat("NOTIFICATION_INTERVAL", 24)
-	cooldownDuration = getEnvFloat("COOLDOWN_DURATION", 6)
-	sleepDuration = getEnvInt("SLEEP_DURATION", 1)
-	cookieCheckIntervalPermaban = getEnvFloat("COOKIE_CHECK_INTERVAL_PERMABAN", 24)
-	statusChangeCooldown = getEnvFloat("STATUS_CHANGE_COOLDOWN", 1)
-	globalNotificationCooldown = getEnvFloat("GLOBAL_NOTIFICATION_COOLDOWN", 2)
-	cookieExpirationWarning = getEnvFloat("COOKIE_EXPIRATION_WARNING", 24)
-	tempBanUpdateInterval = getEnvFloat("TEMP_BAN_UPDATE_INTERVAL", 24)
-	defaultRateLimit = time.Duration(getEnvInt("DEFAULT_RATE_LIMIT", 5)) * time.Minute
-	checkNowRateLimit = time.Duration(getEnvInt("CHECK_NOW_RATE_LIMIT", 3600)) * time.Second
+	checkInterval = GetEnvFloat("CHECK_INTERVAL", 15)
+	notificationInterval = GetEnvFloat("NOTIFICATION_INTERVAL", 24)
+	cooldownDuration = GetEnvFloat("COOLDOWN_DURATION", 6)
+	sleepDuration = GetEnvInt("SLEEP_DURATION", 1)
+	cookieCheckIntervalPermaban = GetEnvFloat("COOKIE_CHECK_INTERVAL_PERMABAN", 24)
+	statusChangeCooldown = GetEnvFloat("STATUS_CHANGE_COOLDOWN", 1)
+	globalNotificationCooldown = GetEnvFloat("GLOBAL_NOTIFICATION_COOLDOWN", 2)
+	cookieExpirationWarning = GetEnvFloat("COOKIE_EXPIRATION_WARNING", 24)
+	tempBanUpdateInterval = GetEnvFloat("TEMP_BAN_UPDATE_INTERVAL", 24)
+	defaultRateLimit = time.Duration(GetEnvInt("DEFAULT_RATE_LIMIT", 5)) * time.Minute
+	checkNowRateLimit = time.Duration(GetEnvInt("CHECK_NOW_RATE_LIMIT", 3600)) * time.Second
 
 	defaultSettings.NotificationInterval = notificationInterval
 
@@ -81,8 +81,8 @@ var notificationConfigs = map[string]NotificationConfig{
 	"temp_ban_update":      {Cooldown: time.Hour, AllowConsolidated: false},
 }
 
-func getEnvFloat(key string, fallback float64) float64 {
-	value := getEnvFloatRaw(key, fallback)
+func GetEnvFloat(key string, fallback float64) float64 {
+	value := GetEnvFloatRaw(key, fallback)
 	// Convert hours to minutes for certain settings
 	if key == "CHECK_INTERVAL" || key == "SLEEP_DURATION" || key == "DEFAULT_RATE_LIMIT" {
 		return value
@@ -90,7 +90,7 @@ func getEnvFloat(key string, fallback float64) float64 {
 	// All other values are in hours, so we don't need to convert them
 	return value
 }
-func getEnvFloatRaw(key string, fallback float64) float64 {
+func GetEnvFloatRaw(key string, fallback float64) float64 {
 	if value, ok := os.LookupEnv(key); ok {
 		floatValue, err := strconv.ParseFloat(value, 64)
 		if err == nil {
@@ -101,12 +101,12 @@ func getEnvFloatRaw(key string, fallback float64) float64 {
 	return fallback
 }
 
-func getEnvInt(key string, fallback int) int {
-	value := getEnvIntRaw(key, fallback)
+func GetEnvInt(key string, fallback int) int {
+	value := GetEnvIntRaw(key, fallback)
 	// All int values are currently in minutes, so we don't need to convert them
 	return value
 }
-func getEnvIntRaw(key string, fallback int) int {
+func GetEnvIntRaw(key string, fallback int) int {
 	if value, ok := os.LookupEnv(key); ok {
 		intValue, err := strconv.Atoi(value)
 		if err == nil {
@@ -117,7 +117,7 @@ func getEnvIntRaw(key string, fallback int) int {
 	return fallback
 }
 
-func SendNotification(s *discordgo.Session, account models.Account, embed *discordgo.MessageEmbed, content string, notificationType string) error {
+func SendNotification(s *discordgo.Session, account models.Account, embed *discordgo.MessageEmbed, content, notificationType string) error {
 	if account.IsCheckDisabled {
 		logger.Log.Infof("Skipping notification for disabled account %s", account.Title)
 		return nil
@@ -286,8 +286,10 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 		checkAndNotifyBalance(s, userID, balance)
 	}
 
-	var accountsToUpdate []models.Account
-	var dailyUpdateAccounts []models.Account
+	var (
+		accountsToUpdate    []models.Account
+		dailyUpdateAccounts []models.Account
+	)
 
 	for _, account := range accounts {
 		if account.IsCheckDisabled {
@@ -726,7 +728,6 @@ func getStatusDescription(status models.Status, accountTitle string, ban models.
 	}
 }
 
-// SendGlobalAnnouncement function: sends a global announcement to users who haven't seen it yet.
 func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 	var userSettings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings)
