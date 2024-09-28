@@ -39,9 +39,10 @@ func CommandAccountAge(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Create buttons for each account
-	var components []discordgo.MessageComponent
-	var currentRow []discordgo.MessageComponent
+	var (
+		components []discordgo.MessageComponent
+		currentRow []discordgo.MessageComponent
+	)
 
 	for _, account := range accounts {
 		currentRow = append(currentRow, discordgo.Button{
@@ -56,7 +57,6 @@ func CommandAccountAge(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		}
 	}
 
-	// Add the last row if it is not empty
 	if len(currentRow) > 0 {
 		components = append(components, discordgo.ActionsRow{Components: currentRow})
 	}
@@ -105,7 +105,6 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		return
 	}
 
-	// Update the account's Created field
 	account.Created = createdEpoch
 	if err := database.DB.Save(&account).Error; err != nil {
 		logger.Log.WithError(err).Errorf("Error saving account creation timestamp for account %s", account.Title)
