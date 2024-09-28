@@ -985,6 +985,11 @@ func checkAccountAccess(s *discordgo.Session, account *models.Account) error {
 }
 
 func notifyUserAboutDisabledAccount(s *discordgo.Session, account models.Account, reason string) {
+	if !checkNotificationCooldown(account.UserID, "disabled_account", 24*time.Hour) {
+		logger.Log.Infof("Skipping disabled account notification for user %s due to cooldown", account.UserID)
+		return
+	}
+
 	channel, err := s.UserChannelCreate(account.UserID)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to create DM channel for user %s", account.UserID)
@@ -1000,13 +1005,17 @@ func notifyUserAboutDisabledAccount(s *discordgo.Session, account models.Account
 	}
 
 	_, err = s.ChannelMessageSendEmbed(channel.ID, embed)
-	_, err = s.ChannelMessageSendEmbed(channel.ID, embed)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to send account disabled notification to user %s", account.UserID)
 	}
 }
 
 func notifyUserOfCheckError(account models.Account, discord *discordgo.Session, err error) {
+	if !checkNotificationCooldown(account.UserID, "check_error", time.Hour) {
+		logger.Log.Infof("Skipping error notification for user %s due to cooldown", account.UserID)
+		return
+	}
+
 	// Send notification to developer
 	admin.NotifyAdmin(fmt.Sprintf("Error checking account %s (ID: %d): %v", account.Title, account.ID, err))
 
