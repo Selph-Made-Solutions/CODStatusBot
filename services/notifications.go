@@ -1,34 +1,98 @@
 package services
 
 import (
+	"CODStatusBot/admin"
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
-	"gorm.io/gorm"
+	"fmt"
+	"github.com/bwmarrin/discordgo"
+	"os"
+	"strings"
 	"time"
 )
 
-func checkNotificationCooldown(userID, notificationType string, cooldownDuration time.Duration) bool {
-	var cooldown models.NotificationCooldown
-	result := database.DB.Where("user_id = ? AND notification_type = ?", userID, notificationType).First(&cooldown)
+func NotifyAdminWithCooldown(s *discordgo.Session, message string, cooldownDuration time.Duration) {
+	admin.NotificationMutex.Lock()
+	defer admin.NotificationMutex.Unlock()
 
-	if result.Error != nil && result.Error != gorm.ErrRecordNotFound {
-		logger.Log.WithError(result.Error).Error("Error checking notification cooldown")
-		return false
+	notificationType := "admin_" + strings.Split(message, " ")[0] // Use first word of message as type
+	lastNotification, exists := admin.NotificationCooldowns[notificationType]
+	if !exists || time.Since(lastNotification) >= cooldownDuration {
+		NotifyAdmin(s, message)
+		admin.NotificationCooldowns[notificationType] = time.Now()
+	} else {
+		logger.Log.Infof("Skipping admin notification '%s' due to cooldown", notificationType)
+	}
+}
+
+func NotifyAdmin(s *discordgo.Session, message string) {
+	adminID := os.Getenv("DEVELOPER_ID")
+	if adminID == "" {
+		logger.Log.Error("DEVELOPER_ID not set in environment variables")
+		return
+	}
+
+	channel, err := s.UserChannelCreate(adminID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to create DM channel with admin")
+		return
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title:       "Admin Notification",
+		Description: message,
+		Color:       0xFF0000, // Red color for admin notifications
+		Timestamp:   time.Now().Format(time.RFC3339),
+	}
+
+	_, err = s.ChannelMessageSendEmbed(channel.ID, embed)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to send admin notification")
+	}
+}
+
+func checkNotificationCooldown(userID string, notificationType string, cooldownDuration time.Duration) (bool, error) {
+	var settings models.UserSettings
+	if err := database.DB.Where("user_id = ?", userID).First(&settings).Error; err != nil {
+		return false, err
+	}
+
+	var lastNotification time.Time
+	switch notificationType {
+	case "balance":
+		lastNotification = settings.LastBalanceNotification
+	case "error":
+		lastNotification = settings.LastErrorNotification
+	case "disabled":
+		lastNotification = settings.LastDisabledNotification
+	default:
+		return false, fmt.Errorf("unknown notification type: %s", notificationType)
+	}
+
+	if time.Since(lastNotification) >= cooldownDuration {
+		return true, nil
+	}
+	return false, nil
+}
+
+func updateNotificationTimestamp(userID string, notificationType string) error {
+	var settings models.UserSettings
+	if err := database.DB.Where("user_id = ?", userID).First(&settings).Error; err != nil {
+		return err
 	}
 
 	now := time.Now()
-	if result.Error == gorm.ErrRecordNotFound || now.Sub(cooldown.LastNotification) >= cooldownDuration {
-		cooldown.UserID = userID
-		cooldown.NotificationType = notificationType
-		cooldown.LastNotification = now
-
-		if result := database.DB.Save(&cooldown); result.Error != nil {
-			logger.Log.WithError(result.Error).Error("Error saving notification cooldown")
-			return false
-		}
-		return true
+	switch notificationType {
+	case "balance":
+		settings.LastBalanceNotification = now
+	case "error":
+		settings.LastErrorNotification = now
+	case "disabled":
+		settings.LastDisabledNotification = now
+	default:
+		return fmt.Errorf("unknown notification type: %s", notificationType)
 	}
 
-	return false
+	return database.DB.Save(&settings).Error
 }
