@@ -205,7 +205,6 @@ func RemoveCaptchaKey(userID string) error {
 	settings.NotificationInterval = defaultSettings.NotificationInterval
 	settings.CooldownDuration = defaultSettings.CooldownDuration
 	settings.StatusChangeCooldown = defaultSettings.StatusChangeCooldown
-	// Keep the user's notification type preference
 
 	if err := database.DB.Save(&settings).Error; err != nil {
 		logger.Log.WithError(err).Error("Error saving user settings")
