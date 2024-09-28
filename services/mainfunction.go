@@ -123,8 +123,8 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 		return nil
 	}
 
-	var userSettings models.UserSettings
-	if err := database.DB.Where("user_id = ?", account.UserID).First(&userSettings).Error; err != nil {
+	userSettings, err := GetUserSettings(account.UserID)
+	if err != nil {
 		return fmt.Errorf("failed to get user settings: %w", err)
 	}
 
@@ -138,38 +138,34 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 	}
 
 	userNotificationMutex.Lock()
+	defer userNotificationMutex.Unlock()
+
 	if _, exists := userNotificationTimestamps[account.UserID]; !exists {
 		userNotificationTimestamps[account.UserID] = make(map[string]time.Time)
 	}
-	lastNotification, exists := userNotificationTimestamps[account.UserID][notificationType]
-	shouldSend := !exists || time.Since(lastNotification) >= config.Cooldown
-	if shouldSend {
-		userNotificationTimestamps[account.UserID][notificationType] = time.Now()
-	}
-	userNotificationMutex.Unlock()
-	shouldSend = true
-	var cooldownDuration time.Duration
 
+	lastNotification, exists := userNotificationTimestamps[account.UserID][notificationType]
+	now := time.Now()
+
+	var cooldownDuration time.Duration
 	switch notificationType {
 	case "status_change":
-		shouldSend = true
+		cooldownDuration = time.Duration(userSettings.StatusChangeCooldown) * time.Hour
 	case "permaban":
-		if exists {
-			cooldownDuration = 24 * time.Hour
+		cooldownDuration = 24 * time.Hour
 			shouldSend = time.Since(lastNotification) >= cooldownDuration
 		}
 	case "daily_update", "invalid_cookie", "cookie_expiring_soon":
 		cooldownDuration = time.Duration(userSettings.NotificationInterval) * time.Hour
 		shouldSend = !exists || time.Since(lastNotification) >= cooldownDuration
 	case "temp_ban_update":
-		cooldownDuration = 1 * time.Hour
-		shouldSend = !exists || time.Since(lastNotification) >= cooldownDuration
+		cooldownDuration = time.Duration(tempBanUpdateInterval) * time.Hour
 	default:
 		cooldownDuration = time.Duration(globalNotificationCooldown) * time.Hour
 		shouldSend = !exists || time.Since(lastNotification) >= cooldownDuration
 	}
 
-	if !shouldSend {
+	if exists && now.Sub(lastNotification) < cooldownDuration {
 		logger.Log.Infof("Skipping %s notification for user %s (cooldown)", notificationType, account.UserID)
 		return nil
 	}
@@ -199,8 +195,7 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 
 	logger.Log.Infof("%s notification sent to user %s", notificationType, account.UserID)
 	userNotificationMutex.Lock()
-	userNotificationTimestamps[account.UserID][notificationType] = time.Now()
-	userNotificationMutex.Unlock()
+	userNotificationTimestamps[account.UserID][notificationType] = now
 	return nil
 }
 
@@ -282,14 +277,15 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 
 	logger.Log.Infof("User %s captcha balance: %.2f", userID, balance)
 
-	if captchaAPIKey != "" {
-		checkAndNotifyBalance(s, userID, balance)
+	userSettings, err := GetUserSettings(userID)
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
+		return
 	}
 
-	var (
-		accountsToUpdate    []models.Account
-		dailyUpdateAccounts []models.Account
-	)
+	var accountsToUpdate []models.Account
+	var dailyUpdateAccounts []models.Account
+	now := time.Now()
 
 	for _, account := range accounts {
 		if account.IsCheckDisabled {
@@ -327,15 +323,22 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 		}
 
 		lastCheck := time.Unix(account.LastCheck, 0)
-		if time.Since(lastCheck).Minutes() < float64(checkInterval) {
-			logger.Log.Infof("Skipping check for account %s (rate limit)", account.Title)
-			continue
+		if now.Sub(lastCheck).Minutes() >= float64(checkInterval) {
+			accountsToUpdate = append(accountsToUpdate, account)
+		} else {
+			logger.Log.Infof("Skipping check for account %s (not due yet)", account.Title)
 		}
 
-		accountsToUpdate = append(accountsToUpdate, account)
-
-		if time.Since(time.Unix(account.LastNotification, 0)).Hours() > notificationInterval {
+		if now.Sub(time.Unix(account.LastNotification, 0)).Hours() >= userSettings.NotificationInterval {
 			dailyUpdateAccounts = append(dailyUpdateAccounts, account)
+		}
+
+		// Check for cookie expiration warning
+		if !account.IsExpiredCookie {
+			timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
+			if err == nil && timeUntilExpiration > 0 && timeUntilExpiration <= cookieExpirationWarning*time.Hour {
+				go notifyCookieExpiringSoon(s, account, timeUntilExpiration)
+			}
 		}
 	}
 
@@ -548,8 +551,11 @@ func handleInvalidCookie(s *discordgo.Session, account models.Account) {
 
 func updateAccountStatus(s *discordgo.Session, account models.Account, result models.Status) {
 	DBMutex.Lock()
+	defer DBMutex.Unlock()
+
 	lastStatus := account.LastStatus
-	account.LastCheck = time.Now().Unix()
+	now := time.Now()
+	account.LastCheck = now.Unix()
 	account.IsExpiredCookie = false
 	if err := database.DB.Save(&account).Error; err != nil {
 		logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
@@ -559,20 +565,29 @@ func updateAccountStatus(s *discordgo.Session, account models.Account, result mo
 	DBMutex.Unlock()
 
 	if result != lastStatus {
-		handleStatusChange(s, account, result)
+		lastStatusChange := time.Unix(account.LastStatusChange, 0)
+		if now.Sub(lastStatusChange).Hours() >= statusChangeCooldown {
+			handleStatusChange(s, account, result)
+		} else {
+			logger.Log.Infof("Skipping status change notification for account %s (cooldown)", account.Title)
+		}
 	}
 }
 
 func handleStatusChange(s *discordgo.Session, account models.Account, newStatus models.Status) {
 	DBMutex.Lock()
+	defer DBMutex.Unlock()
+
+	now := time.Now()
 	account.LastStatus = newStatus
-	account.LastStatusChange = time.Now().Unix()
+	account.LastStatusChange = now.Unix()
 	account.IsPermabanned = newStatus == models.StatusPermaban
 	if err := database.DB.Save(&account).Error; err != nil {
 		logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
 		DBMutex.Unlock()
 		return
 	}
+
 	logger.Log.Infof("Account %s status changed to %s", account.Title, newStatus)
 
 	ban := models.Ban{
@@ -582,7 +597,7 @@ func handleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 	}
 
 	if newStatus == models.StatusTempban {
-		ban.TempBanDuration = calculateBanDuration(time.Now())
+		ban.TempBanDuration = calculateBanDuration(now)
 	}
 
 	if err := database.DB.Create(&ban).Error; err != nil {
@@ -594,7 +609,7 @@ func handleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 		Title:       fmt.Sprintf("%s - %s", account.Title, EmbedTitleFromStatus(newStatus)),
 		Description: getStatusDescription(newStatus, account.Title, ban),
 		Color:       GetColorForStatus(newStatus, account.IsExpiredCookie, account.IsCheckDisabled),
-		Timestamp:   time.Now().Format(time.RFC3339),
+		Timestamp:   now.Format(time.RFC3339),
 	}
 
 	notificationType := "status_change"
@@ -606,6 +621,7 @@ func handleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to send status update message for account %s", account.Title)
 	}
+
 	if newStatus == models.StatusTempban {
 		go scheduleTempBanNotification(s, account, ban.TempBanDuration)
 	}
