@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/bwmarrin/discordgo"
 	"io"
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
@@ -58,13 +60,13 @@ func init() {
 		defaultSettings.CheckInterval, defaultSettings.NotificationInterval, defaultSettings.CooldownDuration, defaultSettings.StatusChangeCooldown)
 
 }
+
 func GetUserSettings(userID string) (models.UserSettings, error) {
 	logger.Log.Infof("Getting user settings for user: %s", userID)
 	var settings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
 	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error getting user settings")
-		return settings, result.Error
+		return models.UserSettings{}, fmt.Errorf("error getting user settings: %w", result.Error)
 	}
 
 	// If the user doesn't have custom settings, use default settings.
@@ -203,7 +205,6 @@ func RemoveCaptchaKey(userID string) error {
 	settings.NotificationInterval = defaultSettings.NotificationInterval
 	settings.CooldownDuration = defaultSettings.CooldownDuration
 	settings.StatusChangeCooldown = defaultSettings.StatusChangeCooldown
-	// Keep the user's notification type preference
 
 	if err := database.DB.Save(&settings).Error; err != nil {
 		logger.Log.WithError(err).Error("Error saving user settings")
@@ -289,4 +290,28 @@ func CheckCaptchaKeyValidity(captchaKey string) (bool, float64, error) {
 	}
 
 	return true, result.Balance, nil
+}
+
+func ScheduleBalanceChecks(s *discordgo.Session) {
+	ticker := time.NewTicker(6 * time.Hour)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		var users []models.UserSettings
+		if err := database.DB.Find(&users).Error; err != nil {
+			logger.Log.WithError(err).Error("Failed to fetch users for balance check")
+			continue
+		}
+
+		for _, user := range users {
+			if user.CaptchaAPIKey != "" {
+				_, balance, err := ValidateCaptchaKey(user.CaptchaAPIKey)
+				if err != nil {
+					logger.Log.WithError(err).Errorf("Failed to validate captcha key for user %s", user.UserID)
+					continue
+				}
+				checkAndNotifyBalance(s, user.UserID, balance)
+			}
+		}
+	}
 }

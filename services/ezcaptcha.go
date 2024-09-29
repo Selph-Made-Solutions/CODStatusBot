@@ -22,10 +22,11 @@ const (
 )
 
 var (
-	clientKey string
-	ezappID   string
-	siteKey   string
-	pageURL   string
+	clientKey  string
+	ezappID    string
+	siteKey    string
+	pageURL    string
+	siteAction string
 )
 
 type createTaskRequest struct {
@@ -39,6 +40,7 @@ type task struct {
 	WebsiteURL  string `json:"websiteURL"`
 	WebsiteKey  string `json:"websiteKey"`
 	IsInvisible bool   `json:"isInvisible"`
+	SiteAction  string `json:"siteAction,omitempty"`
 }
 
 type createTaskResponse struct {
@@ -68,9 +70,10 @@ func LoadEnvironmentVariables() error {
 	ezappID = os.Getenv("EZAPPID")
 	siteKey = os.Getenv("RECAPTCHA_SITE_KEY")
 	pageURL = os.Getenv("RECAPTCHA_URL")
+	siteaction := os.Getenv("SITE_ACTION")
 
-	if clientKey == "" || siteKey == "" || pageURL == "" {
-		return fmt.Errorf("EZCAPTCHA_CLIENT_KEY, RECAPTCHA_SITE_KEY, or RECAPTCHA_URL is not set in the environment")
+	if clientKey == "" || siteKey == "" || pageURL == "" || ezappID == "" || siteaction == "" {
+		return fmt.Errorf("EZCAPTCHA_CLIENT_KEY, RECAPTCHA_SITE_KEY, RECAPTCHA_URL, EZAPPID, or SITE_ACTION is not set in the environment")
 	}
 	return nil
 }
@@ -101,6 +104,7 @@ func createTask() (string, error) {
 			WebsiteURL:  pageURL,
 			WebsiteKey:  siteKey,
 			IsInvisible: false,
+			SiteAction:  siteAction,
 		},
 	}
 
@@ -169,6 +173,7 @@ func createTaskWithKey(apiKey string) (string, error) {
 			WebsiteURL:  pageURL,
 			WebsiteKey:  siteKey,
 			IsInvisible: false,
+			SiteAction:  siteAction,
 		},
 	}
 
@@ -288,7 +293,6 @@ func getTaskResult(taskID string) (string, error) {
 }
 
 func ValidateCaptchaKey(apiKey string) (bool, float64, error) {
-	url := "https://api.ez-captcha.com/getBalance"
 	payload := map[string]string{
 		"clientKey": apiKey,
 	}
@@ -298,7 +302,7 @@ func ValidateCaptchaKey(apiKey string) (bool, float64, error) {
 		return false, 0, fmt.Errorf("failed to marshal JSON payload: %v", err)
 	}
 
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonPayload))
+	resp, err := http.Post(EZCaptchaBalanceURL, "application/json", bytes.NewBuffer(jsonPayload))
 	if err != nil {
 		return false, 0, fmt.Errorf("failed to send getBalance request: %v", err)
 	}

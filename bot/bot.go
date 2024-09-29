@@ -16,11 +16,7 @@ import (
 	"CODStatusBot/command/setcheckinterval"
 	"CODStatusBot/command/togglecheck"
 	"CODStatusBot/command/updateaccount"
-	"CODStatusBot/database"
 	"CODStatusBot/logger"
-	"CODStatusBot/models"
-	"CODStatusBot/services"
-
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -37,19 +33,16 @@ func StartBot() (*discordgo.Session, error) {
 	var err error
 	discord, err = discordgo.New("Bot " + envToken)
 	if err != nil {
-		logger.Log.WithError(err).WithField("Bot startup", "Token").Error()
 		return nil, err
 	}
 
 	err = discord.Open()
 	if err != nil {
-		logger.Log.WithError(err).WithField("Bot startup", "Opening Session").Error()
 		return nil, err
 	}
 
 	err = discord.UpdateWatchStatus(0, "the Status of your Accounts so you dont have to.")
 	if err != nil {
-		logger.Log.WithError(err).WithField("Bot startup", "Setting Presence Status").Error()
 		return nil, err
 	}
 
@@ -67,7 +60,6 @@ func StartBot() (*discordgo.Session, error) {
 		}
 	})
 
-	go services.CheckAccounts(discord)
 	return discord, nil
 }
 
@@ -92,49 +84,26 @@ func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate
 	switch {
 	case strings.HasPrefix(customID, "feedback_"):
 		feedback.HandleFeedbackChoice(s, i)
-		logger.Log.Info("Handling feedback choice")
 	case strings.HasPrefix(customID, "account_age_"):
 		accountage.HandleAccountSelection(s, i)
-		logger.Log.Info("Handling account age selection")
 	case strings.HasPrefix(customID, "account_logs_"):
 		accountlogs.HandleAccountSelection(s, i)
-		logger.Log.Info("Handling account logs selection")
 	case customID == "account_logs_all":
 		accountlogs.HandleAccountSelection(s, i)
-		logger.Log.Info("Handling account logs selection")
 	case strings.HasPrefix(customID, "update_account_"):
 		updateaccount.HandleAccountSelection(s, i)
-		logger.Log.Info("Handling update account selection")
 	case strings.HasPrefix(customID, "remove_account_"):
 		removeaccount.HandleAccountSelection(s, i)
-		logger.Log.Info("Handling remove account selection")
 	case customID == "cancel_remove" || strings.HasPrefix(customID, "confirm_remove_"):
 		removeaccount.HandleConfirmation(s, i)
-		logger.Log.Info("Handling remove account confirmation")
 	case strings.HasPrefix(customID, "check_now_"):
 		checknow.HandleAccountSelection(s, i)
-		logger.Log.Info("Handling check now selection")
 	case strings.HasPrefix(customID, "toggle_check_"):
 		togglecheck.HandleAccountSelection(s, i)
-		logger.Log.Info("Handling toggle check selection")
 	case strings.HasPrefix(customID, "confirm_reenable_") || customID == "cancel_reenable":
 		togglecheck.HandleConfirmation(s, i)
-		logger.Log.Info("Handling toggle check confirmation")
 	default:
 		logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 	}
-}
 
-func init() {
-	// Initialize the database connection
-	err := database.Databaselogin()
-	if err != nil {
-		logger.Log.WithError(err).Fatal("Failed to initialize database connection")
-	}
-
-	// Create or update the UserSettings table
-	err = database.DB.AutoMigrate(&models.UserSettings{})
-	if err != nil {
-		logger.Log.WithError(err).Fatal("Failed to create or update UserSettings table")
-	}
 }

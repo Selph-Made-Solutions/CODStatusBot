@@ -3,6 +3,7 @@ package addaccount
 import (
 	"fmt"
 	"strings"
+	"time"
 	"unicode"
 
 	"CODStatusBot/database"
@@ -140,7 +141,20 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	logger.Log.Infof("Account added successfully. ID: %d, Title: %s, UserID: %s", account.ID, account.Title, account.UserID)
 
 	formattedExpiration := services.FormatExpirationTime(expirationTimestamp)
-	respondToInteraction(s, i, fmt.Sprintf("Account added successfully! SSO cookie will expire in %s", formattedExpiration))
+	embed := &discordgo.MessageEmbed{
+		Title:       "Account Added Successfully",
+		Description: fmt.Sprintf("Account '%s' has been added to monitoring. SSO cookie will expire in %s", account.Title, formattedExpiration),
+		Color:       0x00FF00, // Green color for success
+		Timestamp:   time.Now().Format(time.RFC3339),
+	}
+	err = services.SendNotification(s, account, embed, "", "account_added")
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to send account added notification")
+		respondToInteraction(s, i, "Account added successfully, but there was an error sending the confirmation message.")
+		return
+	}
+
+	respondToInteraction(s, i, "Account added successfully!")
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
