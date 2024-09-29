@@ -110,7 +110,14 @@
     <h1>COD Status Bot Admin Dashboard</h1>
 
     <label for="theme-toggle">Dark Mode</label>
-    <input type="checkbox" id="theme-toggle" onclick="toggleDarkMode()">
+    <script>function handleKeyDown(event) {
+        if (event.keyCode === 32 || event.keyCode === 13) {
+            event.preventDefault();
+            this.checked = !this.checked;
+            toggleDarkMode();
+        }
+    }</script>
+    <input type="checkbox" id="theme-toggle" onclick="toggleDarkMode()" onKeyDown="handleKeyDown(event)">
 
     <div class="container">
         <div class="stat-group">
