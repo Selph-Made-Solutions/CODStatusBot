@@ -54,32 +54,27 @@ func VerifySSOCookie(ssoCookie string) bool {
 }
 
 // CheckAccount checks the account status associated with the provided SSO cookie.
-func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
+func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models.Status, error) {
 	logger.Log.Info("Starting CheckAccount function")
 
 	captchaAPIKey, _, err := GetUserCaptchaKey(userID)
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to get user's captcha API key")
 		return models.StatusUnknown, fmt.Errorf("failed to get user's captcha API key: %w", err)
 	}
 
 	gRecaptchaResponse, err := SolveReCaptchaV2WithKey(captchaAPIKey)
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to solve reCAPTCHA")
 		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %w", err)
 	}
 
-	// Further processing of gRecaptchaResponse can be done here
 	logger.Log.Info("Successfully solved reCAPTCHA")
 
-	// Construct the ban appeal URL with the reCAPTCHA response
 	banAppealUrl := url1 + "&g-cc=" + gRecaptchaResponse
 	logger.Log.WithField("url", banAppealUrl).Info("Constructed ban appeal URL")
 
 	req, err := http.NewRequest("GET", banAppealUrl, nil)
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to create HTTP request")
-		return models.StatusUnknown, errors.New("failed to create HTTP request to check account")
+		return models.StatusUnknown, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
 	headers := GenerateHeaders(ssoCookie)
@@ -94,14 +89,13 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 
 	var resp *http.Response
 	var body []byte
-	maxRetries := 1
+	maxRetries := 3
 	for i := 0; i < maxRetries; i++ {
 		logger.Log.Infof("Sending HTTP request to check account (attempt %d/%d)", i+1, maxRetries)
 		resp, err = client.Do(req)
 		if err != nil {
-			logger.Log.WithError(err).Error("Failed to send HTTP request")
 			if i == maxRetries-1 {
-				return models.StatusUnknown, errors.New("failed to send HTTP request to check account after multiple attempts")
+				return models.StatusUnknown, fmt.Errorf("failed to send HTTP request after %d attempts: %w", maxRetries, err)
 			}
 			time.Sleep(time.Duration(i+1) * time.Second)
 			continue
@@ -112,9 +106,8 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 
 		body, err = io.ReadAll(resp.Body)
 		if err != nil {
-			logger.Log.WithError(err).Error("Failed to read response body")
 			if i == maxRetries-1 {
-				return models.StatusUnknown, errors.New("failed to read response body from check account request after multiple attempts")
+				return models.StatusUnknown, fmt.Errorf("failed to read response body after %d attempts: %w", maxRetries, err)
 			}
 			time.Sleep(time.Duration(i+1) * time.Second)
 			continue
@@ -124,7 +117,6 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 
 	logger.Log.WithField("body", string(body)).Info("Read response body")
 
-	// Check for specific error responses
 	var errorResponse struct {
 		Timestamp string `json:"timestamp"`
 		Path      string `json:"path"`
@@ -137,12 +129,10 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 	if err := json.Unmarshal(body, &errorResponse); err == nil {
 		logger.Log.WithField("errorResponse", errorResponse).Info("Parsed error response")
 		if errorResponse.Status == 400 && errorResponse.Path == "/api/bans/v2/appeal" {
-			logger.Log.Error("Invalid request to new endpoint, possibly missing or invalid reCAPTCHA")
-			return models.StatusUnknown, errors.New("invalid request to new endpoint, possibly missing or invalid reCAPTCHA")
+			return models.StatusUnknown, fmt.Errorf("invalid request to new endpoint: %s", errorResponse.Error)
 		}
 	}
 
-	// If not an error response, proceed with parsing the actual ban data.
 	var data struct {
 		Error     string `json:"error"`
 		Success   string `json:"success"`
@@ -155,13 +145,10 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 	}
 
 	if string(body) == "" {
-		logger.Log.Info("Empty response body, treating as invalid cookie")
 		return models.StatusInvalidCookie, nil
 	}
 
-	err = json.Unmarshal(body, &data)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to decode JSON response")
+	if err := json.Unmarshal(body, &data); err != nil {
 		return models.StatusUnknown, fmt.Errorf("failed to decode JSON response: %w", err)
 	}
 	logger.Log.WithField("data", data).Info("Parsed ban data")
