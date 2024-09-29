@@ -7,20 +7,24 @@ import (
 	"CODStatusBot/models"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
+	"github.com/patrickmn/go-cache"
 	"os"
 	"strings"
 	"time"
 )
+
+var adminNotificationCache = cache.New(5*time.Minute, 10*time.Minute)
 
 func NotifyAdminWithCooldown(s *discordgo.Session, message string, cooldownDuration time.Duration) {
 	admin.NotificationMutex.Lock()
 	defer admin.NotificationMutex.Unlock()
 
 	notificationType := "admin_" + strings.Split(message, " ")[0] // Use first word of message as type
-	lastNotification, exists := admin.NotificationCooldowns[notificationType]
-	if !exists || time.Since(lastNotification) >= cooldownDuration {
+
+	_, found := adminNotificationCache.Get(notificationType)
+	if !found {
 		NotifyAdmin(s, message)
-		admin.NotificationCooldowns[notificationType] = time.Now()
+		adminNotificationCache.Set(notificationType, time.Now(), cooldownDuration)
 	} else {
 		logger.Log.Infof("Skipping admin notification '%s' due to cooldown", notificationType)
 	}
