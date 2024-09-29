@@ -42,8 +42,8 @@ type UserSettings struct {
 	NotificationType         string  `gorm:"default:channel"` // User preference for location of notifications either channel or dm
 	LastNotification         time.Time
 	LastBalanceNotification  time.Time // Timestamp of the last balance notification
-	LastErrorNotification    time.Time
-	LastDisabledNotification time.Time
+	LastErrorNotification    time.Time // Timestamp of the last error notification
+	LastDisabledNotification time.Time // Timestamp of the last disabled notification
 }
 
 type Ban struct {
