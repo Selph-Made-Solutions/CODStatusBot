@@ -2,6 +2,7 @@ package services
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -21,14 +22,14 @@ func DecodeSSOCookie(encodedStr string) (int64, error) {
 
 	decodedBytes, err := base64.StdEncoding.DecodeString(encodedStr)
 	if err != nil {
-		return 0, fmt.Errorf("failed to decode base64: %v", err)
+		return 0, fmt.Errorf("failed to decode base64: %w", err)
 	}
 
 	decodedStr := string(decodedBytes)
 	parts := strings.Split(decodedStr, ":")
 
 	if len(parts) < 2 {
-		return 0, fmt.Errorf("invalid cookie format")
+		return 0, errors.New("invalid cookie format")
 	}
 
 	expirationStr := parts[1]
@@ -37,7 +38,7 @@ func DecodeSSOCookie(encodedStr string) (int64, error) {
 
 	expirationTimestamp, err := strconv.ParseInt(expirationStr, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse expiration timestamp: %v", err)
+		return 0, fmt.Errorf("failed to parse expiration timestamp: %w", err)
 	}
 
 	// Convert milliseconds to seconds if necessary
@@ -47,7 +48,7 @@ func DecodeSSOCookie(encodedStr string) (int64, error) {
 
 	// Check if the timestamp is in the past
 	if expirationTimestamp < time.Now().Unix() {
-		return 0, fmt.Errorf("SSO cookie has already expired")
+		return 0, errors.New("SSO cookie has already expired")
 	}
 
 	return expirationTimestamp, nil
