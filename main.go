@@ -1,14 +1,12 @@
 package main
 
 import (
-	"CODStatusBot/admin"
 	"CODStatusBot/bot"
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
 	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -16,7 +14,6 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 )
 
@@ -57,8 +54,6 @@ func run() error {
 		return fmt.Errorf("failed to initialize database: %w", err)
 	}
 	logger.Log.Info("Database initialized successfully")
-
-	startAdminDashboard()
 
 	var err error
 	discord, err = bot.StartBot()
@@ -130,27 +125,6 @@ func initializeDatabase() error {
 	return nil
 }
 
-func startAdminDashboard() {
-	r := mux.NewRouter()
-	r.HandleFunc("/admin", admin.DashboardHandler)
-	r.HandleFunc("/admin/stats", admin.StatsHandler)
-
-	staticDir := "/home/container/"
-	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
-
-	port := os.Getenv("ADMIN_PORT")
-	if port == "" {
-		port = "8080"
-	}
-
-	go func() {
-		logger.Log.Infof("Admin dashboard starting on port %s", port)
-		if err := http.ListenAndServe(":"+port, r); err != nil {
-			logger.Log.WithError(err).Fatal("Failed to start admin dashboard")
-		}
-	}()
-}
-
 func startPeriodicTasks(s *discordgo.Session) {
 	go func() {
 		for {
@@ -160,7 +134,6 @@ func startPeriodicTasks(s *discordgo.Session) {
 		}
 	}()
 
-	go admin.StartStatsCaching()
 	go services.ScheduleBalanceChecks(s)
 
 	go func() {
