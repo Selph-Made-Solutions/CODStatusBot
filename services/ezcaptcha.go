@@ -140,27 +140,32 @@ func createTask() (string, error) {
 func SolveReCaptchaV2WithKey(apiKey string) (string, error) {
 	isValid, balance, err := ValidateCaptchaKey(apiKey)
 	if err != nil {
-		return "", fmt.Errorf("failed to validate captcha key: %v", err)
+		return "", fmt.Errorf("failed to validate captcha key: %w", err)
 	}
 
 	if !isValid {
-		return "", fmt.Errorf("invalid captcha API key")
+		return "", errors.New("invalid captcha API key")
 	}
 
 	if balance <= 0 {
-		return "", fmt.Errorf("insufficient balance for captcha solving")
+		return "", errors.New("insufficient balance for captcha solving")
 	}
+
+	logger.Log.Infof("Captcha key validated. Balance: %.2f", balance)
 
 	taskID, err := createTaskWithKey(apiKey)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create captcha task: %w", err)
 	}
+
+	logger.Log.Infof("Captcha task created. Task ID: %s", taskID)
 
 	solution, err := getTaskResultWithKey(taskID, apiKey)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to get captcha task result: %w", err)
 	}
 
+	logger.Log.Info("Captcha solved successfully")
 	return solution, nil
 }
 
@@ -179,24 +184,24 @@ func createTaskWithKey(apiKey string) (string, error) {
 
 	jsonPayload, err := json.Marshal(payload)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal JSON payload: %v", err)
+		return "", fmt.Errorf("failed to marshal JSON payload: %w", err)
 	}
 
 	resp, err := http.Post(EZCaptchaAPIURL, "application/json", bytes.NewBuffer(jsonPayload))
 	if err != nil {
-		return "", fmt.Errorf("failed to send createTask request: %v", err)
+		return "", fmt.Errorf("failed to send createTask request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %v", err)
+		return "", fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	var result createTaskResponse
 	err = json.Unmarshal(body, &result)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse JSON response: %v", err)
+		return "", fmt.Errorf("failed to parse JSON response: %w", err)
 	}
 
 	if result.ErrorID != 0 {
@@ -215,24 +220,24 @@ func getTaskResultWithKey(taskID string, apiKey string) (string, error) {
 
 		jsonPayload, err := json.Marshal(payload)
 		if err != nil {
-			return "", fmt.Errorf("failed to marshal JSON payload: %v", err)
+			return "", fmt.Errorf("failed to marshal JSON payload: %w", err)
 		}
 
 		resp, err := http.Post(EZCaptchaResultURL, "application/json", bytes.NewBuffer(jsonPayload))
 		if err != nil {
-			return "", fmt.Errorf("failed to send getTaskResult request: %v", err)
+			return "", fmt.Errorf("failed to send getTaskResult request: %w", err)
 		}
 		defer resp.Body.Close()
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return "", fmt.Errorf("failed to read response body: %v", err)
+			return "", fmt.Errorf("failed to read response body: %w", err)
 		}
 
 		var result getTaskResultResponse
 		err = json.Unmarshal(body, &result)
 		if err != nil {
-			return "", fmt.Errorf("failed to parse JSON response: %v", err)
+			return "", fmt.Errorf("failed to parse JSON response: %w", err)
 		}
 
 		if result.Status == "ready" {
@@ -243,6 +248,7 @@ func getTaskResultWithKey(taskID string, apiKey string) (string, error) {
 			return "", fmt.Errorf("EZ-Captcha error: %s", result.ErrorDescription)
 		}
 
+		logger.Log.Infof("Waiting for captcha solution. Attempt %d/%d", i+1, MaxRetries)
 		time.Sleep(RetryInterval)
 	}
 
