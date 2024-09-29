@@ -60,13 +60,13 @@ func init() {
 		defaultSettings.CheckInterval, defaultSettings.NotificationInterval, defaultSettings.CooldownDuration, defaultSettings.StatusChangeCooldown)
 
 }
+
 func GetUserSettings(userID string) (models.UserSettings, error) {
 	logger.Log.Infof("Getting user settings for user: %s", userID)
 	var settings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
 	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error getting user settings")
-		return settings, result.Error
+		return models.UserSettings{}, fmt.Errorf("error getting user settings: %w", result.Error)
 	}
 
 	// If the user doesn't have custom settings, use default settings.
