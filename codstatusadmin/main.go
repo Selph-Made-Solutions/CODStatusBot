@@ -9,7 +9,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
-func main() {
+func Init() {
 	if err := godotenv.Load(); err != nil {
 		log.Fatal("Error loading .env file")
 	}
@@ -18,10 +18,10 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
-	go startStatsCaching()
+	go StartStatsCaching()
 
-	http.HandleFunc("/admin", dashboardHandler)
-	http.HandleFunc("/admin/stats", statsHandler)
+	http.HandleFunc("/admin", DashboardHandler)
+	http.HandleFunc("/admin/stats", StatsHandler)
 
 	fs := http.FileServer(http.Dir("static"))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
@@ -34,12 +34,12 @@ func main() {
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
 
-func startStatsCaching() {
+func StartStatsCaching() {
 	ticker := time.NewTicker(15 * time.Minute)
 	defer ticker.Stop()
 
 	for {
-		updateCachedStats()
+		UpdateCachedStats()
 		<-ticker.C
 	}
 }
