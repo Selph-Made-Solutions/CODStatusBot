@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"html/template"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -91,8 +92,22 @@ func StatsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(stats)
 }
 
+func checkCredentials(username, password string) bool {
+	expectedUsername := os.Getenv("ADMIN_USERNAME")
+	expectedPassword := os.Getenv("ADMIN_PASSWORD")
+	return username == expectedUsername && password == expectedPassword
+}
+
 func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	logger.Log.Info("Dashboard handler called")
+
+	username, password, ok := r.BasicAuth()
+	if !ok || !checkCredentials(username, password) {
+		w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
 	httpError := tollbooth.LimitByRequest(statsLimiter, w, r)
 	if httpError != nil {
 		logger.Log.WithError(httpError).Error("Rate limit exceeded")
