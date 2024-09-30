@@ -119,6 +119,8 @@ func loadEnvironmentVariables() error {
 		"DB_VAR",
 		"DEVELOPER_ID",
 		"ADMIN_PORT",
+		"ADMIN_USERNAME",
+		"ADMIN_PASSWORD",
 		"CHECK_INTERVAL",
 		"NOTIFICATION_INTERVAL",
 		"COOLDOWN_DURATION",
