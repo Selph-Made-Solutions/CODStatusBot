@@ -434,7 +434,8 @@ func CheckSingleAccount(s *discordgo.Session, account models.Account, captchaAPI
 
 	result, err := CheckAccount(account.SSOCookie, account.UserID, captchaAPIKey)
 	if err != nil {
-		handleCheckAccountError(s, account, err)
+		logger.Log.WithError(err).Errorf("Error checking account %s", account.Title)
+		NotifyAdminWithCooldown(s, fmt.Sprintf("Error checking account %s: %v", account.Title, err), 5*time.Minute)
 		return
 	}
 
