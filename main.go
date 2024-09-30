@@ -156,7 +156,7 @@ func startAdminDashboard() *http.Server {
 
 	port := os.Getenv("ADMIN_PORT")
 	if port == "" {
-		port = "8080"
+		port = "443"
 	}
 
 	server := &http.Server{
