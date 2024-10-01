@@ -194,9 +194,9 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 	return nil
 }
 
-func sendIndividualDailyUpdate(s *discordgo.Session, account models.Account) {
+func sendIndividualDailyUpdate(s *discordgo.Session, account models.Account, userSettings models.UserSettings) {
 	now := time.Now()
-	if now.Sub(account.Last24HourNotification) < 24*time.Hour {
+	if now.Sub(userSettings.LastDailyUpdateNotification) < 24*time.Hour {
 		logger.Log.Infof("Skipping daily update for account %s as last notification was less than 24 hours ago", account.Title)
 		return
 	}
@@ -229,10 +229,9 @@ func sendIndividualDailyUpdate(s *discordgo.Session, account models.Account) {
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to send individual daily update message for account %s", account.Title)
 	} else {
-		account.LastCheck = time.Now().Unix()
-		account.LastNotification = time.Now().Unix()
-		if err := database.DB.Save(&account).Error; err != nil {
-			logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
+		userSettings.LastDailyUpdateNotification = now
+		if err := database.DB.Save(&userSettings).Error; err != nil {
+			logger.Log.WithError(err).Errorf("Failed to update LastDailyUpdateNotification for user %s", account.UserID)
 		}
 	}
 
@@ -297,12 +296,18 @@ func CheckAccounts(s *discordgo.Session) {
 	}
 }
 
-func checkAndSendNotifications(s *discordgo.Session, account models.Account, userSettings models.UserSettings) {
+func checkAndSendNotifications(s *discordgo.Session, userID string) {
+	var userSettings models.UserSettings
+	if err := database.DB.Where("user_id = ?", userID).First(&userSettings).Error; err != nil {
+		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
+		return
+	}
+
 	now := time.Now()
 
 	// Check for daily update
 	if now.Sub(userSettings.LastDailyUpdateNotification) >= time.Duration(userSettings.NotificationInterval)*time.Hour {
-		sendDailyUpdate(s, account, userSettings)
+		sendConsolidatedDailyUpdate(s, userID, userSettings)
 	}
 
 	// Check for cookie expiration
@@ -322,6 +327,60 @@ func sendDailyUpdate(s *discordgo.Session, account models.Account, userSettings 
 
 func sendCookieExpirationWarning(s *discordgo.Session, account models.Account, userSettings models.UserSettings, timeUntilExpiration time.Duration) {
 	// TODO Implement cookie expiration warning logic
+}
+
+func sendConsolidatedCookieExpirationWarning(s *discordgo.Session, userID string, expiringAccounts []models.Account, userSettings models.UserSettings) {
+	var embedFields []*discordgo.MessageEmbedField
+
+	for _, account := range expiringAccounts {
+		timeUntilExpiration, _ := CheckSSOCookieExpiration(account.SSOCookieExpiration)
+		embedFields = append(embedFields, &discordgo.MessageEmbedField{
+			Name:   account.Title,
+			Value:  fmt.Sprintf("Cookie expires in %s", FormatExpirationTime(account.SSOCookieExpiration)),
+			Inline: false,
+		})
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title:       "SSO Cookie Expiration Warning",
+		Description: "The following accounts have SSO cookies that will expire soon:",
+		Color:       0xFFA500, // Orange color for warning
+		Fields:      embedFields,
+		Timestamp:   time.Now().Format(time.RFC3339),
+	}
+
+	err := SendNotification(s, expiringAccounts[0], embed, "", "cookie_expiring_soon")
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to send consolidated cookie expiration warning for user %s", userID)
+	} else {
+		userSettings.LastCookieExpirationWarning = time.Now()
+		if err := database.DB.Save(&userSettings).Error; err != nil {
+			logger.Log.WithError(err).Errorf("Failed to update LastCookieExpirationWarning for user %s", userID)
+		}
+	}
+}
+
+func checkCookieExpirations(s *discordgo.Session, userID string, userSettings models.UserSettings) {
+	var accounts []models.Account
+	if err := database.DB.Where("user_id = ?", userID).Find(&accounts).Error; err != nil {
+		logger.Log.WithError(err).Errorf("Failed to fetch accounts for user %s", userID)
+		return
+	}
+
+	var expiringAccounts []models.Account
+
+	for _, account := range accounts {
+		if !account.IsExpiredCookie {
+			timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
+			if err == nil && timeUntilExpiration > 0 && timeUntilExpiration <= time.Duration(cookieExpirationWarning)*time.Hour {
+				expiringAccounts = append(expiringAccounts, account)
+			}
+		}
+	}
+
+	if len(expiringAccounts) > 0 {
+		sendConsolidatedCookieExpirationWarning(s, userID, expiringAccounts, userSettings)
+	}
 }
 
 func processUserAccounts(s *discordgo.Session, userID string, accounts []models.Account) {
@@ -598,7 +657,8 @@ func updateAccountStatus(s *discordgo.Session, account models.Account, result mo
 	if result != lastStatus {
 		lastStatusChange := time.Unix(account.LastStatusChange, 0)
 		if now.Sub(lastStatusChange).Hours() >= statusChangeCooldown {
-			handleStatusChange(s, account, result)
+			userSettings, _ := GetUserSettings(account.UserID)
+			handleStatusChange(s, account, result, userSettings)
 		} else {
 			logger.Log.Infof("Skipping status change notification for account %s (cooldown)", account.Title)
 		}
@@ -893,12 +953,18 @@ func calculateBanDuration(banStartTime time.Time) string {
 	return fmt.Sprintf("%d days, %d hours", days, hours)
 }
 
-func sendConsolidatedDailyUpdate(s *discordgo.Session, accounts []models.Account) {
+func sendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettings models.UserSettings) {
+	var accounts []models.Account
+	if err := database.DB.Where("user_id = ?", userID).Find(&accounts).Error; err != nil {
+		logger.Log.WithError(err).Errorf("Failed to fetch accounts for user %s", userID)
+		return
+	}
+
 	if len(accounts) == 0 {
 		return
 	}
 
-	logger.Log.Infof("Sending consolidated daily update for %d accounts", len(accounts))
+	logger.Log.Infof("Sending consolidated daily update for user %s", userID)
 
 	var embedFields []*discordgo.MessageEmbedField
 
@@ -925,7 +991,7 @@ func sendConsolidatedDailyUpdate(s *discordgo.Session, accounts []models.Account
 	}
 
 	embed := &discordgo.MessageEmbed{
-		Title:       fmt.Sprintf("%.2f Hour Update - Multiple Accounts", notificationInterval),
+		Title:       fmt.Sprintf("%.2f Hour Update - Multiple Accounts", userSettings.NotificationInterval),
 		Description: "Here's an update on your monitored accounts:",
 		Color:       0x00ff00, // Green color
 		Fields:      embedFields,
@@ -935,14 +1001,11 @@ func sendConsolidatedDailyUpdate(s *discordgo.Session, accounts []models.Account
 	// Send the consolidated notification
 	err := SendNotification(s, accounts[0], embed, "", "daily_update")
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to send consolidated daily update")
+		logger.Log.WithError(err).Errorf("Failed to send consolidated daily update for user %s", userID)
 	} else {
-		for _, account := range accounts {
-			account.LastCheck = time.Now().Unix()
-			account.LastNotification = time.Now().Unix()
-			if err := database.DB.Save(&account).Error; err != nil {
-				logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
-			}
+		userSettings.LastDailyUpdateNotification = time.Now()
+		if err := database.DB.Save(&userSettings).Error; err != nil {
+			logger.Log.WithError(err).Errorf("Failed to update LastDailyUpdateNotification for user %s", userID)
 		}
 	}
 }
