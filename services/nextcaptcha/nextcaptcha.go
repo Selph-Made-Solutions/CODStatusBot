@@ -39,8 +39,8 @@ func (e *TaskBadParametersError) Error() string {
 
 type ApiClient struct {
 	clientKey   string
-	solftId     string
-	callbackUrl string
+	solftID     string
+	callbackURL string
 	openLog     bool
 	httpClient  *http.Client
 }
@@ -48,8 +48,8 @@ type ApiClient struct {
 func NewApiClient(clientKey, solftId, callbackUrl string, openLog bool) *ApiClient {
 	return &ApiClient{
 		clientKey:   clientKey,
-		solftId:     solftId,
-		callbackUrl: callbackUrl,
+		solftID:     solftId,
+		callbackURL: callbackUrl,
 		openLog:     openLog,
 		httpClient:  &http.Client{Timeout: TIMEOUT},
 	}
@@ -76,8 +76,8 @@ func (c *ApiClient) getBalance() (string, error) {
 func (c *ApiClient) send(task map[string]interface{}) (map[string]interface{}, error) {
 	data := map[string]interface{}{
 		"clientKey":   c.clientKey,
-		"solftId":     c.solftId,
-		"callbackUrl": c.callbackUrl,
+		"softId":     c.solftID,
+		"callbackUrl": c.callbackURL,
 		"task":        task,
 	}
 	resp, err := c.postJSON("/createTask", data)
@@ -89,9 +89,9 @@ func (c *ApiClient) send(task map[string]interface{}) (map[string]interface{}, e
 		return nil, err
 	}
 
-	taskId := resp["taskId"].(float64)
+	taskID := resp["taskId"].(float64)
 	if c.openLog {
-		log.Printf("Task %f created %v", taskId, resp)
+		log.Printf("Task %f created %v", taskID, resp)
 	}
 
 	startTime := time.Now()
@@ -106,7 +106,7 @@ func (c *ApiClient) send(task map[string]interface{}) (map[string]interface{}, e
 
 		data := map[string]any{
 			"clientKey": c.clientKey,
-			"taskId":    taskId,
+			"taskId":    taskID,
 		}
 		resp, err := c.postJSON("/getTaskResult", data)
 		if err != nil {
@@ -122,11 +122,11 @@ func (c *ApiClient) send(task map[string]interface{}) (map[string]interface{}, e
 		}
 
 		if status == ReadyStatus {
-			log.Printf("Task %f ready %v", taskId, resp)
+			log.Printf("Task %f ready %v", taskID, resp)
 			return resp, nil
 		}
 		if status == FailedStatus {
-			log.Printf("Task %f failed %v", taskId, resp)
+			log.Printf("Task %f failed %v", taskID, resp)
 			return resp, nil
 		}
 		time.Sleep(1 * time.Second)
@@ -232,9 +232,9 @@ func (api *NextCaptchaAPI) RecaptchaV2Enterprise(websiteURL, websiteKey string, 
 }
 
 type RecaptchaV3Options struct {
-	PageAction    string
-	ApiDomain     string
-	ProxyType     string
+	PageAction string
+	APIDomain  string
+	ProxyType  string
 	ProxyAddress  string
 	ProxyPort     int
 	ProxyLogin    string
@@ -250,8 +250,8 @@ func (api *NextCaptchaAPI) RecaptchaV3(websiteURL, websiteKey string, options Re
 	if options.PageAction != "" {
 		task["pageAction"] = options.PageAction
 	}
-	if options.ApiDomain != "" {
-		task["apiDomain"] = options.ApiDomain
+	if options.APIDomain != "" {
+		task["apiDomain"] = options.APIDomain
 	}
 	if options.ProxyAddress != "" {
 		task["type"] = Recaptchav3Type
