@@ -150,8 +150,10 @@ func initializeDatabase() error {
 
 func startAdminDashboard() *http.Server {
 	r := mux.NewRouter()
-	r.HandleFunc("/admin", admin.DashboardHandler)
-	r.HandleFunc("/admin/stats", admin.StatsHandler)
+	r.HandleFunc("/admin/login", admin.LoginHandler)
+	r.HandleFunc("/admin/logout", admin.LogoutHandler)
+	r.HandleFunc("/admin", admin.AuthMiddleware(admin.DashboardHandler))
+	r.HandleFunc("/admin/stats", admin.AuthMiddleware(admin.StatsHandler))
 
 	staticDir := "/home/container/"
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
