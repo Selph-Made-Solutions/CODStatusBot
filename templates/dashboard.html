@@ -10,11 +10,25 @@
             font-family: Arial, sans-serif;
             background-color: #f9f9f9;
             margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+        .container {
+            width: 80%;
+            margin: auto;
+            overflow: hidden;
             padding: 20px;
             color: #333;
         }
-
-        h1 {
+        header {
+            background: #35424a;
+            color: #ffffff;
+            padding-top: 30px;
+            min-height: 70px;
+            border-bottom: #e8491d 3px solid;
+        }
+        header h1 {
+            margin: 0;
             text-align: center;
             color: #4CAF50;
             font-size: 2.5em;
@@ -35,46 +49,22 @@
         }
 
         .stat-group {
-            background-color: #fff;
-            border: 1px solid #ddd;
-            border-radius: 10px;
-            padding: 20px;
+            background: #fff;
             margin-bottom: 20px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-        }
-
-        .stat-item {
-            margin-bottom: 15px;
-            font-size: 1.2em;
-        }
-
-        .stat-item span {
-            font-weight: bold;
-            color: #4CAF50;
-        }
-
-        .stat-item span.high { color: red; }
-        .stat-item span.medium { color: orange; }
-        .stat-item span.low { color: green; }
-
-        .stat-item span:hover::after {
-            content: attr(data-tooltip);
-            position: absolute;
-            top: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: #333;
-            color: #fff;
-            padding: 5px 10px;
+            padding: 20px;
             border-radius: 5px;
-            white-space: nowrap;
-            font-size: 0.8em;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
-
-        .sticky-header {
-            position: sticky;
-            top: 0;
-            background-color: #fff;
+        .stat-group h2 {
+            color: #35424a;
+            margin-top: 0;
+        }
+        .stat-item {
+            margin-bottom: 10px;
+        }
+        .logout-btn {
+            display: block;
+            width: 100px;
             padding: 10px;
             z-index: 1000;
             border-bottom: 1px solid #ddd;
@@ -87,14 +77,16 @@
         }
 
         body.dark-mode {
-            background-color: #333;
+            background: #e8491d;
             color: #fff;
+            text-align: center;
+            text-decoration: none;
+            margin: 20px auto;
+            border-color: #555;
+            border-radius: 5px;
         }
 
-        .stat-group.dark-mode {
-            background-color: #444;
-            border-color: #555;
-        }
+
 
         #bansChart {
             border: 1px solid #ddd;
@@ -102,7 +94,6 @@
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
             cursor: move; /* Indicate that it's draggable */
         }
-
         canvas {
             max-width: 100%;
             max-height: 100%;
@@ -113,126 +104,169 @@
             overflow: auto;
             resize: both;
             border: 1px solid #ddd;
-        }
+            .logout-btn:hover {
+                background: #333;
+            }
     </style>
-</head>
-<body>
-    <div class="sticky-header">
-        <strong>Accounts: </strong>{{.TotalAccounts}} | 
-        <strong>Users: </strong>{{.TotalUsers}} | 
-        <strong>Bans: </strong>{{.TotalBans}}
-    </div>
-
-    <h1>COD Status Bot Admin Dashboard</h1>
-
-    <label for="theme-toggle">Dark Mode</label>
-    <script>function handleKeyDown(event) {
-        if (event.keyCode === 32 || event.keyCode === 13) {
-            event.preventDefault();
-            this.checked = !this.checked;
-            toggleDarkMode();
-        }
-    }</script>
-    <input type="checkbox" id="theme-toggle" onclick="toggleDarkMode()" onKeyDown="handleKeyDown(event)">
-
-    <div class="container">
-        <div class="stat-group">
-            <h2><i class="fas fa-user"></i> Account Statistics</h2>
-            <div class="stat-item">Total Accounts: <span>{{.TotalAccounts}}</span></div>
-            <div class="stat-item">Active Accounts: <span>{{.ActiveAccounts}}</span></div>
-            <div class="stat-item">Banned Accounts: <span>{{.BannedAccounts}}</span></div>
-            <div class="stat-item">Oldest Account: <span>{{.OldestAccount.Format "2006-01-02"}}</span></div>
-            <div class="stat-item">Newest Account: <span>{{.NewestAccount.Format "2006-01-02"}}</span></div>
-        </div>
-
-        <div class="stat-group">
-            <h2><i class="fas fa-users"></i> User Statistics</h2>
-            <div class="stat-item">Total Users: <span>{{.TotalUsers}}</span></div>
-            <div class="stat-item">Users with Custom API Key: <span>{{.UsersWithCustomAPIKey}}</span></div>
-            <div class="stat-item">Average Accounts per User: <span>{{printf "%.2f" .AverageAccountsPerUser}}</span></div>
-        </div>
-
-        <div class="stat-group">
-            <h2><i class="fas fa-check"></i> Check Statistics</h2>
-            <div class="stat-item">Checks Last Hour: <span>{{.ChecksLastHour}}</span></div>
-            <div class="stat-item">Checks Last 24 Hours: <span>{{.ChecksLast24Hours}}</span></div>
-            <div class="stat-item">Average Checks per Day: <span>{{printf "%.2f" .AverageChecksPerDay}}</span></div>
-            <div class="stat-item">Most Checked Account: <span>{{.MostCheckedAccount}}</span></div>
-            <div class="stat-item">Least Checked Account: <span>{{.LeastCheckedAccount}}</span></div>
-        </div>
-
-        <div class="stat-group">
-            <h2><i class="fas fa-ban"></i> Ban Statistics</h2>
-            <div class="stat-item">Total Bans: <span>{{.TotalBans}}</span></div>
-            <div class="stat-item">Recent Bans (24h): <span class="{{if gt .RecentBans 100}}high{{else if gt .RecentBans 50}}medium{{else}}low{{end}}">{{.RecentBans}}</span></div>
-            <div class="stat-item">Total Shadowbans: <span>{{.TotalShadowbans}}</span></div>
-            <div class="stat-item">Total Temporary Bans: <span>{{.TotalTempbans}}</span></div>
-        </div>
-
-        <div class="stat-group">
-            <h2><i class="fas fa-bell"></i> Notification Statistics</h2>
-            <div class="stat-item">Total Notifications: <span>{{.TotalNotifications}}</span></div>
-            <div class="stat-item">Recent Notifications (24h): <span>{{.RecentNotifications}}</span></div>
-        </div>
-    </div>
-
-    <canvas id="bansChart" draggable="true" style="resize: both; overflow: auto; width: 400px; height: 200px;"></canvas>    <script src="https://cdn.jsdelivr.net/npm/chart.js" integrity="sha512-k72Y+sws0148dhTBT8Nyro04RwjANbBxNCZ80xKT3FdHNON55/us15Ju0YQ2dD0uzyBJ5YjXnbUcLWaCaw3rCg==" crossorigin="anonymous"></script>
     <script>
-        let ctx = document.getElementById('bansChart').getContext('2d');
-        let bansChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: {{.BanDates}},
-                datasets: [{
-                    label: 'Bans Over Time',
-                    data: {{.BanCounts}},
-                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                    borderColor: 'rgba(75, 192, 192, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                scales: {
-                    y: { beginAtZero: true }
-                }
-            }
-        });
-
-        function toggleDarkMode() {
-            document.body.classList.toggle('dark-mode');
-            document.querySelectorAll('.stat-group').forEach(group => group.classList.toggle('dark-mode'));
-        }
-
-        let canvas = document.getElementById('bansChart');
-        let isDragging = false;
-        let offsetX, offsetY;
-
-        canvas.addEventListener('dragstart', function (e) {
-            isDragging = true;
-            offsetX = e.offsetX;
-            offsetY = e.offsetY;
-        });
-
-        canvas.addEventListener('dragend', function (e) {
-            if (isDragging) {
-                canvas.style.position = 'absolute';
-                canvas.style.left = (e.pageX - offsetX) + 'px';
-                canvas.style.top = (e.pageY - offsetY) + 'px';
-                isDragging = false;
-            }
-        });
-
-        window.addEventListener('resize', function() {
-            bansChart.resize();
-        });
-
-        setInterval(function() {
-            fetch('/api/dashboard-data')
+        function updateStats() {
+            fetch('/admin/stats')
                 .then(response => response.json())
                 .then(data => {
-                    document.querySelector('.total-accounts').textContent = data.totalAccounts;
-                });
-        }, 60000);
+                    // Update each stat item with new data
+                    document.getElementById('totalAccounts').textContent = data.TotalAccounts;
+                    document.getElementById('activeAccounts').textContent = data.ActiveAccounts;
+                    document.getElementById('bannedAccounts').textContent = data.BannedAccounts;
+                    document.getElementById('totalUsers').textContent = data.TotalUsers;
+                    document.getElementById('usersWithCustomAPIKey').textContent = data.UsersWithCustomAPIKey;
+                    document.getElementById('averageAccountsPerUser').textContent = data.AverageAccountsPerUser.toFixed(2);
+                    document.getElementById('checksLastHour').textContent = data.ChecksLastHour;
+                    document.getElementById('checksLast24Hours').textContent = data.ChecksLast24Hours;
+                    document.getElementById('averageChecksPerDay').textContent = data.AverageChecksPerDay.toFixed(2);
+                    document.getElementById('totalBans').textContent = data.TotalBans;
+                    document.getElementById('recentBans').textContent = data.RecentBans;
+                    document.getElementById('totalShadowbans').textContent = data.TotalShadowbans;
+                    document.getElementById('totalTempbans').textContent = data.TotalTempbans;
+                    document.getElementById('totalNotifications').textContent = data.TotalNotifications;
+                    document.getElementById('recentNotifications').textContent = data.RecentNotifications;
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        // Update stats every 60 seconds
+        setInterval(updateStats, 60000);
     </script>
+</head>
+<body>
+<body>
+<div class="sticky-header">
+    <strong>Accounts: </strong>{{.TotalAccounts}} |
+    <strong>Users: </strong>{{.TotalUsers}} |
+    <strong>Bans: </strong>{{.TotalBans}}
+</div>
+
+<h1>COD Status Bot Admin Dashboard</h1>
+
+<label for="theme-toggle">Dark Mode</label>
+<script>function handleKeyDown(event) {
+    if (event.keyCode === 32 || event.keyCode === 13) {
+        event.preventDefault();
+        this.checked = !this.checked;
+        toggleDarkMode();
+    }
+}</script>
+<input type="checkbox" id="theme-toggle" onclick="toggleDarkMode()" onKeyDown="handleKeyDown(event)">
+
+<div class="container">
+    <div class="stat-group">
+        <h2><i class="fas fa-user"></i> Account Statistics</h2>
+        <div class="stat-item">Total Accounts: <span id="totalAccounts">{{.TotalAccounts}}</span></div>
+        <div class="stat-item">Active Accounts: <span id="activeAccounts">{{.ActiveAccounts}}</span></div>
+        <div class="stat-item">Banned Accounts: <span id="bannedAccounts">{{.BannedAccounts}}</span></div>
+        <div class="stat-item">Oldest Account: <span>{{.OldestAccount.Format "2006-01-02"}}</span></div>
+        <div class="stat-item">Newest Account: <span>{{.NewestAccount.Format "2006-01-02"}}</span></div>
+    </div>
+    <div class="stat-group">
+        <h2>User Statistics</h2>
+        <div class="stat-item">Total Users: {{.TotalUsers}}</div>
+        <div class="stat-item">Users with Custom API Key: {{.UsersWithCustomAPIKey}}</div>
+        <div class="stat-item">Average Accounts per User: {{printf "%.2f" .AverageAccountsPerUser}}</div>
+    </div>
+    <div class="stat-group">
+        <h2>Check Statistics</h2>
+        <div class="stat-item">Checks Last Hour: {{.ChecksLastHour}}</div>
+        <div class="stat-item">Checks Last 24 Hours: {{.ChecksLast24Hours}}</div>
+        <div class="stat-item">Average Checks per Day: {{printf "%.2f" .AverageChecksPerDay}}</div>
+    </div>
+    <div class="stat-group">
+        <h2><i class="fas fa-check"></i> Check Statistics</h2>
+        <div class="stat-item">Checks Last Hour: <span>{{.ChecksLastHour}}</span></div>
+        <div class="stat-item">Checks Last 24 Hours: <span>{{.ChecksLast24Hours}}</span></div>
+        <div class="stat-item">Average Checks per Day: <span>{{printf "%.2f" .AverageChecksPerDay}}</span></div>
+    </div>
+    <div class="stat-group">
+        <h2><i class="fas fa-ban"></i> Ban Statistics</h2>
+        <div class="stat-item">Total Bans: <span>{{.TotalBans}}</span></div>
+        <div class="stat-item">Recent Bans (24h): <span class="{{if gt .RecentBans 100}}high{{else if gt .RecentBans 50}}medium{{else}}low{{end}}">{{.RecentBans}}</span></div>
+        <div class="stat-item">Total Shadowbans: <span>{{.TotalShadowbans}}</span></div>
+        <div class="stat-item">Total Temporary Bans: <span>{{.TotalTempbans}}</span></div>
+    </div>
+    <div class="stat-group">
+        <h2>Ban Statistics</h2>
+        <div class="stat-item">Total Bans: {{.TotalBans}}</div>
+        <div class="stat-item">Recent Bans (24h): {{.RecentBans}}</div>
+        <div class="stat-item">Total Shadowbans: {{.TotalShadowbans}}</div>
+        <div class="stat-item">Total Temporary Bans: {{.TotalTempbans}}</div>
+    </div>
+    <div class="stat-group">
+        <h2><i class="fas fa-bell"></i> Notification Statistics</h2>
+        <div class="stat-item">Total Notifications: <span>{{.TotalNotifications}}</span></div>
+        <div class="stat-item">Recent Notifications (24h): <span>{{.RecentNotifications}}</span></div>
+    </div>
+    <div class="stat-group">
+        <h2>Notification Statistics</h2>
+        <div class="stat-item">Total Notifications: {{.TotalNotifications}}</div>
+        <div class="stat-item">Recent Notifications (24h): {{.RecentNotifications}}</div>
+    </div>
+    <a href="/admin/logout" class="logout-btn">Logout</a>
+</div>
+<canvas id="bansChart" draggable="true" style="resize: both; overflow: auto; width: 400px; height: 200px;"></canvas>    <script src="https://cdn.jsdelivr.net/npm/chart.js" integrity="sha512-k72Y+sws0148dhTBT8Nyro04RwjANbBxNCZ80xKT3FdHNON55/us15Ju0YQ2dD0uzyBJ5YjXnbUcLWaCaw3rCg==" crossorigin="anonymous"></script>
+<script>
+    let ctx = document.getElementById('bansChart').getContext('2d');
+    let bansChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: {{.BanDates}},
+    datasets: [{
+        label: 'Bans Over Time',
+        data: {{.BanCounts}},
+    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+        borderColor: 'rgba(75, 192, 192, 1)',
+        borderWidth: 1
+    }]
+    },
+    options: {
+        scales: {
+            y: { beginAtZero: true }
+        }
+    }
+    });
+
+    function toggleDarkMode() {
+        document.body.classList.toggle('dark-mode');
+        document.querySelectorAll('.stat-group').forEach(group => group.classList.toggle('dark-mode'));
+    }
+
+    let canvas = document.getElementById('bansChart');
+    let isDragging = false;
+    let offsetX, offsetY;
+
+    canvas.addEventListener('dragstart', function (e) {
+        isDragging = true;
+        offsetX = e.offsetX;
+        offsetY = e.offsetY;
+    });
+
+    canvas.addEventListener('dragend', function (e) {
+        if (isDragging) {
+            canvas.style.position = 'absolute';
+            canvas.style.left = (e.pageX - offsetX) + 'px';
+            canvas.style.top = (e.pageY - offsetY) + 'px';
+            isDragging = false;
+        }
+    });
+
+    window.addEventListener('resize', function() {
+        bansChart.resize();
+    });
+
+    setInterval(function() {
+        fetch('/api/dashboard-data')
+            .then(response => response.json())
+            .then(data => {
+                document.querySelector('.total-accounts').textContent = data.totalAccounts;
+            });
+    }, 60000);
+</script>
 </body>
 </html>
