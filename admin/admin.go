@@ -14,6 +14,7 @@ import (
 
 	"github.com/didip/tollbooth"
 	"github.com/didip/tollbooth/limiter"
+	"github.com/gorilla/sessions"
 )
 
 var (
@@ -23,6 +24,7 @@ var (
 	cacheInterval         = 15 * time.Minute
 	NotificationCooldowns = make(map[string]time.Time)
 	NotificationMutex     sync.Mutex
+	store                 *sessions.CookieStore
 )
 
 type Stats struct {
@@ -51,6 +53,7 @@ type Stats struct {
 
 func init() {
 	statsLimiter = tollbooth.NewLimiter(1, &limiter.ExpirableOptions{DefaultExpirationTTL: time.Hour})
+	store = sessions.NewCookieStore([]byte(os.Getenv("SESSION_KEY")))
 }
 
 func StartStatsCaching() {
@@ -73,7 +76,6 @@ func updateCachedStats() {
 	cachedStats = stats
 	cachedStatsLock.Unlock()
 }
-
 func GetCachedStats() Stats {
 	cachedStatsLock.RLock()
 	defer cachedStatsLock.RUnlock()
@@ -81,6 +83,11 @@ func GetCachedStats() Stats {
 }
 
 func StatsHandler(w http.ResponseWriter, r *http.Request) {
+	if !isAuthenticated(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	httpError := tollbooth.LimitByRequest(statsLimiter, w, r)
 	if httpError != nil {
 		http.Error(w, httpError.Message, httpError.StatusCode)
@@ -92,6 +99,41 @@ func StatsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(stats)
 }
 
+func LogoutHandler(w http.ResponseWriter, r *http.Request) {
+	session, _ := store.Get(r, "admin-session")
+	session.Values["authenticated"] = false
+	session.Save(r, w)
+	http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+}
+
+func LoginHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		tmpl, err := template.ParseFiles("templates/login.html")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		tmpl.Execute(w, nil)
+	} else if r.Method == "POST" {
+		username := r.FormValue("username")
+		password := r.FormValue("password")
+		if checkCredentials(username, password) {
+			session, _ := store.Get(r, "admin-session")
+			session.Values["authenticated"] = true
+			session.Save(r, w)
+			http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		} else {
+			http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+		}
+	}
+}
+
+func isAuthenticated(r *http.Request) bool {
+	session, _ := store.Get(r, "admin-session")
+	auth, ok := session.Values["authenticated"].(bool)
+	return ok && auth
+}
+
 func checkCredentials(username, password string) bool {
 	expectedUsername := os.Getenv("ADMIN_USERNAME")
 	expectedPassword := os.Getenv("ADMIN_PASSWORD")
@@ -99,14 +141,13 @@ func checkCredentials(username, password string) bool {
 }
 
 func DashboardHandler(w http.ResponseWriter, r *http.Request) {
-	logger.Log.Info("Dashboard handler called")
-
-	username, password, ok := r.BasicAuth()
-	if !ok || !checkCredentials(username, password) {
-		w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-		w.WriteHeader(http.StatusUnauthorized)
+	session, _ := store.Get(r, "admin-session")
+	if auth, ok := session.Values["authenticated"].(bool); !ok || !auth {
+		http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
 		return
 	}
+
+	logger.Log.Info("Dashboard handler called")
 
 	httpError := tollbooth.LimitByRequest(statsLimiter, w, r)
 	if httpError != nil {
@@ -262,4 +303,15 @@ func getTotalBansByType(banType models.Status) (int, error) {
 	var count int64
 	err := database.DB.Model(&models.Ban{}).Where("status = ?", banType).Count(&count).Error
 	return int(count), err
+}
+
+func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		session, _ := store.Get(r, "admin-session")
+		if auth, ok := session.Values["authenticated"].(bool); !ok || !auth {
+			http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+			return
+		}
+		next.ServeHTTP(w, r)
+	}
 }
