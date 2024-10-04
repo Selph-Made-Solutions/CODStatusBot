@@ -89,12 +89,12 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 	logger.Log.WithField("headers", headers).Info("Set request headers")
 
 	client := &http.Client{
-		Timeout: 45 * time.Second,
+		Timeout: 120 * time.Second,
 	}
 
 	var resp *http.Response
 	var body []byte
-	maxRetries := 1
+	maxRetries := 3
 	for i := 0; i < maxRetries; i++ {
 		logger.Log.Infof("Sending HTTP request to check account (attempt %d/%d)", i+1, maxRetries)
 		resp, err = client.Do(req)
@@ -106,7 +106,12 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 			time.Sleep(time.Duration(i+1) * time.Second)
 			continue
 		}
-		defer resp.Body.Close()
+		defer func(Body io.ReadCloser) {
+			err := Body.Close()
+			if err != nil {
+
+			}
+		}(resp.Body)
 
 		logger.Log.WithField("status", resp.Status).Info("Received response")
 
@@ -206,7 +211,12 @@ func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 	if err != nil {
 		return 0, 0, 0, 0, errors.New("failed to send HTTP request to check account age")
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+
+		}
+	}(resp.Body)
 
 	var data struct {
 		Created string `json:"created"`
