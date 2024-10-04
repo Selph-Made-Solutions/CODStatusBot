@@ -153,16 +153,15 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 		cooldownDuration = time.Duration(userSettings.StatusChangeCooldown) * time.Hour
 	case "permaban":
 		cooldownDuration = 24 * time.Hour
-			shouldSend = time.Since(lastNotification) >= cooldownDuration
-		}
+		//shouldSend = time.Since(lastNotification) >= cooldownDuration
 	case "daily_update", "invalid_cookie", "cookie_expiring_soon":
 		cooldownDuration = time.Duration(userSettings.NotificationInterval) * time.Hour
-		shouldSend = !exists || time.Since(lastNotification) >= cooldownDuration
+		//shouldSend = !exists || time.Since(lastNotification) >= cooldownDuration
 	case "temp_ban_update":
 		cooldownDuration = time.Duration(tempBanUpdateInterval) * time.Hour
 	default:
 		cooldownDuration = time.Duration(globalNotificationCooldown) * time.Hour
-		shouldSend = !exists || time.Since(lastNotification) >= cooldownDuration
+		//shouldSend = !exists || time.Since(lastNotification) >= cooldownDuration
 	}
 
 	if exists && now.Sub(lastNotification) < cooldownDuration {
@@ -181,7 +180,7 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 		channelID = account.ChannelID
 	}
 
-	_, err := s.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
+	_, err = s.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
 		Embed:   embed,
 		Content: content,
 	})
@@ -336,7 +335,7 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 		// Check for cookie expiration warning
 		if !account.IsExpiredCookie {
 			timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
-			if err == nil && timeUntilExpiration > 0 && timeUntilExpiration <= cookieExpirationWarning*time.Hour {
+			if err == nil && timeUntilExpiration > 0 && timeUntilExpiration <= time.Duration(cookieExpirationWarning)*time.Hour {
 				go notifyCookieExpiringSoon(s, account, timeUntilExpiration)
 			}
 		}
