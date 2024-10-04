@@ -268,7 +268,12 @@ func CheckCaptchaKeyValidity(captchaKey string) (bool, float64, error) {
 	if err != nil {
 		return false, 0, fmt.Errorf("failed to send getBalance request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			logger.Log.WithError(err).Error("Error closing response body")
+		}
+	}(resp.Body)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
