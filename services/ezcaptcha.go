@@ -117,7 +117,12 @@ func createTask() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to send createTask request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			logger.Log.WithError(err).Error("Failed to close response body")
+		}
+	}(resp.Body)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -186,7 +191,12 @@ func createTaskWithKey(apiKey string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to send createTask request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			logger.Log.WithError(err).Error("Failed to close response body")
+		}
+	}(resp.Body)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -222,7 +232,12 @@ func getTaskResultWithKey(taskID string, apiKey string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("failed to send getTaskResult request: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func(Body io.ReadCloser) {
+			err := Body.Close()
+			if err != nil {
+				logger.Log.WithError(err).Error("Failed to close response body")
+			}
+		}(resp.Body)
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
@@ -265,7 +280,12 @@ func getTaskResult(taskID string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("failed to send getTaskResult request: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func(Body io.ReadCloser) {
+			err := Body.Close()
+			if err != nil {
+				logger.Log.WithError(err).Error("Failed to close response body")
+			}
+		}(resp.Body)
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
@@ -306,7 +326,12 @@ func ValidateCaptchaKey(apiKey string) (bool, float64, error) {
 	if err != nil {
 		return false, 0, fmt.Errorf("failed to send getBalance request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			fmt.Println("Error closing response body:", err)
+		}
+	}(resp.Body)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
