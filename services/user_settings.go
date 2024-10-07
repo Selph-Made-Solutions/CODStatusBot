@@ -310,7 +310,7 @@ func ScheduleBalanceChecks(s *discordgo.Session) {
 					logger.Log.WithError(err).Errorf("Failed to validate captcha key for user %s", user.UserID)
 					continue
 				}
-				checkAndNotifyBalance(s, user.UserID, balance)
+				CheckAndNotifyBalance(s, user.UserID, balance)
 			}
 		}
 	}
