@@ -225,7 +225,7 @@ func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettin
 		Timestamp:   time.Now().Format(time.RFC3339),
 	}
 
-	err := SendNotification(s, accounts[0], embed, "", "daily_update")
+	err = SendNotification(s, accounts[0], embed, "", "daily_update")
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to send consolidated daily update for user %s", userID)
 	} else {
@@ -247,7 +247,7 @@ func NotifyCookieExpiringSoon(s *discordgo.Session, accounts []models.Account) {
 	var embedFields []*discordgo.MessageEmbedField
 
 	for _, account := range accounts {
-		timeUntilExpiration, _ := CheckSSOCookieExpiration(account.SSOCookieExpiration)
+		timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
 		embedFields = append(embedFields, &discordgo.MessageEmbedField{
 			Name:   account.Title,
 			Value:  fmt.Sprintf("Cookie expires in %s", FormatExpirationTime(account.SSOCookieExpiration)),
@@ -263,7 +263,7 @@ func NotifyCookieExpiringSoon(s *discordgo.Session, accounts []models.Account) {
 		Timestamp:   time.Now().Format(time.RFC3339),
 	}
 
-	err := SendNotification(s, accounts[0], embed, "", "cookie_expiring_soon")
+	err = SendNotification(s, accounts[0], embed, "", "cookie_expiring_soon")
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to send cookie expiration warning for user %s", userID)
 	}
