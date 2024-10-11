@@ -133,7 +133,10 @@ func StatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	stats := GetCachedStats()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(stats)
+	err := json.NewEncoder(w).Encode(stats)
+	if err != nil {
+		return
+	}
 }
 
 func LogoutHandler(w http.ResponseWriter, r *http.Request) {
