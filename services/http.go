@@ -13,8 +13,9 @@ import (
 )
 
 var (
-	url1 = "https://support.activision.com/api/bans/v2/appeal?locale=en" // Replacement Endpoint for checking account bans
-	url2 = "https://support.activision.com/api/profile?accts=false"      // Endpoint for retrieving profile information
+	url1   = "https://support.activision.com/api/bans/v2/appeal?locale=en"              // Replacement Endpoint for checking account bans
+	url2   = "https://support.activision.com/api/profile?accts=false"                   // Endpoint for retrieving profile information
+	urlVIP = "https://support.activision.com/services/apexrest/web/vip/isvip?ssoToken=" // Endpoint for checking VIP status
 )
 
 // VerifySSOCookie checks if the provided SSO cookie is valid.
@@ -233,4 +234,45 @@ func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 
 	logger.Log.Infof("Account age calculated: %d years, %d months, %d days", years, months, days)
 	return years, months, days, createdEpoch, nil
+}
+
+func CheckVIPStatus(ssoCookie string) (bool, error) {
+	logger.Log.Info("Checking VIP status")
+	req, err := http.NewRequest("GET", urlVIP+ssoCookie, nil)
+	if err != nil {
+		return false, fmt.Errorf("failed to create HTTP request to check VIP status: %w", err)
+	}
+	headers := GenerateHeaders(ssoCookie)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("failed to send HTTP request to check VIP status: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("invalid response status code: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var data struct {
+		VIP bool `json:"vip"`
+	}
+
+	err = json.Unmarshal(body, &data)
+	if err != nil {
+		return false, fmt.Errorf("failed to decode JSON response: %w", err)
+	}
+
+	logger.Log.Infof("VIP status check complete. Result: %v", data.VIP)
+	return data.VIP, nil
 }
