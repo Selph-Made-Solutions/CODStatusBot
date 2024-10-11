@@ -2,6 +2,7 @@ package admin
 
 import (
 	"encoding/json"
+	"github.com/joho/godotenv"
 	"html/template"
 	"net/http"
 	"os"
@@ -52,8 +53,33 @@ type Stats struct {
 }
 
 func init() {
+	if err := godotenv.Load(); err != nil {
+		logger.Log.WithError(err).Error("Error loading .env file")
+	}
+
 	statsLimiter = tollbooth.NewLimiter(1, &limiter.ExpirableOptions{DefaultExpirationTTL: time.Hour})
-	store = sessions.NewCookieStore([]byte(os.Getenv("SESSION_KEY")))
+	sessionKey := os.Getenv("SESSION_KEY")
+	if sessionKey == "" {
+		logger.Log.Error("SESSION_KEY not set in environment variables")
+	}
+	store = sessions.NewCookieStore([]byte(sessionKey))
+	store.Options = &sessions.Options{
+		Path:     "/",
+		MaxAge:   3600,
+		HttpOnly: true,
+		Secure:   false,
+	}
+}
+
+func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		session, _ := store.Get(r, "admin-session")
+		if auth, ok := session.Values["authenticated"].(bool); !ok || !auth {
+			http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+			return
+		}
+		next.ServeHTTP(w, r)
+	}
 }
 
 func StartStatsCaching() {
@@ -107,29 +133,45 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func LoginHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "GET" {
-		tmpl, err := template.ParseFiles("templates/login.html")
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		tmpl.Execute(w, nil)
-	} else if r.Method == "POST" {
+	tmpl, err := template.ParseFiles("templates/login.html")
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to parse login template")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if r.Method == "POST" {
 		username := r.FormValue("username")
 		password := r.FormValue("password")
 		if checkCredentials(username, password) {
-			session, _ := store.Get(r, "admin-session")
+			session, err := store.Get(r, "admin-session")
+			if err != nil {
+				logger.Log.WithError(err).Error("Error getting session")
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
 			session.Values["authenticated"] = true
-			session.Save(r, w)
+			err = session.Save(r, w)
+			if err != nil {
+				logger.Log.WithError(err).Error("Error saving session")
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
 			http.Redirect(w, r, "/admin", http.StatusSeeOther)
-		} else {
-			http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+			return
 		}
+		tmpl.Execute(w, map[string]string{"Error": "Invalid credentials"})
+		return
 	}
+	tmpl.Execute(w, nil)
 }
 
 func isAuthenticated(r *http.Request) bool {
-	session, _ := store.Get(r, "admin-session")
+	session, err := store.Get(r, "admin-session")
+	if err != nil {
+		logger.Log.WithError(err).Error("Error retrieving session")
+		return false
+	}
 	auth, ok := session.Values["authenticated"].(bool)
 	return ok && auth
 }
@@ -303,15 +345,4 @@ func getTotalBansByType(banType models.Status) (int, error) {
 	var count int64
 	err := database.DB.Model(&models.Ban{}).Where("status = ?", banType).Count(&count).Error
 	return int(count), err
-}
-
-func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		session, _ := store.Get(r, "admin-session")
-		if auth, ok := session.Values["authenticated"].(bool); !ok || !auth {
-			http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
-			return
-		}
-		next.ServeHTTP(w, r)
-	}
 }
