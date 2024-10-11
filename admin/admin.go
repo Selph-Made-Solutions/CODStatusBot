@@ -29,27 +29,37 @@ var (
 )
 
 type Stats struct {
-	TotalAccounts          int
-	ActiveAccounts         int
-	BannedAccounts         int
-	TotalUsers             int
-	ChecksLastHour         int
-	ChecksLast24Hours      int
-	TotalBans              int
-	RecentBans             int
-	AverageChecksPerDay    float64
-	MostCheckedAccount     string
-	LeastCheckedAccount    string
-	TotalNotifications     int
-	RecentNotifications    int
-	UsersWithCustomAPIKey  int
-	AverageAccountsPerUser float64
-	OldestAccount          time.Time
-	NewestAccount          time.Time
-	TotalShadowbans        int
-	TotalTempbans          int
-	BanDates               []string `json:"banDates"`
-	BanCounts              []int    `json:"banCounts"`
+	TotalAccounts            int
+	ActiveAccounts           int
+	BannedAccounts           int
+	TotalUsers               int
+	ChecksLastHour           int
+	ChecksLast24Hours        int
+	TotalBans                int
+	RecentBans               int
+	AverageChecksPerDay      float64
+	MostCheckedAccount       string
+	LeastCheckedAccount      string
+	TotalNotifications       int
+	RecentNotifications      int
+	UsersWithCustomAPIKey    int
+	AverageAccountsPerUser   float64
+	OldestAccount            time.Time
+	NewestAccount            time.Time
+	TotalShadowbans          int
+	TotalTempbans            int
+	BanDates                 []string         `json:"banDates"`
+	BanCounts                []int            `json:"banCounts"`
+	AccountStatsHistory      []HistoricalData `json:"accountStatsHistory"`
+	UserStatsHistory         []HistoricalData `json:"userStatsHistory"`
+	CheckStatsHistory        []HistoricalData `json:"checkStatsHistory"`
+	BanStatsHistory          []HistoricalData `json:"banStatsHistory"`
+	NotificationStatsHistory []HistoricalData `json:"notificationStatsHistory"`
+}
+
+type HistoricalData struct {
+	Date  string `json:"date"`
+	Value int    `json:"value"`
 }
 
 func init() {
@@ -102,6 +112,7 @@ func updateCachedStats() {
 	cachedStats = stats
 	cachedStatsLock.Unlock()
 }
+
 func GetCachedStats() Stats {
 	cachedStatsLock.RLock()
 	defer cachedStatsLock.RUnlock()
@@ -221,7 +232,9 @@ func getStats() (Stats, error) {
 
 	stats.TotalAccounts, _ = getTotalAccounts()
 	stats.ActiveAccounts, _ = getActiveAccounts()
+	stats.BannedAccounts, _ = getBannedAccounts()
 	stats.TotalUsers, _ = getTotalUsers()
+	stats.ChecksLastHour, _ = getChecksInTimeRange(1 * time.Hour)
 	stats.ChecksLast24Hours, _ = getChecksInTimeRange(24 * time.Hour)
 	stats.TotalBans, _ = getTotalBans()
 	stats.RecentBans, _ = getRecentBans(24 * time.Hour)
@@ -233,25 +246,12 @@ func getStats() (Stats, error) {
 	stats.OldestAccount, stats.NewestAccount, _ = getAccountAgeRange()
 	stats.TotalShadowbans, _ = getTotalBansByType(models.StatusShadowban)
 	stats.TotalTempbans, _ = getTotalBansByType(models.StatusTempban)
-
-	var banData []struct {
-		Date  time.Time
-		Count int
-	}
-	err := database.DB.Model(&models.Ban{}).
-		Select("DATE(created_at) as date, COUNT(*) as count").
-		Where("created_at > ?", time.Now().AddDate(0, 0, -30)).
-		Group("DATE(created_at)").
-		Order("date").
-		Scan(&banData).Error
-	if err != nil {
-		return stats, err
-	}
-
-	for _, data := range banData {
-		stats.BanDates = append(stats.BanDates, data.Date.Format("2006-01-02"))
-		stats.BanCounts = append(stats.BanCounts, data.Count)
-	}
+	stats.BanDates, stats.BanCounts, _ = getBanDataForChart()
+	stats.AccountStatsHistory, _ = getHistoricalData("accounts")
+	stats.UserStatsHistory, _ = getHistoricalData("users")
+	stats.CheckStatsHistory, _ = getHistoricalData("checks")
+	stats.BanStatsHistory, _ = getHistoricalData("bans")
+	stats.NotificationStatsHistory, _ = getHistoricalData("notifications")
 
 	return stats, nil
 }
@@ -265,6 +265,12 @@ func getTotalAccounts() (int, error) {
 func getActiveAccounts() (int, error) {
 	var count int64
 	err := database.DB.Model(&models.Account{}).Where("is_permabanned = ? AND is_expired_cookie = ?", false, false).Count(&count).Error
+	return int(count), err
+}
+
+func getBannedAccounts() (int, error) {
+	var count int64
+	err := database.DB.Model(&models.Account{}).Where("is_permabanned = ?", true).Count(&count).Error
 	return int(count), err
 }
 
@@ -297,11 +303,14 @@ func getAverageChecksPerDay() (float64, error) {
 	var result struct {
 		AvgChecks float64
 	}
-	oneDayAgo := time.Now().Add(-24 * time.Hour).Unix()
-	err := database.DB.Model(&models.Account{}).
-		Select("COUNT(*) / 1.0 as avg_checks").
-		Where("last_check > ?", oneDayAgo).
-		Scan(&result).Error
+	err := database.DB.Raw(`
+        SELECT AVG(checks_per_day) AS avg_checks
+        FROM (
+            SELECT DATE(FROM_UNIXTIME(last_check)) AS date, COUNT(*) AS checks_per_day
+            FROM accounts
+            GROUP BY date
+        ) subquery;
+    `).Scan(&result).Error
 	return result.AvgChecks, err
 }
 
@@ -327,7 +336,14 @@ func getAverageAccountsPerUser() (float64, error) {
 	var result struct {
 		AvgAccounts float64
 	}
-	err := database.DB.Model(&models.Account{}).Select("COUNT(DISTINCT id) / COUNT(DISTINCT user_id) as avg_accounts").Scan(&result).Error
+	err := database.DB.Raw(`
+        SELECT AVG(accounts_per_user) AS avg_accounts
+        FROM (
+            SELECT user_id, COUNT(*) AS accounts_per_user
+            FROM accounts
+            GROUP BY user_id
+        ) subquery;
+    `).Scan(&result).Error
 	return result.AvgAccounts, err
 }
 
@@ -345,4 +361,86 @@ func getTotalBansByType(banType models.Status) (int, error) {
 	var count int64
 	err := database.DB.Model(&models.Ban{}).Where("status = ?", banType).Count(&count).Error
 	return int(count), err
+}
+
+func getBanDataForChart() ([]string, []int, error) {
+	var banData []struct {
+		Date  time.Time
+		Count int
+	}
+	err := database.DB.Model(&models.Ban{}).
+		Select("DATE(created_at) as date, COUNT(*) as count").
+		Where("created_at > ?", time.Now().AddDate(0, 0, -30)).
+		Group("DATE(created_at)").
+		Order("date").
+		Scan(&banData).Error
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var dates []string
+	var counts []int
+	for _, data := range banData {
+		dates = append(dates, data.Date.Format("2006-01-02"))
+		counts = append(counts, data.Count)
+	}
+
+	return dates, counts, nil
+}
+
+func getHistoricalData(statType string) ([]HistoricalData, error) {
+	var data []HistoricalData
+	var err error
+
+	switch statType {
+	case "accounts":
+		err = database.DB.Raw(`
+			SELECT DATE(FROM_UNIXTIME(created)) as date, COUNT(*) as value
+			FROM accounts
+			WHERE created > ?
+			GROUP BY date
+			ORDER BY date ASC
+		`, time.Now().AddDate(0, 0, -30).Unix()).Scan(&data).Error
+
+	case "users":
+		err = database.DB.Raw(`
+			SELECT DATE(created_at) as date, COUNT(*) as value
+			FROM user_settings
+			WHERE created_at > ?
+			GROUP BY date
+			ORDER BY date ASC
+		`, time.Now().AddDate(0, 0, -30)).Scan(&data).Error
+
+	case "checks":
+		err = database.DB.Raw(`
+			SELECT DATE(FROM_UNIXTIME(last_check)) as date, COUNT(*) as value
+			FROM accounts
+			WHERE last_check > ?
+			GROUP BY date
+			ORDER BY date ASC
+		`, time.Now().AddDate(0, 0, -30).Unix()).Scan(&data).Error
+
+	case "bans":
+		err = database.DB.Raw(`
+			SELECT DATE(created_at) as date, COUNT(*) as value
+			FROM bans
+			WHERE created_at > ?
+			GROUP BY date
+			ORDER BY date ASC
+		`, time.Now().AddDate(0, 0, -30)).Scan(&data).Error
+
+	case "notifications":
+		err = database.DB.Raw(`
+			SELECT DATE(FROM_UNIXTIME(last_notification)) as date, COUNT(*) as value
+			FROM accounts
+			WHERE last_notification > ?
+			GROUP BY date
+			ORDER BY date ASC
+		`, time.Now().AddDate(0, 0, -30).Unix()).Scan(&data).Error
+
+	default:
+		return nil, nil
+	}
+
+	return data, err
 }
