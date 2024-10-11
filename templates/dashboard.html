@@ -192,6 +192,8 @@
     </div>
 </div>
 <script>
+    let accountChart, userChart, checkChart, banChart, notificationChart;
+
     function toggleDarkMode() {
         document.body.classList.toggle('dark-mode');
         document.querySelectorAll('.stat-group').forEach(group => group.classList.toggle('dark-mode'));
@@ -261,7 +263,7 @@
 
     function initializeCharts() {
         const accountCtx = document.getElementById('accountChart').getContext('2d');
-        document.getElementById('accountChart').chartInstance = new Chart(accountCtx, {
+        accountChart = new Chart(accountCtx, {
             type: 'line',
             data: {
                 labels: [],
@@ -292,7 +294,7 @@
         });
 
         const userCtx = document.getElementById('userChart').getContext('2d');
-        document.getElementById('userChart').chartInstance = new Chart(userCtx, {
+        userChart = new Chart(userCtx, {
             type: 'line',
             data: {
                 labels: [],
@@ -323,7 +325,7 @@
         });
 
         const checkCtx = document.getElementById('checkChart').getContext('2d');
-        document.getElementById('checkChart').chartInstance = new Chart(checkCtx, {
+        checkChart = new Chart(checkCtx, {
             type: 'line',
             data: {
                 labels: [],
@@ -354,7 +356,7 @@
         });
 
         const banCtx = document.getElementById('banChart').getContext('2d');
-        document.getElementById('banChart').chartInstance = new Chart(banCtx, {
+        banChart = new Chart(banCtx, {
             type: 'line',
             data: {
                 labels: [],
@@ -385,7 +387,7 @@
         });
 
         const notificationCtx = document.getElementById('notificationChart').getContext('2d');
-        document.getElementById('notificationChart').chartInstance = new Chart(notificationCtx, {
+        notificationChart = new Chart(notificationCtx, {
             type: 'line',
             data: {
                 labels: [],
@@ -417,52 +419,36 @@
     }
 
     function updateCharts(stats) {
-        const accountChart = document.getElementById('accountChart').chartInstance;
         if (accountChart) {
-            const labels = stats.AccountStatsHistory.map(item => item.date);
-            const data = stats.AccountStatsHistory.map(item => item.value);
-            accountChart.data.labels = labels;
-            accountChart.data.datasets[0].data = data;
+            accountChart.data.labels = stats.accountStatsHistory.map(item => item.date);
+            accountChart.data.datasets[0].data = stats.accountStatsHistory.map(item => item.value);
             accountChart.update();
         }
 
-        const userChart = document.getElementById('userChart').chartInstance;
         if (userChart) {
-            const labels = stats.UserStatsHistory.map(item => item.date);
-            const data = stats.UserStatsHistory.map(item => item.value);
-            userChart.data.labels = labels;
-            userChart.data.datasets[0].data = data;
+            userChart.data.labels = stats.userStatsHistory.map(item => item.date);
+            userChart.data.datasets[0].data = stats.userStatsHistory.map(item => item.value);
             userChart.update();
         }
 
-        const checkChart = document.getElementById('checkChart').chartInstance;
         if (checkChart) {
-            const labels = stats.CheckStatsHistory.map(item => item.date);
-            const data = stats.CheckStatsHistory.map(item => item.value);
-            checkChart.data.labels = labels;
-            checkChart.data.datasets[0].data = data;
+            checkChart.data.labels = stats.checkStatsHistory.map(item => item.date);
+            checkChart.data.datasets[0].data = stats.checkStatsHistory.map(item => item.value);
             checkChart.update();
         }
 
-        const banChart = document.getElementById('banChart').chartInstance;
         if (banChart) {
-            const labels = stats.BanStatsHistory.map(item => item.date);
-            const data = stats.BanStatsHistory.map(item => item.value);
-            banChart.data.labels = labels;
-            banChart.data.datasets[0].data = data;
+            banChart.data.labels = stats.banStatsHistory.map(item => item.date);
+            banChart.data.datasets[0].data = stats.banStatsHistory.map(item => item.value);
             banChart.update();
         }
 
-        const notificationChart = document.getElementById('notificationChart').chartInstance;
         if (notificationChart) {
-            const labels = stats.NotificationStatsHistory.map(item => item.date);
-            const data = stats.NotificationStatsHistory.map(item => item.value);
-            notificationChart.data.labels = labels;
-            notificationChart.data.datasets[0].data = data;
+            notificationChart.data.labels = stats.notificationStatsHistory.map(item => item.date);
+            notificationChart.data.datasets[0].data = stats.notificationStatsHistory.map(item => item.value);
             notificationChart.update();
         }
     }
-
     function toggleStatChart(button) {
         const chartContainer = button.parentElement.querySelector('.chart-container');
         const statGroupId = button.parentElement.getAttribute('data-stat-group-id');
