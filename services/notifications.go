@@ -111,7 +111,7 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 
 	config, ok := notificationConfigs[notificationType]
 	if !ok {
-		return fmt.Errorf("unknown notification type: %s", notificationType)
+		return fmt.Errorf("unknown notification type: %s (account: %s, user: %s)", notificationType, account.Title, account.UserID)
 	}
 
 	userNotificationMutex.Lock()
