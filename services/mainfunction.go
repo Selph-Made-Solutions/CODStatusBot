@@ -261,6 +261,7 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 		return
 	}
 
+	//previousStatus := account.LastStatus
 	account.LastStatus = newStatus
 	account.LastStatusChange = now.Unix()
 	account.IsPermabanned = newStatus == models.StatusPermaban
@@ -278,6 +279,8 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 	}
 
 	if newStatus == models.StatusTempban {
+		//banDuration := 7 * 24 * time.Hour
+
 		ban.TempBanDuration = calculateBanDuration(now)
 	}
 
@@ -368,6 +371,7 @@ func CheckAccounts(s *discordgo.Session) {
 					continue
 				}
 
+				previousStatus := account.LastStatus
 				account.LastStatus = status
 				account.LastCheck = now.Unix()
 				if err := database.DB.Save(&account).Error; err != nil {
@@ -375,7 +379,7 @@ func CheckAccounts(s *discordgo.Session) {
 					continue
 				}
 
-				if account.LastStatus != status {
+				if previousStatus != status {
 					HandleStatusChange(s, account, status, userSettings)
 				}
 
@@ -383,7 +387,9 @@ func CheckAccounts(s *discordgo.Session) {
 				if !account.IsExpiredCookie {
 					timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
 					if err == nil && timeUntilExpiration > 0 && timeUntilExpiration <= time.Duration(cookieExpirationWarning)*time.Hour {
-						NotifyCookieExpiringSoon(s, []models.Account{account})
+						if err := NotifyCookieExpiringSoon(s, []models.Account{account}); err != nil {
+							logger.Log.WithError(err).Errorf("Failed to send cookie expiration notification for account %s", account.Title)
+						}
 					}
 				}
 			}
@@ -395,6 +401,7 @@ func CheckAccounts(s *discordgo.Session) {
 		}(userID, userAccounts)
 	}
 }
+
 func CheckAndSendNotifications(s *discordgo.Session, userID string) {
 	var userSettings models.UserSettings
 	if err := database.DB.Where("user_id = ?", userID).First(&userSettings).Error; err != nil {
@@ -410,12 +417,39 @@ func CheckAndSendNotifications(s *discordgo.Session, userID string) {
 	}
 
 	// Check for cookie expiration
-	if !account.IsExpiredCookie {
-		timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
-		if err == nil && timeUntilExpiration > 0 && timeUntilExpiration <= time.Duration(cookieExpirationWarning)*time.Hour {
-			checkCookieExpirations(s, userID, userSettings)
+	var accounts []models.Account
+	if err := database.DB.Where("user_id = ?", userID).Find(&accounts).Error; err != nil {
+		logger.Log.WithError(err).Errorf("Failed to fetch accounts for user %s", userID)
+		return
+	}
+
+	for _, account := range accounts {
+		if !account.IsExpiredCookie {
+			timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
+			if err != nil {
+				logger.Log.WithError(err).Errorf("Error checking SSO cookie expiration for account %s", account.Title)
+				continue
+			}
+			if timeUntilExpiration > 0 && timeUntilExpiration <= time.Duration(cookieExpirationWarning)*time.Hour {
+				if err := NotifyCookieExpiringSoon(s, []models.Account{account}); err != nil {
+					logger.Log.WithError(err).Errorf("Failed to send cookie expiration notification for account %s", account.Title)
+				}
+			}
 		}
 	}
+}
+
+func CheckAndNotifyCookieExpiration(s *discordgo.Session, account models.Account) error {
+	timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
+	if err != nil {
+		return fmt.Errorf("failed to check SSO cookie expiration: %w", err)
+	}
+
+	if timeUntilExpiration > 0 && timeUntilExpiration <= time.Duration(cookieExpirationWarning)*time.Hour {
+		return NotifyCookieExpiringSoon(s, []models.Account{account})
+	}
+
+	return nil
 }
 
 /*
@@ -435,7 +469,7 @@ func sendConsolidatedCookieExpirationWarning(s *discordgo.Session, userID string
 		timeUntilExpiration, _ := CheckSSOCookieExpiration(account.SSOCookieExpiration)
 		embedFields = append(embedFields, &discordgo.MessageEmbedField{
 			Name:   account.Title,
-			Value:  fmt.Sprintf("Cookie expires in %s", FormatExpirationTime(account.SSOCookieExpiration)),
+			Value:  fmt.Sprintf("Cookie expires in %s", FormatDuration(timeUntilExpiration)),
 			Inline: false,
 		})
 	}
@@ -537,7 +571,11 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 	}
 
 	if len(cookieExpiringAccounts) > 0 {
-		go NotifyCookieExpiringSoon(s, cookieExpiringAccounts)
+		go func() {
+			if err := NotifyCookieExpiringSoon(s, cookieExpiringAccounts); err != nil {
+				logger.Log.WithError(err).Error("Failed to send cookie expiration notifications")
+			}
+		}()
 	}
 
 	CheckAndNotifyBalance(s, userID, balance)
@@ -583,7 +621,9 @@ func CheckSingleAccount(s *discordgo.Session, account models.Account, captchaAPI
 		handleCheckAccountError(s, account, err)
 		return
 	} else if timeUntilExpiration > 0 && timeUntilExpiration <= 24*time.Hour {
-		NotifyCookieExpiringSoon(s, []models.Account{account})
+		if err := NotifyCookieExpiringSoon(s, []models.Account{account}); err != nil {
+			logger.Log.WithError(err).Errorf("Failed to send cookie expiration notification for account %s", account.Title)
+		}
 	}
 
 	result, err := CheckAccount(account.SSOCookie, account.UserID, captchaAPIKey)
@@ -642,32 +682,47 @@ func disableAccount(s *discordgo.Session, account models.Account, reason string)
 func handleInvalidCookie(s *discordgo.Session, account models.Account) {
 	userSettings, _ := GetUserSettings(account.UserID)
 	lastNotification := time.Unix(account.LastCookieNotification, 0)
-	if time.Since(lastNotification).Hours() >= userSettings.CooldownDuration || account.LastCookieNotification == 0 {
-		logger.Log.Infof("Account %s has an invalid SSO cookie", account.Title)
+	now := time.Now()
+
+	timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Error checking SSO cookie expiration for account %s", account.Title)
+		return
+	}
+
+	if timeUntilExpiration > 0 && timeUntilExpiration <= 24*time.Hour &&
+		(now.Sub(lastNotification).Hours() >= userSettings.CooldownDuration || account.LastCookieNotification == 0) {
+
+		logger.Log.Infof("Account %s SSO cookie is expiring soon", account.Title)
 		embed := &discordgo.MessageEmbed{
-			Title:       fmt.Sprintf("%s - Invalid SSO Cookie", account.Title),
-			Description: fmt.Sprintf("The SSO cookie for account %s has expired. Please update the cookie using the /updateaccount command or delete the account using the /removeaccount command.", account.Title),
-			Color:       0xff9900,
-			Timestamp:   time.Now().Format(time.RFC3339),
+			Title:       fmt.Sprintf("%s - SSO Cookie Expiring Soon", account.Title),
+			Description: fmt.Sprintf("The SSO cookie for account %s will expire in %s. Please update the cookie using the /updateaccount command before it expires.", account.Title, FormatDuration(timeUntilExpiration)),
+			Color:       0xFFA500, // Orange color for warning
+			Timestamp:   now.Format(time.RFC3339),
 		}
 
-		err := SendNotification(s, account, embed, "", "invalid_cookie")
+		err := SendNotification(s, account, embed, "", "cookie_expiring_soon")
 		if err != nil {
-			logger.Log.WithError(err).Errorf("Failed to send invalid cookie notification for account %s", account.Title)
+			logger.Log.WithError(err).Errorf("Failed to send cookie expiration notification for account %s", account.Title)
+		} else {
+			DBMutex.Lock()
+			account.LastCookieNotification = now.Unix()
+			if err := database.DB.Save(&account).Error; err != nil {
+				logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
+			}
+			DBMutex.Unlock()
 		}
-
-		DBMutex.Lock()
-		account.LastCookieNotification = time.Now().Unix()
+	} else if timeUntilExpiration <= 0 {
+		// Cookie has already expired
+		logger.Log.Infof("Account %s has an expired SSO cookie", account.Title)
 		account.IsExpiredCookie = true
 		if err := database.DB.Save(&account).Error; err != nil {
-			logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
+			logger.Log.WithError(err).Errorf("Failed to update expired cookie status for account %s", account.Title)
 		}
-		DBMutex.Unlock()
 	} else {
-		logger.Log.Infof("Skipping expired cookie notification for account %s (cooldown)", account.Title)
+		logger.Log.Infof("Skipping cookie expiration notification for account %s (not expiring soon or cooldown)", account.Title)
 	}
 }
-
 func updateAccountStatus(s *discordgo.Session, account models.Account, result models.Status) {
 	DBMutex.Lock()
 	defer DBMutex.Unlock()
@@ -812,6 +867,47 @@ func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 	return nil
 }
 
+func createAnnouncementEmbed() *discordgo.MessageEmbed {
+	return &discordgo.MessageEmbed{
+		Title:       "Important Update: Changes to COD Status Bot",
+		Description: "Due to high demand, we've reached our limit of free EZCaptcha tokens. To ensure continued functionality, we're introducing some changes:",
+		Color:       0xFFD700, // Gold color
+		Fields: []*discordgo.MessageEmbedField{
+			{
+				Name: "What's Changing",
+				Value: "• The check ban feature now requires users to provide their own EZCaptcha API key.\n" +
+					"• Without an API key, the bot's check ban functionality will be limited.",
+			},
+			{
+				Name: "How to Get Your Own API Key",
+				Value: "1. Sign up at [EZ-Captcha](https://dashboard.ez-captcha.com/#/register?inviteCode=uyNrRgWlEKy) using our referral link.\n" +
+					"2. Request a free trial of 10,000 tokens.\n" +
+					"3. Use the `/setcaptchaservice` command to set your API key in the bot.",
+			},
+			{
+				Name: "Benefits of Using Your Own API Key",
+				Value: "• Uninterrupted access to the check ban feature\n" +
+					"• Ability to customize check intervals\n" +
+					"• Support the bot's development through our referral program",
+			},
+			{
+				Name: "Next Steps",
+				Value: "1. Obtain your API key as soon as possible.\n" +
+					"2. Set up your key using the `/setcaptchaservice` command.\n" +
+					"3. Adjust your check interval preferences if desired.",
+			},
+			{
+				Name:  "Our Commitment",
+				Value: "We're actively exploring ways to maintain a free tier for all users. Your support through the referral program directly contributes to this goal.",
+			},
+		},
+		Footer: &discordgo.MessageEmbedFooter{
+			Text: "Thank you for your understanding and continued support!",
+		},
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+}
+
 func getChannelForAnnouncement(s *discordgo.Session, userID string, userSettings models.UserSettings) (string, error) {
 	if userSettings.NotificationType == "dm" {
 		channel, err := s.UserChannelCreate(userID)
@@ -846,9 +942,12 @@ func SendAnnouncementToAllUsers(s *discordgo.Session) error {
 	return nil
 }
 
-func calculateBanDuration(banStartTime time.Time) string {
-	duration := time.Since(banStartTime)
-	days := int(duration.Hours() / 24)
+func calculateBanDuration(banEndTime time.Time) string {
+	duration := time.Until(banEndTime)
+	if duration < 0 {
+		duration = 0
+	}
+	days := int(duration.Hours()) / 24
 	hours := int(duration.Hours()) % 24
 	return fmt.Sprintf("%d days, %d hours", days, hours)
 }
