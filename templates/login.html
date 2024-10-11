@@ -51,6 +51,9 @@
 <body>
     <div class="login-container">
         <h1>Admin Login</h1>
+        {{if .Error}}
+        <p style="color:red;">{{.Error}}</p>
+        {{end}}
         <form action="/admin/login" method="POST">
             <input type="text" name="username" placeholder="Username" required>
             <input type="password" name="password" placeholder="Password" required>
