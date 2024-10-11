@@ -93,7 +93,8 @@ func HandleFeedbackChoice(s *discordgo.Session, i *discordgo.InteractionCreate) 
 	isAnonymous := parts[1] == "anonymous"
 	userID := parts[2]
 
-	// Verify that the user ID from the button matches the interaction's user.
+	userID = strings.TrimPrefix(userID, "id_")
+
 	interactionUserID, err := getUserID(i)
 	if err != nil || interactionUserID != userID {
 		logger.Log.WithField("buttonUserID", userID).WithField("interactionUserID", interactionUserID).Error("User ID mismatch")
@@ -176,7 +177,6 @@ func getUserID(i *discordgo.InteractionCreate) (string, error) {
 	return "", fmt.Errorf("unable to determine user ID")
 }
 
-// Run this function periodically to clean up expired entries
 func cleanupExpiredFeedback() {
 	tempFeedbackStore.Lock()
 	defer tempFeedbackStore.Unlock()
