@@ -150,7 +150,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	err = services.SendNotification(s, account, embed, "", "account_added")
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to send account added notification")
-		respondToInteraction(s, i, "Account added successfully, but there was an error sending the confirmation message.")
+		respondToInteraction(s, i, fmt.Sprintf("Account added successfully, but there was an error sending the confirmation message: %v", err))
 		return
 	}
 
