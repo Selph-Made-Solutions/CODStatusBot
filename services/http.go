@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"CODStatusBot/logger"
@@ -13,12 +14,12 @@ import (
 )
 
 var (
-	url1   = "https://support.activision.com/api/bans/v2/appeal?locale=en"              // Replacement Endpoint for checking account bans
-	url2   = "https://support.activision.com/api/profile?accts=false"                   // Endpoint for retrieving profile information
-	urlVIP = "https://support.activision.com/services/apexrest/web/vip/isvip?ssoToken=" // Endpoint for checking VIP status
+	url1          = "https://support.activision.com/api/bans/v2/appeal?locale=en"              // Replacement Endpoint for checking account bans
+	url2          = "https://support.activision.com/api/profile?accts=false"                   // Endpoint for retrieving profile information
+	urlVIP        = "https://support.activision.com/services/apexrest/web/vip/isvip?ssoToken=" // Endpoint for checking VIP status
+	urlRedeemCode = "https://profile.callofduty.com/promotions/redeemCode/"                    // Endpoint for redeeming codes
 )
 
-// VerifySSOCookie checks if the provided SSO cookie is valid.
 func VerifySSOCookie(ssoCookie string) bool {
 	logger.Log.Infof("Verifying SSO cookie: %s", ssoCookie)
 	req, err := http.NewRequest("GET", url2, nil)
@@ -54,7 +55,6 @@ func VerifySSOCookie(ssoCookie string) bool {
 	return true
 }
 
-// CheckAccount checks the account status associated with the provided SSO cookie.
 func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models.Status, error) {
 	logger.Log.Info("Starting CheckAccount function")
 
@@ -183,7 +183,6 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 	return models.StatusUnknown, nil
 }
 
-// CheckAccountAge retrieves the age of the account associated with the provided SSO cookie.
 func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 	logger.Log.Info("Starting CheckAccountAge function")
 	req, err := http.NewRequest("GET", url2, nil)
@@ -275,4 +274,58 @@ func CheckVIPStatus(ssoCookie string) (bool, error) {
 
 	logger.Log.Infof("VIP status check complete. Result: %v", data.VIP)
 	return data.VIP, nil
+}
+
+func RedeemCode(ssoCookie, code string) (string, error) {
+	logger.Log.Infof("Attempting to redeem code: %s", code)
+
+	req, err := http.NewRequest("POST", urlRedeemCode, strings.NewReader(fmt.Sprintf("code=%s", code)))
+	if err != nil {
+		return "", fmt.Errorf("failed to create HTTP request to redeem code: %w", err)
+	}
+
+	headers := GeneratePostHeaders(ssoCookie)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send HTTP request to redeem code: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var jsonResponse struct {
+		Status  string `json:"status"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(body, &jsonResponse); err == nil && jsonResponse.Status == "success" {
+		logger.Log.Infof("Code redemption successful: %s", jsonResponse.Message)
+		return jsonResponse.Message, nil
+	}
+
+	bodyStr := string(body)
+	if strings.Contains(bodyStr, "redemption-success") {
+		start := strings.Index(bodyStr, "Just Unlocked:<br><br><div class=\"accent-highlight mw2\">")
+		end := strings.Index(bodyStr, "</div></h4>")
+		if start != -1 && end != -1 {
+			unlockedItem := strings.TrimSpace(bodyStr[start+len("Just Unlocked:<br><br><div class=\"accent-highlight mw2\">") : end])
+			logger.Log.Infof("Successfully claimed reward: %s", unlockedItem)
+			return fmt.Sprintf("Successfully claimed reward: %s", unlockedItem), nil
+		}
+		logger.Log.Info("Successfully claimed reward, but couldn't extract details")
+		return "Successfully claimed reward, but couldn't extract details", nil
+	}
+
+	logger.Log.Warnf("Unexpected response body: %s", bodyStr)
+	return "", fmt.Errorf("failed to redeem code: unexpected response")
 }
