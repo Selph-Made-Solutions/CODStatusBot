@@ -39,7 +39,6 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		return
 	}
 
-	// Create buttons for each account
 	var components []discordgo.MessageComponent
 	var currentRow []discordgo.MessageComponent
 
@@ -56,12 +55,10 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		}
 	}
 
-	// Add the last row if it is not empty.
 	if len(currentRow) > 0 {
 		components = append(components, discordgo.ActionsRow{Components: currentRow})
 	}
 
-	// Send a message with account buttons.
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
@@ -139,7 +136,6 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Verify the new SSO cookie
 	if !services.VerifySSOCookie(newSSOCookie) {
 		respondToInteraction(s, i, "Error: The provided SSO cookie is invalid. Please check and try again.")
 		return
@@ -153,7 +149,6 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Verify that the user owns this account
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
@@ -171,7 +166,6 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Get SSO Cookie expiration
 	expirationTimestamp, err := services.DecodeSSOCookie(newSSOCookie)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error decoding SSO cookie")
@@ -179,25 +173,26 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Update the account
 	account.SSOCookie = newSSOCookie
 	account.SSOCookieExpiration = expirationTimestamp
 	account.IsExpiredCookie = false
-	account.IsCheckDisabled = false // Reset the disabled status
-	account.DisabledReason = ""     // Clear the disabled reason
-	account.ConsecutiveErrors = 0   // Reset consecutive errors
+	wasDisabled := account.IsCheckDisabled
+	account.IsCheckDisabled = false
+	account.DisabledReason = ""
+	account.ConsecutiveErrors = 0
 
 	services.DBMutex.Lock()
 	if err := database.DB.Save(&account).Error; err != nil {
-		services.DBMutex.Unlock()
 		logger.Log.WithError(err).Error("Error updating account")
 		respondToInteraction(s, i, "Error updating account. Please try again.")
 		return
 	}
-	services.DBMutex.Unlock()
 
-	formattedExpiration := services.FormatExpirationTime(expirationTimestamp)
-	message := fmt.Sprintf("Account '%s' has been successfully updated. New SSO cookie will expire in %s. Account checks have been re-enabled.", account.Title, formattedExpiration)
+	services.DBMutex.Unlock()
+	message := fmt.Sprintf("Account '%s' has been successfully updated. New SSO cookie will expire in %s.", account.Title, services.FormatExpirationTime(expirationTimestamp))
+	if wasDisabled {
+		message += " Account checks have been re-enabled."
+	}
 	respondToInteraction(s, i, message)
 }
 
