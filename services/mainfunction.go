@@ -55,6 +55,7 @@ var (
 		"cookie_expiring_soon": {Cooldown: 24 * time.Hour, AllowConsolidated: true},
 		"temp_ban_update":      {Cooldown: time.Hour, AllowConsolidated: false},
 		"error":                {Cooldown: time.Hour, AllowConsolidated: false},
+		"account_added":        {Cooldown: time.Hour, AllowConsolidated: false},
 	}
 )
 
