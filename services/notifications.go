@@ -236,9 +236,9 @@ func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettin
 	}
 }
 
-func NotifyCookieExpiringSoon(s *discordgo.Session, accounts []models.Account) {
+func NotifyCookieExpiringSoon(s *discordgo.Session, accounts []models.Account) error {
 	if len(accounts) == 0 {
-		return
+		return nil
 	}
 
 	userID := accounts[0].UserID
@@ -248,9 +248,13 @@ func NotifyCookieExpiringSoon(s *discordgo.Session, accounts []models.Account) {
 
 	for _, account := range accounts {
 		timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
+		if err != nil {
+			logger.Log.WithError(err).Errorf("Error checking SSO cookie expiration for account %s", account.Title)
+			continue
+		}
 		embedFields = append(embedFields, &discordgo.MessageEmbedField{
 			Name:   account.Title,
-			Value:  fmt.Sprintf("Cookie expires in %s", FormatExpirationTime(account.SSOCookieExpiration)),
+			Value:  fmt.Sprintf("Cookie expires in %s", FormatDuration(timeUntilExpiration)),
 			Inline: false,
 		})
 	}
@@ -263,10 +267,20 @@ func NotifyCookieExpiringSoon(s *discordgo.Session, accounts []models.Account) {
 		Timestamp:   time.Now().Format(time.RFC3339),
 	}
 
-	err = SendNotification(s, accounts[0], embed, "", "cookie_expiring_soon")
-	if err != nil {
-		logger.Log.WithError(err).Errorf("Failed to send cookie expiration warning for user %s", userID)
+	return SendNotification(s, accounts[0], embed, "", "cookie_expiring_soon")
+}
+
+func FormatDuration(d time.Duration) string {
+	days := int(d.Hours() / 24)
+	hours := int(d.Hours()) % 24
+	minutes := int(d.Minutes()) % 60
+
+	if days > 0 {
+		return fmt.Sprintf("%dd %dh %dm", days, hours, minutes)
+	} else if hours > 0 {
+		return fmt.Sprintf("%dh %dm", hours, minutes)
 	}
+	return fmt.Sprintf("%dm", minutes)
 }
 
 func NotifyUserAboutDisabledAccount(s *discordgo.Session, account models.Account, reason string) {
@@ -327,7 +341,6 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 		}
 	}
 }
-
 func SendTempBanUpdateNotification(s *discordgo.Session, account models.Account, remainingTime time.Duration) {
 	embed := &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%s - Temporary Ban Update", account.Title),
