@@ -65,7 +65,7 @@ func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		}
 
 		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-			Name:   account.Title,
+			Name:   fmt.Sprintf("%s %s", account.Title, getDisabledEmoji(account.IsCheckDisabled)),
 			Value:  fieldValue,
 			Inline: false,
 		})
@@ -124,4 +124,11 @@ func getBalanceInfo(userID string) string {
 	}
 
 	return ""
+}
+
+func getDisabledEmoji(isDisabled bool) string {
+	if isDisabled {
+		return "🚫"
+	}
+	return "✅"
 }
