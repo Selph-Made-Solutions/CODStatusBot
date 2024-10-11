@@ -1,6 +1,7 @@
 package globalannouncement
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -96,7 +97,7 @@ func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 			// Find the most recent channel used by the user
 			var account models.Account
 			if err := database.DB.Where("user_id = ?", userID).Order("updated_at DESC").First(&account).Error; err != nil {
-				if err == gorm.ErrRecordNotFound {
+				if errors.Is(gorm.ErrRecordNotFound, err) {
 					// If no account found, default to DM
 					channel, err := s.UserChannelCreate(userID)
 					if err != nil {

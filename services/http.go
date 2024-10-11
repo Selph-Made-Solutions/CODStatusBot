@@ -84,7 +84,7 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 	logger.Log.WithField("headers", headers).Info("Set request headers")
 
 	client := &http.Client{
-		Timeout: 45 * time.Second,
+		Timeout: 120 * time.Second,
 	}
 
 	var resp *http.Response
@@ -100,7 +100,12 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 			time.Sleep(time.Duration(i+1) * time.Second)
 			continue
 		}
-		defer resp.Body.Close()
+		defer func(Body io.ReadCloser) {
+			err := Body.Close()
+			if err != nil {
+
+			}
+		}(resp.Body)
 
 		logger.Log.WithField("status", resp.Status).Info("Received response")
 
@@ -193,7 +198,12 @@ func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 	if err != nil {
 		return 0, 0, 0, 0, errors.New("failed to send HTTP request to check account age")
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+
+		}
+	}(resp.Body)
 
 	var data struct {
 		Created string `json:"created"`
