@@ -91,7 +91,7 @@ func GetUserSettings(userID string) (models.UserSettings, error) {
 	return settings, nil
 }
 
-func SetUserCaptchaKey(userID string, captchaKey string, provider string) error {
+func SetUserCaptchaKey(userID string, apiKey string, provider string) error {
 	if !isValidUserID(userID) {
 		logger.Log.Error("Invalid userID provided")
 		return fmt.Errorf("invalid userID")
@@ -100,36 +100,27 @@ func SetUserCaptchaKey(userID string, captchaKey string, provider string) error 
 	var settings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
 	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error setting user settings")
+		logger.Log.WithError(result.Error).Error("Error retrieving user settings")
 		return result.Error
 	}
 
-	if captchaKey != "" {
-		// Validate the captcha key before setting it and get balance
-		isValid, balance, err := ValidateCaptchaKey(captchaKey, provider)
-		if err != nil {
-			logger.Log.WithError(err).Error("Error validating captcha key")
-			return err
-		}
-		if !isValid {
-			logger.Log.Error("Invalid captcha key provided")
-			return fmt.Errorf("invalid captcha key")
-		}
-
-		if provider == "ezcaptcha" {
-			settings.EZCaptchaAPIKey = captchaKey
-		} else if provider == "2captcha" {
-			settings.TwoCaptchaAPIKey = captchaKey
-		} else {
+	if apiKey != "" {
+		switch provider {
+		case "ezcaptcha":
+			settings.EZCaptchaAPIKey = apiKey
+		case "2captcha":
+			settings.TwoCaptchaAPIKey = apiKey
+		default:
+			logger.Log.Errorf("Invalid captcha provider %s for user %s", provider, userID)
 			return fmt.Errorf("invalid captcha provider")
 		}
 		settings.PreferredCaptchaProvider = provider
 
-		// Enable custom settings when user sets their own valid API key.
+		// Enable custom settings for valid API key
 		settings.CheckInterval = 15        // Allow more frequent checks, e.g., every 15 minutes
 		settings.NotificationInterval = 12 // Allow more frequent notifications, e.g., every 12 hours
 
-		logger.Log.Infof("Valid %s key set for user: %s. Balance: %.2f points", provider, userID, balance)
+		logger.Log.Infof("Setting %s key for user %s", provider, userID)
 	} else {
 		// Reset to default settings when API key is removed
 		settings.EZCaptchaAPIKey = ""
@@ -139,17 +130,16 @@ func SetUserCaptchaKey(userID string, captchaKey string, provider string) error 
 		settings.NotificationInterval = defaultSettings.NotificationInterval
 		settings.CooldownDuration = defaultSettings.CooldownDuration
 		settings.StatusChangeCooldown = defaultSettings.StatusChangeCooldown
-		// Keep the user's notification type preference
 
-		logger.Log.Infof("Captcha key removed for user: %s. Reset to default settings", userID)
+		logger.Log.Infof("Removing captcha key for user %s. Resetting to default settings", userID)
 	}
 
 	if err := database.DB.Save(&settings).Error; err != nil {
-		logger.Log.WithError(err).Error("Error saving user settings")
-		return err
+		logger.Log.WithError(err).Errorf("Error saving settings for user %s", userID)
+		return fmt.Errorf("error saving user settings: %w", err)
 	}
 
-	logger.Log.Infof("Updated captcha key and settings for user: %s", userID)
+	logger.Log.Infof("Successfully updated captcha key and settings for user %s", userID)
 	return nil
 }
 
