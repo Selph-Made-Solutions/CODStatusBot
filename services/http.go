@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"CODStatusBot/logger"
@@ -13,11 +14,12 @@ import (
 )
 
 var (
-	url1 = "https://support.activision.com/api/bans/v2/appeal?locale=en" // Replacement Endpoint for checking account bans
-	url2 = "https://support.activision.com/api/profile?accts=false"      // Endpoint for retrieving profile information
+	url1          = "https://support.activision.com/api/bans/v2/appeal?locale=en"              // Replacement Endpoint for checking account bans
+	url2          = "https://support.activision.com/api/profile?accts=false"                   // Endpoint for retrieving profile information
+	urlVIP        = "https://support.activision.com/services/apexrest/web/vip/isvip?ssoToken=" // Endpoint for checking VIP status
+	urlRedeemCode = "https://profile.callofduty.com/promotions/redeemCode/"                    // Endpoint for redeeming codes
 )
 
-// VerifySSOCookie checks if the provided SSO cookie is valid.
 func VerifySSOCookie(ssoCookie string) bool {
 	logger.Log.Infof("Verifying SSO cookie: %s", ssoCookie)
 	req, err := http.NewRequest("GET", url2, nil)
@@ -53,33 +55,27 @@ func VerifySSOCookie(ssoCookie string) bool {
 	return true
 }
 
-// CheckAccount checks the account status associated with the provided SSO cookie.
-func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
+func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models.Status, error) {
 	logger.Log.Info("Starting CheckAccount function")
 
 	captchaAPIKey, _, err := GetUserCaptchaKey(userID)
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to get user's captcha API key")
 		return models.StatusUnknown, fmt.Errorf("failed to get user's captcha API key: %w", err)
 	}
 
 	gRecaptchaResponse, err := SolveReCaptchaV2WithKey(captchaAPIKey)
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to solve reCAPTCHA")
 		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %w", err)
 	}
 
-	// Further processing of gRecaptchaResponse can be done here
 	logger.Log.Info("Successfully solved reCAPTCHA")
 
-	// Construct the ban appeal URL with the reCAPTCHA response
 	banAppealUrl := url1 + "&g-cc=" + gRecaptchaResponse
 	logger.Log.WithField("url", banAppealUrl).Info("Constructed ban appeal URL")
 
 	req, err := http.NewRequest("GET", banAppealUrl, nil)
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to create HTTP request")
-		return models.StatusUnknown, errors.New("failed to create HTTP request to check account")
+		return models.StatusUnknown, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
 	headers := GenerateHeaders(ssoCookie)
@@ -99,9 +95,8 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 		logger.Log.Infof("Sending HTTP request to check account (attempt %d/%d)", i+1, maxRetries)
 		resp, err = client.Do(req)
 		if err != nil {
-			logger.Log.WithError(err).Error("Failed to send HTTP request")
 			if i == maxRetries-1 {
-				return models.StatusUnknown, errors.New("failed to send HTTP request to check account after multiple attempts")
+				return models.StatusUnknown, fmt.Errorf("failed to send HTTP request after %d attempts: %w", maxRetries, err)
 			}
 			time.Sleep(time.Duration(i+1) * time.Second)
 			continue
@@ -117,9 +112,8 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 
 		body, err = io.ReadAll(resp.Body)
 		if err != nil {
-			logger.Log.WithError(err).Error("Failed to read response body")
 			if i == maxRetries-1 {
-				return models.StatusUnknown, errors.New("failed to read response body from check account request after multiple attempts")
+				return models.StatusUnknown, fmt.Errorf("failed to read response body after %d attempts: %w", maxRetries, err)
 			}
 			time.Sleep(time.Duration(i+1) * time.Second)
 			continue
@@ -129,7 +123,6 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 
 	logger.Log.WithField("body", string(body)).Info("Read response body")
 
-	// Check for specific error responses
 	var errorResponse struct {
 		Timestamp string `json:"timestamp"`
 		Path      string `json:"path"`
@@ -142,12 +135,10 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 	if err := json.Unmarshal(body, &errorResponse); err == nil {
 		logger.Log.WithField("errorResponse", errorResponse).Info("Parsed error response")
 		if errorResponse.Status == 400 && errorResponse.Path == "/api/bans/v2/appeal" {
-			logger.Log.Error("Invalid request to new endpoint, possibly missing or invalid reCAPTCHA")
-			return models.StatusUnknown, errors.New("invalid request to new endpoint, possibly missing or invalid reCAPTCHA")
+			return models.StatusUnknown, fmt.Errorf("invalid request to new endpoint: %s", errorResponse.Error)
 		}
 	}
 
-	// If not an error response, proceed with parsing the actual ban data.
 	var data struct {
 		Error     string `json:"error"`
 		Success   string `json:"success"`
@@ -160,13 +151,10 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 	}
 
 	if string(body) == "" {
-		logger.Log.Info("Empty response body, treating as invalid cookie")
 		return models.StatusInvalidCookie, nil
 	}
 
-	err = json.Unmarshal(body, &data)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to decode JSON response")
+	if err := json.Unmarshal(body, &data); err != nil {
 		return models.StatusUnknown, fmt.Errorf("failed to decode JSON response: %w", err)
 	}
 	logger.Log.WithField("data", data).Info("Parsed ban data")
@@ -195,7 +183,6 @@ func CheckAccount(ssoCookie string, userID string) (models.Status, error) {
 	return models.StatusUnknown, nil
 }
 
-// CheckAccountAge retrieves the age of the account associated with the provided SSO cookie.
 func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 	logger.Log.Info("Starting CheckAccountAge function")
 	req, err := http.NewRequest("GET", url2, nil)
@@ -246,4 +233,99 @@ func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 
 	logger.Log.Infof("Account age calculated: %d years, %d months, %d days", years, months, days)
 	return years, months, days, createdEpoch, nil
+}
+
+func CheckVIPStatus(ssoCookie string) (bool, error) {
+	logger.Log.Info("Checking VIP status")
+	req, err := http.NewRequest("GET", urlVIP+ssoCookie, nil)
+	if err != nil {
+		return false, fmt.Errorf("failed to create HTTP request to check VIP status: %w", err)
+	}
+	headers := GenerateHeaders(ssoCookie)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("failed to send HTTP request to check VIP status: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("invalid response status code: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var data struct {
+		VIP bool `json:"vip"`
+	}
+
+	err = json.Unmarshal(body, &data)
+	if err != nil {
+		return false, fmt.Errorf("failed to decode JSON response: %w", err)
+	}
+
+	logger.Log.Infof("VIP status check complete. Result: %v", data.VIP)
+	return data.VIP, nil
+}
+
+func RedeemCode(ssoCookie, code string) (string, error) {
+	logger.Log.Infof("Attempting to redeem code: %s", code)
+
+	req, err := http.NewRequest("POST", urlRedeemCode, strings.NewReader(fmt.Sprintf("code=%s", code)))
+	if err != nil {
+		return "", fmt.Errorf("failed to create HTTP request to redeem code: %w", err)
+	}
+
+	headers := GeneratePostHeaders(ssoCookie)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send HTTP request to redeem code: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var jsonResponse struct {
+		Status  string `json:"status"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(body, &jsonResponse); err == nil && jsonResponse.Status == "success" {
+		logger.Log.Infof("Code redemption successful: %s", jsonResponse.Message)
+		return jsonResponse.Message, nil
+	}
+
+	bodyStr := string(body)
+	if strings.Contains(bodyStr, "redemption-success") {
+		start := strings.Index(bodyStr, "Just Unlocked:<br><br><div class=\"accent-highlight mw2\">")
+		end := strings.Index(bodyStr, "</div></h4>")
+		if start != -1 && end != -1 {
+			unlockedItem := strings.TrimSpace(bodyStr[start+len("Just Unlocked:<br><br><div class=\"accent-highlight mw2\">") : end])
+			logger.Log.Infof("Successfully claimed reward: %s", unlockedItem)
+			return fmt.Sprintf("Successfully claimed reward: %s", unlockedItem), nil
+		}
+		logger.Log.Info("Successfully claimed reward, but couldn't extract details")
+		return "Successfully claimed reward, but couldn't extract details", nil
+	}
+
+	logger.Log.Warnf("Unexpected response body: %s", bodyStr)
+	return "", fmt.Errorf("failed to redeem code: unexpected response")
 }

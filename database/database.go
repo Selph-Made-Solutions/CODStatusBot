@@ -47,3 +47,17 @@ func Databaselogin() error {
 	}
 	return nil
 }
+
+func CloseConnection() error {
+	if DB != nil {
+		sqlDB, err := DB.DB()
+		if err != nil {
+			return err
+		}
+		if err := sqlDB.Close(); err != nil {
+			return err
+		}
+		logger.Log.Info("Database connection closed successfully")
+	}
+	return nil
+}

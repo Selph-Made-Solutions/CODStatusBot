@@ -32,18 +32,21 @@ type Account struct {
 
 type UserSettings struct {
 	gorm.Model
-	UserID                   string  `gorm:"uniqueIndex"`
-	CaptchaAPIKey            string  // User's own API key, if provided
-	CheckInterval            int     // In minutes
-	NotificationInterval     float64 // In hours
-	CooldownDuration         float64 // In hours
-	StatusChangeCooldown     float64 // In hours
-	HasSeenAnnouncement      bool    `gorm:"default:false"`   // Flag to track if the user has seen the global announcement.
-	NotificationType         string  `gorm:"default:channel"` // User preference for location of notifications either channel or dm
-	LastNotification         time.Time
-	LastBalanceNotification  time.Time // Timestamp of the last balance notification
-	LastErrorNotification    time.Time
-	LastDisabledNotification time.Time
+	UserID                       string    `gorm:"uniqueIndex"`
+	CaptchaAPIKey                string    // User's own API key, if provided
+	CheckInterval                int       // In minutes
+	NotificationInterval         float64   // In hours
+	CooldownDuration             float64   // In hours
+	StatusChangeCooldown         float64   // In hours
+	HasSeenAnnouncement          bool      `gorm:"default:false"`   // Flag to track if the user has seen the global announcement.
+	NotificationType             string    `gorm:"default:channel"` // User preference for location of notifications either channel or dm
+	LastNotification             time.Time // Timestamp of the last notification
+	LastDisabledNotification     time.Time // Timestamp of the last disabled notification
+	LastStatusChangeNotification time.Time // Timestamp of the last status change notification
+	LastDailyUpdateNotification  time.Time // Timestamp of the last daily update notification
+	LastCookieExpirationWarning  time.Time // Timestamp of the last cookie expiration warning
+	LastBalanceNotification      time.Time // Timestamp of the last balance notification
+	LastErrorNotification        time.Time // Timestamp of the last error notification
 }
 
 type Ban struct {

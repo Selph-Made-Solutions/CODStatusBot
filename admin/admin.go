@@ -2,8 +2,10 @@ package admin
 
 import (
 	"encoding/json"
+	"github.com/joho/godotenv"
 	"html/template"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 
 	"github.com/didip/tollbooth"
 	"github.com/didip/tollbooth/limiter"
+	"github.com/gorilla/sessions"
 )
 
 var (
@@ -22,34 +25,71 @@ var (
 	cacheInterval         = 15 * time.Minute
 	NotificationCooldowns = make(map[string]time.Time)
 	NotificationMutex     sync.Mutex
+	store                 *sessions.CookieStore
 )
 
 type Stats struct {
-	TotalAccounts          int
-	ActiveAccounts         int
-	BannedAccounts         int
-	TotalUsers             int
-	ChecksLastHour         int
-	ChecksLast24Hours      int
-	TotalBans              int
-	RecentBans             int
-	AverageChecksPerDay    float64
-	MostCheckedAccount     string
-	LeastCheckedAccount    string
-	TotalNotifications     int
-	RecentNotifications    int
-	UsersWithCustomAPIKey  int
-	AverageAccountsPerUser float64
-	OldestAccount          time.Time
-	NewestAccount          time.Time
-	TotalShadowbans        int
-	TotalTempbans          int
-	BanDates               []string `json:"banDates"`
-	BanCounts              []int    `json:"banCounts"`
+	TotalAccounts            int
+	ActiveAccounts           int
+	BannedAccounts           int
+	TotalUsers               int
+	ChecksLastHour           int
+	ChecksLast24Hours        int
+	TotalBans                int
+	RecentBans               int
+	AverageChecksPerDay      float64
+	MostCheckedAccount       string
+	LeastCheckedAccount      string
+	TotalNotifications       int
+	RecentNotifications      int
+	UsersWithCustomAPIKey    int
+	AverageAccountsPerUser   float64
+	OldestAccount            time.Time
+	NewestAccount            time.Time
+	TotalShadowbans          int
+	TotalTempbans            int
+	BanDates                 []string         `json:"banDates"`
+	BanCounts                []int            `json:"banCounts"`
+	AccountStatsHistory      []HistoricalData `json:"accountStatsHistory"`
+	UserStatsHistory         []HistoricalData `json:"userStatsHistory"`
+	CheckStatsHistory        []HistoricalData `json:"checkStatsHistory"`
+	BanStatsHistory          []HistoricalData `json:"banStatsHistory"`
+	NotificationStatsHistory []HistoricalData `json:"notificationStatsHistory"`
+}
+
+type HistoricalData struct {
+	Date  string `json:"date"`
+	Value int    `json:"value"`
 }
 
 func init() {
+	if err := godotenv.Load(); err != nil {
+		logger.Log.WithError(err).Error("Error loading .env file")
+	}
+
 	statsLimiter = tollbooth.NewLimiter(1, &limiter.ExpirableOptions{DefaultExpirationTTL: time.Hour})
+	sessionKey := os.Getenv("SESSION_KEY")
+	if sessionKey == "" {
+		logger.Log.Error("SESSION_KEY not set in environment variables")
+	}
+	store = sessions.NewCookieStore([]byte(sessionKey))
+	store.Options = &sessions.Options{
+		Path:     "/",
+		MaxAge:   3600,
+		HttpOnly: true,
+		Secure:   false,
+	}
+}
+
+func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		session, _ := store.Get(r, "admin-session")
+		if auth, ok := session.Values["authenticated"].(bool); !ok || !auth {
+			http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+			return
+		}
+		next.ServeHTTP(w, r)
+	}
 }
 
 func StartStatsCaching() {
@@ -80,6 +120,11 @@ func GetCachedStats() Stats {
 }
 
 func StatsHandler(w http.ResponseWriter, r *http.Request) {
+	if !isAuthenticated(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	httpError := tollbooth.LimitByRequest(statsLimiter, w, r)
 	if httpError != nil {
 		http.Error(w, httpError.Message, httpError.StatusCode)
@@ -94,8 +139,92 @@ func StatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func HomeHandler(w http.ResponseWriter, r *http.Request) {
+	tmpl, err := template.ParseFiles("templates/index.html")
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to parse index template")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	tmpl.Execute(w, nil)
+}
+
+func HelpHandler(w http.ResponseWriter, r *http.Request) {
+	tmpl, err := template.ParseFiles("templates/help.html")
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to parse help template")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	tmpl.Execute(w, nil)
+}
+
+func LogoutHandler(w http.ResponseWriter, r *http.Request) {
+	session, _ := store.Get(r, "admin-session")
+	session.Values["authenticated"] = false
+	session.Save(r, w)
+	http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+}
+
+func LoginHandler(w http.ResponseWriter, r *http.Request) {
+	tmpl, err := template.ParseFiles("templates/login.html")
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to parse login template")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if r.Method == "POST" {
+		username := r.FormValue("username")
+		password := r.FormValue("password")
+		if checkCredentials(username, password) {
+			session, err := store.Get(r, "admin-session")
+			if err != nil {
+				logger.Log.WithError(err).Error("Error getting session")
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+			session.Values["authenticated"] = true
+			err = session.Save(r, w)
+			if err != nil {
+				logger.Log.WithError(err).Error("Error saving session")
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+			http.Redirect(w, r, "/admin", http.StatusSeeOther)
+			return
+		}
+		tmpl.Execute(w, map[string]string{"Error": "Invalid credentials"})
+		return
+	}
+	tmpl.Execute(w, nil)
+}
+
+func isAuthenticated(r *http.Request) bool {
+	session, err := store.Get(r, "admin-session")
+	if err != nil {
+		logger.Log.WithError(err).Error("Error retrieving session")
+		return false
+	}
+	auth, ok := session.Values["authenticated"].(bool)
+	return ok && auth
+}
+
+func checkCredentials(username, password string) bool {
+	expectedUsername := os.Getenv("ADMIN_USERNAME")
+	expectedPassword := os.Getenv("ADMIN_PASSWORD")
+	return username == expectedUsername && password == expectedPassword
+}
+
 func DashboardHandler(w http.ResponseWriter, r *http.Request) {
+	session, _ := store.Get(r, "admin-session")
+	if auth, ok := session.Values["authenticated"].(bool); !ok || !auth {
+		http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+		return
+	}
+
 	logger.Log.Info("Dashboard handler called")
+
 	httpError := tollbooth.LimitByRequest(statsLimiter, w, r)
 	if httpError != nil {
 		logger.Log.WithError(httpError).Error("Rate limit exceeded")
@@ -126,7 +255,9 @@ func getStats() (Stats, error) {
 
 	stats.TotalAccounts, _ = getTotalAccounts()
 	stats.ActiveAccounts, _ = getActiveAccounts()
+	stats.BannedAccounts, _ = getBannedAccounts()
 	stats.TotalUsers, _ = getTotalUsers()
+	stats.ChecksLastHour, _ = getChecksInTimeRange(1 * time.Hour)
 	stats.ChecksLast24Hours, _ = getChecksInTimeRange(24 * time.Hour)
 	stats.TotalBans, _ = getTotalBans()
 	stats.RecentBans, _ = getRecentBans(24 * time.Hour)
@@ -138,25 +269,12 @@ func getStats() (Stats, error) {
 	stats.OldestAccount, stats.NewestAccount, _ = getAccountAgeRange()
 	stats.TotalShadowbans, _ = getTotalBansByType(models.StatusShadowban)
 	stats.TotalTempbans, _ = getTotalBansByType(models.StatusTempban)
-
-	var banData []struct {
-		Date  time.Time
-		Count int
-	}
-	err := database.DB.Model(&models.Ban{}).
-		Select("DATE(created_at) as date, COUNT(*) as count").
-		Where("created_at > ?", time.Now().AddDate(0, 0, -30)).
-		Group("DATE(created_at)").
-		Order("date").
-		Scan(&banData).Error
-	if err != nil {
-		return stats, err
-	}
-
-	for _, data := range banData {
-		stats.BanDates = append(stats.BanDates, data.Date.Format("2006-01-02"))
-		stats.BanCounts = append(stats.BanCounts, data.Count)
-	}
+	stats.BanDates, stats.BanCounts, _ = getBanDataForChart()
+	stats.AccountStatsHistory, _ = getHistoricalData("accounts")
+	stats.UserStatsHistory, _ = getHistoricalData("users")
+	stats.CheckStatsHistory, _ = getHistoricalData("checks")
+	stats.BanStatsHistory, _ = getHistoricalData("bans")
+	stats.NotificationStatsHistory, _ = getHistoricalData("notifications")
 
 	return stats, nil
 }
@@ -170,6 +288,12 @@ func getTotalAccounts() (int, error) {
 func getActiveAccounts() (int, error) {
 	var count int64
 	err := database.DB.Model(&models.Account{}).Where("is_permabanned = ? AND is_expired_cookie = ?", false, false).Count(&count).Error
+	return int(count), err
+}
+
+func getBannedAccounts() (int, error) {
+	var count int64
+	err := database.DB.Model(&models.Account{}).Where("is_permabanned = ?", true).Count(&count).Error
 	return int(count), err
 }
 
@@ -202,11 +326,14 @@ func getAverageChecksPerDay() (float64, error) {
 	var result struct {
 		AvgChecks float64
 	}
-	oneDayAgo := time.Now().Add(-24 * time.Hour).Unix()
-	err := database.DB.Model(&models.Account{}).
-		Select("COUNT(*) / 1.0 as avg_checks").
-		Where("last_check > ?", oneDayAgo).
-		Scan(&result).Error
+	err := database.DB.Raw(`
+        SELECT AVG(checks_per_day) AS avg_checks
+        FROM (
+            SELECT DATE(FROM_UNIXTIME(last_check)) AS date, COUNT(*) AS checks_per_day
+            FROM accounts
+            GROUP BY date
+        ) subquery;
+    `).Scan(&result).Error
 	return result.AvgChecks, err
 }
 
@@ -232,7 +359,14 @@ func getAverageAccountsPerUser() (float64, error) {
 	var result struct {
 		AvgAccounts float64
 	}
-	err := database.DB.Model(&models.Account{}).Select("COUNT(DISTINCT id) / COUNT(DISTINCT user_id) as avg_accounts").Scan(&result).Error
+	err := database.DB.Raw(`
+        SELECT AVG(accounts_per_user) AS avg_accounts
+        FROM (
+            SELECT user_id, COUNT(*) AS accounts_per_user
+            FROM accounts
+            GROUP BY user_id
+        ) subquery;
+    `).Scan(&result).Error
 	return result.AvgAccounts, err
 }
 
@@ -250,4 +384,86 @@ func getTotalBansByType(banType models.Status) (int, error) {
 	var count int64
 	err := database.DB.Model(&models.Ban{}).Where("status = ?", banType).Count(&count).Error
 	return int(count), err
+}
+
+func getBanDataForChart() ([]string, []int, error) {
+	var banData []struct {
+		Date  time.Time
+		Count int
+	}
+	err := database.DB.Model(&models.Ban{}).
+		Select("DATE(created_at) as date, COUNT(*) as count").
+		Where("created_at > ?", time.Now().AddDate(0, 0, -30)).
+		Group("DATE(created_at)").
+		Order("date").
+		Scan(&banData).Error
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var dates []string
+	var counts []int
+	for _, data := range banData {
+		dates = append(dates, data.Date.Format("2006-01-02"))
+		counts = append(counts, data.Count)
+	}
+
+	return dates, counts, nil
+}
+
+func getHistoricalData(statType string) ([]HistoricalData, error) {
+	var data []HistoricalData
+	var err error
+
+	switch statType {
+	case "accounts":
+		err = database.DB.Raw(`
+			SELECT DATE(FROM_UNIXTIME(created)) as date, COUNT(*) as value
+			FROM accounts
+			WHERE created > ?
+			GROUP BY date
+			ORDER BY date ASC
+		`, time.Now().AddDate(0, 0, -30).Unix()).Scan(&data).Error
+
+	case "users":
+		err = database.DB.Raw(`
+			SELECT DATE(created_at) as date, COUNT(*) as value
+			FROM user_settings
+			WHERE created_at > ?
+			GROUP BY date
+			ORDER BY date ASC
+		`, time.Now().AddDate(0, 0, -30)).Scan(&data).Error
+
+	case "checks":
+		err = database.DB.Raw(`
+			SELECT DATE(FROM_UNIXTIME(last_check)) as date, COUNT(*) as value
+			FROM accounts
+			WHERE last_check > ?
+			GROUP BY date
+			ORDER BY date ASC
+		`, time.Now().AddDate(0, 0, -30).Unix()).Scan(&data).Error
+
+	case "bans":
+		err = database.DB.Raw(`
+			SELECT DATE(created_at) as date, COUNT(*) as value
+			FROM bans
+			WHERE created_at > ?
+			GROUP BY date
+			ORDER BY date ASC
+		`, time.Now().AddDate(0, 0, -30)).Scan(&data).Error
+
+	case "notifications":
+		err = database.DB.Raw(`
+			SELECT DATE(FROM_UNIXTIME(last_notification)) as date, COUNT(*) as value
+			FROM accounts
+			WHERE last_notification > ?
+			GROUP BY date
+			ORDER BY date ASC
+		`, time.Now().AddDate(0, 0, -30).Unix()).Scan(&data).Error
+
+	default:
+		return nil, nil
+	}
+
+	return data, err
 }

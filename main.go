@@ -7,6 +7,7 @@ import (
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"CODStatusBot/services"
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -58,7 +59,7 @@ func run() error {
 	}
 	logger.Log.Info("Database initialized successfully")
 
-	startAdminDashboard()
+	server := startAdminDashboard()
 
 	var err error
 	discord, err = bot.StartBot()
@@ -67,19 +68,34 @@ func run() error {
 	}
 	logger.Log.Info("Discord bot started successfully")
 
-	go startPeriodicTasks(discord)
+	periodicTasksCtx, cancelPeriodicTasks := context.WithCancel(context.Background())
+	go startPeriodicTasks(periodicTasksCtx, discord)
 
 	logger.Log.Info("COD Status Bot startup complete")
 
-	sc := make(chan os.Signal, 1)
-	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
-	<-sc
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	<-stop
 
 	logger.Log.Info("Shutting down COD Status Bot...")
+
+	cancelPeriodicTasks()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := server.Shutdown(ctx); err != nil {
+		logger.Log.WithError(err).Error("Error shutting down admin dashboard server")
+	}
+
 	if err := discord.Close(); err != nil {
 		logger.Log.WithError(err).Error("Error closing Discord session")
 	}
 
+	if err := database.CloseConnection(); err != nil {
+		logger.Log.WithError(err).Error("Error closing database connection")
+	}
+
+	logger.Log.Info("Shutdown complete")
 	return nil
 }
 
@@ -103,6 +119,8 @@ func loadEnvironmentVariables() error {
 		"DB_VAR",
 		"DEVELOPER_ID",
 		"ADMIN_PORT",
+		"ADMIN_USERNAME",
+		"ADMIN_PASSWORD",
 		"CHECK_INTERVAL",
 		"NOTIFICATION_INTERVAL",
 		"COOLDOWN_DURATION",
@@ -130,33 +148,49 @@ func initializeDatabase() error {
 	return nil
 }
 
-func startAdminDashboard() {
+func startAdminDashboard() *http.Server {
 	r := mux.NewRouter()
-	r.HandleFunc("/admin", admin.DashboardHandler)
-	r.HandleFunc("/admin/stats", admin.StatsHandler)
+	r.HandleFunc("/", admin.HomeHandler)
+	r.HandleFunc("/help", admin.HelpHandler)
+	r.HandleFunc("/admin/login", admin.LoginHandler)
+	r.HandleFunc("/admin/logout", admin.LogoutHandler)
+	r.HandleFunc("/admin", admin.AuthMiddleware(admin.DashboardHandler))
+	r.HandleFunc("/admin/stats", admin.AuthMiddleware(admin.StatsHandler))
 
 	staticDir := "/home/container/"
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
 
 	port := os.Getenv("ADMIN_PORT")
 	if port == "" {
-		port = "8080"
+		port = "443"
+	}
+
+	server := &http.Server{
+		Addr:    ":" + port,
+		Handler: r,
 	}
 
 	go func() {
 		logger.Log.Infof("Admin dashboard starting on port %s", port)
-		if err := http.ListenAndServe(":"+port, r); err != nil {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Log.WithError(err).Fatal("Failed to start admin dashboard")
 		}
 	}()
+
+	return server
 }
 
-func startPeriodicTasks(s *discordgo.Session) {
+func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 	go func() {
 		for {
-			services.CheckAccounts(s)
-			sleepDuration := time.Duration(services.GetEnvInt("SLEEP_DURATION", 3)) * time.Minute
-			time.Sleep(sleepDuration)
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				services.CheckAccounts(s)
+				sleepDuration := time.Duration(services.GetEnvInt("SLEEP_DURATION", 3)) * time.Minute
+				time.Sleep(sleepDuration)
+			}
 		}
 	}()
 
@@ -165,10 +199,15 @@ func startPeriodicTasks(s *discordgo.Session) {
 
 	go func() {
 		for {
-			if err := services.SendAnnouncementToAllUsers(s); err != nil {
-				logger.Log.WithError(err).Error("Failed to send global announcement")
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if err := services.SendAnnouncementToAllUsers(s); err != nil {
+					logger.Log.WithError(err).Error("Failed to send global announcement")
+				}
+				time.Sleep(24 * time.Hour) // Check once a day
 			}
-			time.Sleep(24 * time.Hour) // Check once a day
 		}
 	}()
 

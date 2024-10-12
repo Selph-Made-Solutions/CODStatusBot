@@ -1,8 +1,11 @@
 package setcaptchaservice
 
 import (
+	"CODStatusBot/database"
+	"CODStatusBot/models"
 	"fmt"
 	"strings"
+	"time"
 
 	"CODStatusBot/logger"
 	"CODStatusBot/services"
@@ -105,4 +108,22 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction")
 	}
+}
+
+func resetNotificationTimestamps(userID string) error {
+	var userSettings models.UserSettings
+	if err := database.DB.Where("user_id = ?", userID).First(&userSettings).Error; err != nil {
+		return err
+	}
+
+	now := time.Now()
+	userSettings.LastNotification = now
+	userSettings.LastDisabledNotification = now
+	userSettings.LastStatusChangeNotification = now
+	userSettings.LastDailyUpdateNotification = now
+	userSettings.LastCookieExpirationWarning = now
+	userSettings.LastBalanceNotification = now
+	userSettings.LastErrorNotification = now
+
+	return database.DB.Save(&userSettings).Error
 }

@@ -114,7 +114,7 @@ func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 			}
 		}
 
-		announcementEmbed := createAnnouncementEmbed()
+		announcementEmbed := CreateAnnouncementEmbed()
 
 		_, err = s.ChannelMessageSendEmbed(channelID, announcementEmbed)
 		if err != nil {
@@ -132,7 +132,7 @@ func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 	return nil
 }
 
-func createAnnouncementEmbed() *discordgo.MessageEmbed {
+func CreateAnnouncementEmbed() *discordgo.MessageEmbed {
 	return &discordgo.MessageEmbed{
 		Title:       "Important Update: Changes to COD Status Bot",
 		Description: "Due to high demand, we've reached our limit of free EZCaptcha tokens. To ensure continued functionality, we're introducing some changes:",

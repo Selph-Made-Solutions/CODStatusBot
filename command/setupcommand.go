@@ -181,7 +181,6 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		}
 	}
 
-	// Continue with regular command handling
 	if h, ok := Handlers[i.ApplicationCommandData().Name]; ok {
 		h(s, i)
 	} else if h, ok := Handlers[i.MessageComponentData().CustomID]; ok {
