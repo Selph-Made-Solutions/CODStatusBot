@@ -79,7 +79,7 @@ func LoadEnvironmentVariables() error {
 }
 
 func SolveReCaptchaV2WithKey(apiKey string) (string, error) {
-	isValid, balance, err := ValidateCaptchaKey(apiKey)
+	isValid, balance, err := ValidateCaptchaKey(apiKey, "ezcaptcha")
 	if err != nil {
 		return "", fmt.Errorf("failed to validate captcha key: %w", err)
 	}
@@ -196,7 +196,7 @@ func getTaskResultWithKey(taskID string, apiKey string) (string, error) {
 	return "", errors.New("max retries reached, captcha solving timed out")
 }
 
-func ValidateCaptchaKey(apiKey string) (bool, float64, error) {
+func ValidateCaptchaKey(apiKey string, provider string) (bool, float64, error) {
 	payload := map[string]string{
 		"clientKey": apiKey,
 	}
