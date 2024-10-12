@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -58,12 +59,12 @@ func VerifySSOCookie(ssoCookie string) bool {
 func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models.Status, error) {
 	logger.Log.Info("Starting CheckAccount function")
 
-	captchaAPIKey, _, err := GetUserCaptchaKey(userID)
+	solver, err := GetCaptchaSolver(userID)
 	if err != nil {
-		return models.StatusUnknown, fmt.Errorf("failed to get user's captcha API key: %w", err)
+		return models.StatusUnknown, fmt.Errorf("failed to get captcha solver: %w", err)
 	}
 
-	gRecaptchaResponse, err := SolveReCaptchaV2WithKey(captchaAPIKey)
+	gRecaptchaResponse, err := solver.SolveReCaptchaV2(os.Getenv("RECAPTCHA_SITE_KEY"), os.Getenv("RECAPTCHA_URL"))
 	if err != nil {
 		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %w", err)
 	}
