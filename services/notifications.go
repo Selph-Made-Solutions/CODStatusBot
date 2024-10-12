@@ -151,7 +151,6 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 	logger.Log.Infof("%s notification sent to user %s", notificationType, account.UserID)
 	userNotificationTimestamps[account.UserID][notificationType] = now
 
-	// Update last notification time in the database
 	account.LastNotification = now.Unix()
 	if err := database.DB.Save(&account).Error; err != nil {
 		logger.Log.WithError(err).Errorf("Failed to update LastNotification for account %s", account.Title)
@@ -341,6 +340,7 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 		}
 	}
 }
+
 func SendTempBanUpdateNotification(s *discordgo.Session, account models.Account, remainingTime time.Duration) {
 	embed := &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%s - Temporary Ban Update", account.Title),
