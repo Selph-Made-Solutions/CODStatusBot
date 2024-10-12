@@ -139,6 +139,26 @@ func StatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func HomeHandler(w http.ResponseWriter, r *http.Request) {
+	tmpl, err := template.ParseFiles("templates/index.html")
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to parse index template")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	tmpl.Execute(w, nil)
+}
+
+func HelpHandler(w http.ResponseWriter, r *http.Request) {
+	tmpl, err := template.ParseFiles("templates/help.html")
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to parse help template")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	tmpl.Execute(w, nil)
+}
+
 func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	session, _ := store.Get(r, "admin-session")
 	session.Values["authenticated"] = false
