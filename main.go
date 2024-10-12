@@ -150,6 +150,8 @@ func initializeDatabase() error {
 
 func startAdminDashboard() *http.Server {
 	r := mux.NewRouter()
+	r.HandleFunc("/", admin.HomeHandler)
+	r.HandleFunc("/help", admin.HelpHandler)
 	r.HandleFunc("/admin/login", admin.LoginHandler)
 	r.HandleFunc("/admin/logout", admin.LogoutHandler)
 	r.HandleFunc("/admin", admin.AuthMiddleware(admin.DashboardHandler))
