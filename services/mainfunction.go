@@ -453,16 +453,6 @@ func CheckAndNotifyCookieExpiration(s *discordgo.Session, account models.Account
 	return nil
 }
 
-/*
-func sendDailyUpdate(s *discordgo.Session, account models.Account, userSettings models.UserSettings) {
-	// TODO Implement daily update notification logic
-}
-
-func sendCookieExpirationWarning(s *discordgo.Session, account models.Account, userSettings models.UserSettings, timeUntilExpiration time.Duration) {
-	// TODO Implement cookie expiration warning logic
-}
-*/
-
 func sendConsolidatedCookieExpirationWarning(s *discordgo.Session, userID string, expiringAccounts []models.Account, userSettings models.UserSettings) {
 	var embedFields []*discordgo.MessageEmbedField
 
