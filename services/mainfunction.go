@@ -714,6 +714,7 @@ func handleInvalidCookie(s *discordgo.Session, account models.Account) {
 		logger.Log.Infof("Skipping cookie expiration notification for account %s (not expiring soon or cooldown)", account.Title)
 	}
 }
+
 func updateAccountStatus(s *discordgo.Session, account models.Account, result models.Status) {
 	DBMutex.Lock()
 	defer DBMutex.Unlock()
