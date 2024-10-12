@@ -18,13 +18,24 @@ func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCrea
 		Type: discordgo.InteractionResponseModal,
 		Data: &discordgo.InteractionResponseData{
 			CustomID: "set_captcha_service_modal",
-			Title:    "Set EZ-Captcha API Key",
+			Title:    "Set Captcha Service API Key",
 			Components: []discordgo.MessageComponent{
 				discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
 						discordgo.TextInput{
+							CustomID:    "captcha_provider",
+							Label:       "Captcha Provider (ezcaptcha or 2captcha)",
+							Style:       discordgo.TextInputShort,
+							Placeholder: "Enter 'ezcaptcha' or '2captcha'",
+							Required:    true,
+						},
+					},
+				},
+				discordgo.ActionsRow{
+					Components: []discordgo.MessageComponent{
+						discordgo.TextInput{
 							CustomID:    "api_key",
-							Label:       "Enter your EZ-Captcha API key",
+							Label:       "Enter your Captcha API key",
 							Style:       discordgo.TextInputShort,
 							Placeholder: "Leave blank to use bot's default key",
 							Required:    false,
@@ -42,15 +53,25 @@ func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCrea
 func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
 
-	var apiKey string
+	var provider, apiKey string
 	for _, comp := range data.Components {
 		if row, ok := comp.(*discordgo.ActionsRow); ok {
 			for _, rowComp := range row.Components {
-				if textInput, ok := rowComp.(*discordgo.TextInput); ok && textInput.CustomID == "api_key" {
-					apiKey = utils.SanitizeInput(strings.TrimSpace(textInput.Value))
+				if textInput, ok := rowComp.(*discordgo.TextInput); ok {
+					switch textInput.CustomID {
+					case "captcha_provider":
+						provider = strings.ToLower(utils.SanitizeInput(strings.TrimSpace(textInput.Value)))
+					case "api_key":
+						apiKey = utils.SanitizeInput(strings.TrimSpace(textInput.Value))
+					}
 				}
 			}
 		}
+	}
+
+	if provider != "ezcaptcha" && provider != "2captcha" {
+		respondToInteraction(s, i, "Invalid captcha provider. Please enter 'ezcaptcha' or '2captcha'.")
+		return
 	}
 
 	var userID string
@@ -66,26 +87,26 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	var message string
 	if apiKey != "" {
-		isValid, balance, err := services.ValidateCaptchaKey(apiKey)
+		isValid, balance, err := validateCaptchaKey(apiKey, provider)
 		if err != nil {
 			logger.Log.WithError(err).Error("Error validating captcha key")
-			respondToInteraction(s, i, "Error validating the EZ-Captcha API key. Please try again.")
+			respondToInteraction(s, i, fmt.Sprintf("Error validating the %s API key. Please try again.", provider))
 			return
 		}
 		if !isValid {
-			respondToInteraction(s, i, "The provided EZ-Captcha API key is invalid. Please check and try again.")
+			respondToInteraction(s, i, fmt.Sprintf("The provided %s API key is invalid. Please check and try again.", provider))
 			return
 		}
-		logger.Log.Infof("Valid captcha key set for user: %s. Balance: %.2f points", userID, balance)
-		message = fmt.Sprintf("Your EZ-Captcha API key has been updated for all your accounts. Your current balance is %.2f points.", balance)
+		logger.Log.Infof("Valid %s key set for user: %s. Balance: %.2f points", provider, userID, balance)
+		message = fmt.Sprintf("Your %s API key has been updated for all your accounts. Your current balance is %.2f points.", provider, balance)
 	} else {
-		message = "Your EZ-Captcha API key has been removed. The bot's default API key will be used. Your check interval and notification settings have been reset to default values."
+		message = fmt.Sprintf("Your %s API key has been removed. The bot's default API key will be used. Your check interval and notification settings have been reset to default values.", provider)
 	}
 
-	err := services.SetUserCaptchaKey(userID, apiKey)
+	err := services.SetUserCaptchaKey(userID, apiKey, provider)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error setting user captcha key")
-		respondToInteraction(s, i, "Error setting EZ-Captcha API key. Please try again.")
+		respondToInteraction(s, i, fmt.Sprintf("Error setting %s API key. Please try again.", provider))
 		return
 	}
 
@@ -97,6 +118,18 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	respondToInteraction(s, i, message)
 }
+
+func validateCaptchaKey(apiKey, provider string) (bool, float64, error) {
+	switch provider {
+	case "ezcaptcha":
+		return services.ValidateEZCaptchaKey(apiKey)
+	case "2captcha":
+		return services.ValidateTwoCaptchaKey(apiKey)
+	default:
+		return false, 0, fmt.Errorf("unsupported captcha provider")
+	}
+}
+
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
