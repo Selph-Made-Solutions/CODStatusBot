@@ -50,6 +50,10 @@ func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCrea
 	}
 }
 
+var (
+	respondToInteraction = respondToInteraction
+)
+
 func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
 
@@ -69,7 +73,10 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		}
 	}
 
+	logger.Log.Infof("Received setcaptchaservice command. Provider: %s, API Key length: %d", provider, len(apiKey))
+
 	if provider != "ezcaptcha" && provider != "2captcha" {
+		logger.Log.Errorf("Invalid captcha provider: %s", provider)
 		respondToInteraction(s, i, "Invalid captcha provider. Please enter 'ezcaptcha' or '2captcha'.")
 		return
 	}
@@ -85,37 +92,35 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	var message string
-	if apiKey != "" {
-		isValid, balance, err := validateCaptchaKey(apiKey, provider)
-		if err != nil {
-			logger.Log.WithError(err).Error("Error validating captcha key")
-			respondToInteraction(s, i, fmt.Sprintf("Error validating the %s API key. Please try again.", provider))
-			return
-		}
-		if !isValid {
-			respondToInteraction(s, i, fmt.Sprintf("The provided %s API key is invalid. Please check and try again.", provider))
-			return
-		}
-		logger.Log.Infof("Valid %s key set for user: %s. Balance: %.2f points", provider, userID, balance)
-		message = fmt.Sprintf("Your %s API key has been updated for all your accounts. Your current balance is %.2f points.", provider, balance)
-	} else {
+	isValid, balance, err := validateCaptchaKey(apiKey, provider)
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Error validating %s API key for user %s", provider, userID)
+		respondToInteraction(s, i, fmt.Sprintf("Error validating the %s API key: %v. Please try again.", provider, err))
+		return
+	}
+	if !isValid {
+		logger.Log.Errorf("Invalid %s API key provided by user %s", provider, userID)
+		respondToInteraction(s, i, fmt.Sprintf("The provided %s API key is invalid. Please check and try again.", provider))
+		return
+	}
+
+	logger.Log.Infof("Valid %s key set for user: %s. Balance: %.2f points", provider, userID, balance)
+	message := fmt.Sprintf("Your %s API key has been updated for all your accounts. Your current balance is %.2f points.", provider, balance)
+	if apiKey == "" {
 		message = fmt.Sprintf("Your %s API key has been removed. The bot's default API key will be used. Your check interval and notification settings have been reset to default values.", provider)
 	}
 
-	err := services.SetUserCaptchaKey(userID, apiKey, provider)
+	err = services.SetUserCaptchaKey(userID, apiKey, provider)
 	if err != nil {
-		logger.Log.WithError(err).Error("Error setting user captcha key")
-		respondToInteraction(s, i, fmt.Sprintf("Error setting %s API key. Please try again.", provider))
+		logger.Log.WithError(err).Errorf("Error setting %s API key for user %s", provider, userID)
+		respondToInteraction(s, i, fmt.Sprintf("Error setting %s API key: %v. Please try again.", provider, err))
 		return
 	}
 
 	if apiKey == "" {
 		message += " The bot's default API key will be used. Your check interval and notification settings have been reset to default values."
 	} else {
-		message += " Your custom API key has been set. You now have access to more frequent checks and notifications."
-	}
-
+		message := fmt.Sprintf("Your %s API key has been updated successfully. Your current balance is %.2f points. You now have access to more frequent checks and notifications.", provider, balance)
 	respondToInteraction(s, i, message)
 }
 
@@ -124,7 +129,21 @@ func validateCaptchaKey(apiKey, provider string) (bool, float64, error) {
 	case "ezcaptcha":
 		return services.ValidateEZCaptchaKey(apiKey)
 	case "2captcha":
+		isValid, balance, err := services.ValidateTwoCaptchaKey(apiKey)
+		if err != nil {
+			if strings.Contains(err.Error(), "CAPCHA_NOT_READY") || strings.Contains(err.Error(), "ERROR_CAPTCHA_UNSOLVABLE") {
+				logger.Log.WithError(err).Warn("Temporary 2captcha error, retrying...")
+				time.Sleep(2 * time.Second)
 		return services.ValidateTwoCaptchaKey(apiKey)
+			}
+			logger.Log.WithError(err).Error("Error validating 2captcha key")
+			return false, 0, fmt.Errorf("2captcha validation error: %w", err)
+		}
+		if !isValid {
+			logger.Log.Error("2captcha key is invalid")
+			return false, 0, nil
+		}
+		return true, balance, nil
 	default:
 		return false, 0, fmt.Errorf("unsupported captcha provider")
 	}
