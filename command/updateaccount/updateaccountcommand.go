@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
@@ -173,6 +174,8 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
+	account.LastNotification = time.Now().Unix()
+	account.LastCookieNotification = 0 // Reset this to allow immediate cookie-related notifications if necessary
 	account.SSOCookie = newSSOCookie
 	account.SSOCookieExpiration = expirationTimestamp
 	account.IsExpiredCookie = false
@@ -183,7 +186,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	services.DBMutex.Lock()
 	if err := database.DB.Save(&account).Error; err != nil {
-		logger.Log.WithError(err).Error("Error updating account")
+		logger.Log.WithError(err).Error("Failed to update account after modification")
 		respondToInteraction(s, i, "Error updating account. Please try again.")
 		return
 	}
