@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	api2captcha "CODStatusBot/api2captcha"
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
@@ -50,7 +51,7 @@ func init() {
 
 	defaultSettings = models.UserSettings{
 		CheckInterval:        checkInterval,
-		NotificationInterval: notificationInterval,
+		NotificationInterval: defaultInterval,
 		CooldownDuration:     cooldownDuration,
 		StatusChangeCooldown: statusChangeCooldown,
 		NotificationType:     "channel",
@@ -90,7 +91,7 @@ func GetUserSettings(userID string) (models.UserSettings, error) {
 	return settings, nil
 }
 
-func SetUserCaptchaKey(userID string, captchaKey string) error {
+func SetUserCaptchaKey(userID string, captchaKey string, provider string) error {
 	if !isValidUserID(userID) {
 		logger.Log.Error("Invalid userID provided")
 		return fmt.Errorf("invalid userID")
@@ -105,7 +106,7 @@ func SetUserCaptchaKey(userID string, captchaKey string) error {
 
 	if captchaKey != "" {
 		// Validate the captcha key before setting it and get balance
-		isValid, balance, err := CheckCaptchaKeyValidity(captchaKey)
+		isValid, balance, err := ValidateCaptchaKey(captchaKey, provider)
 		if err != nil {
 			logger.Log.WithError(err).Error("Error validating captcha key")
 			return err
@@ -115,15 +116,25 @@ func SetUserCaptchaKey(userID string, captchaKey string) error {
 			return fmt.Errorf("invalid captcha key")
 		}
 
-		settings.CaptchaAPIKey = captchaKey
+		if provider == "ezcaptcha" {
+			settings.EZCaptchaAPIKey = captchaKey
+		} else if provider == "2captcha" {
+			settings.TwoCaptchaAPIKey = captchaKey
+		} else {
+			return fmt.Errorf("invalid captcha provider")
+		}
+		settings.PreferredCaptchaProvider = provider
+
 		// Enable custom settings when user sets their own valid API key.
 		settings.CheckInterval = 15        // Allow more frequent checks, e.g., every 15 minutes
 		settings.NotificationInterval = 12 // Allow more frequent notifications, e.g., every 12 hours
 
-		logger.Log.Infof("Valid captcha key set for user: %s. Balance: %.2f points", userID, balance)
+		logger.Log.Infof("Valid %s key set for user: %s. Balance: %.2f points", provider, userID, balance)
 	} else {
 		// Reset to default settings when API key is removed
-		settings.CaptchaAPIKey = ""
+		settings.EZCaptchaAPIKey = ""
+		settings.TwoCaptchaAPIKey = ""
+		settings.PreferredCaptchaProvider = "ezcaptcha" // Reset to default provider
 		settings.CheckInterval = defaultSettings.CheckInterval
 		settings.NotificationInterval = defaultSettings.NotificationInterval
 		settings.CooldownDuration = defaultSettings.CooldownDuration
@@ -142,7 +153,6 @@ func SetUserCaptchaKey(userID string, captchaKey string) error {
 	return nil
 }
 
-// Helper function to validate userID
 func isValidUserID(userID string) bool {
 	// Check if userID consists of only digits (Discord user IDs are numeric).
 	if len(userID) < 17 || len(userID) > 20 {
@@ -169,15 +179,24 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 	}
 
 	// If the user has a custom API key, return it
-	if settings.CaptchaAPIKey != "" {
-		isValid, balance, err := ValidateCaptchaKey(settings.CaptchaAPIKey)
+	if settings.PreferredCaptchaProvider == "2captcha" && settings.TwoCaptchaAPIKey != "" {
+		isValid, balance, err := ValidateCaptchaKey(settings.TwoCaptchaAPIKey, "2captcha")
 		if err != nil {
 			return "", 0, err
 		}
 		if !isValid {
-			return "", 0, fmt.Errorf("invalid captcha API key")
+			return "", 0, fmt.Errorf("invalid 2captcha API key")
 		}
-		return settings.CaptchaAPIKey, balance, nil
+		return settings.TwoCaptchaAPIKey, balance, nil
+	} else if settings.EZCaptchaAPIKey != "" {
+		isValid, balance, err := ValidateCaptchaKey(settings.EZCaptchaAPIKey, "ezcaptcha")
+		if err != nil {
+			return "", 0, err
+		}
+		if !isValid {
+			return "", 0, fmt.Errorf("invalid EZCaptcha API key")
+		}
+		return settings.EZCaptchaAPIKey, balance, nil
 	}
 
 	// If the user doesn't have a custom API key, return the default key.
@@ -200,7 +219,9 @@ func RemoveCaptchaKey(userID string) error {
 		return result.Error
 	}
 
-	settings.CaptchaAPIKey = ""
+	settings.EZCaptchaAPIKey = ""
+	settings.TwoCaptchaAPIKey = ""
+	settings.PreferredCaptchaProvider = "ezcaptcha" // Reset to default provider
 	settings.CheckInterval = defaultSettings.CheckInterval
 	settings.NotificationInterval = defaultSettings.NotificationInterval
 	settings.CooldownDuration = defaultSettings.CooldownDuration
@@ -224,7 +245,7 @@ func UpdateUserSettings(userID string, newSettings models.UserSettings) error {
 	}
 
 	// User can only update settings if they have a valid API key.
-	if settings.CaptchaAPIKey != "" {
+	if settings.EZCaptchaAPIKey != "" || settings.TwoCaptchaAPIKey != "" {
 		if newSettings.CheckInterval != 0 {
 			settings.CheckInterval = newSettings.CheckInterval
 		}
@@ -309,14 +330,34 @@ func ScheduleBalanceChecks(s *discordgo.Session) {
 		}
 
 		for _, user := range users {
-			if user.CaptchaAPIKey != "" {
-				_, balance, err := ValidateCaptchaKey(user.CaptchaAPIKey)
+			if user.EZCaptchaAPIKey != "" {
+				_, balance, err := ValidateCaptchaKey(user.EZCaptchaAPIKey, "ezcaptcha")
 				if err != nil {
-					logger.Log.WithError(err).Errorf("Failed to validate captcha key for user %s", user.UserID)
+					logger.Log.WithError(err).Errorf("Failed to validate EZCaptcha key for user %s", user.UserID)
+					continue
+				}
+				CheckAndNotifyBalance(s, user.UserID, balance)
+			} else if user.TwoCaptchaAPIKey != "" {
+				_, balance, err := ValidateCaptchaKey(user.TwoCaptchaAPIKey, "2captcha")
+				if err != nil {
+					logger.Log.WithError(err).Errorf("Failed to validate 2captcha key for user %s", user.UserID)
 					continue
 				}
 				CheckAndNotifyBalance(s, user.UserID, balance)
 			}
 		}
 	}
+}
+
+func ValidateEZCaptchaKey(apiKey string) (bool, float64, error) {
+	return CheckCaptchaKeyValidity(apiKey)
+}
+
+func ValidateTwoCaptchaKey(apiKey string) (bool, float64, error) {
+	client := api2captcha.NewClient(apiKey)
+	balance, err := client.GetBalance()
+	if err != nil {
+		return false, 0, err
+	}
+	return true, balance, nil
 }
