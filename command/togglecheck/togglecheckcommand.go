@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
@@ -102,6 +103,8 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 
 	if account.IsCheckDisabled {
+		account.LastNotification = time.Now().Unix()
+		account.LastCheck = 0
 		account.IsCheckDisabled = false
 		account.DisabledReason = ""
 		message := fmt.Sprintf("Checks for account '%s' have been re-enabled.", account.Title)
@@ -112,9 +115,8 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		message := fmt.Sprintf("Checks for account '%s' have been disabled.", account.Title)
 		respondToInteraction(s, i, message)
 	}
-
 	if err := database.DB.Save(&account).Error; err != nil {
-		logger.Log.WithError(err).Error("Error saving account changes")
+		logger.Log.WithError(err).Error("Failed to update account after toggling check")
 		respondToInteraction(s, i, "Error toggling account checks. Please try again.")
 		return
 	}
@@ -214,36 +216,3 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 		logger.Log.WithError(err).Error("Error responding to interaction")
 	}
 }
-
-/*
-func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
-	var err error
-	if i.Type == discordgo.InteractionMessageComponent {
-		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseUpdateMessage,
-			Data: &discordgo.InteractionResponseData{
-				Content:    message,
-				Components: []discordgo.MessageComponent{},
-			},
-		})
-	} else {
-		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: message,
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
-	}
-	if err != nil {
-		logger.Log.WithError(err).Error("Error responding to interaction")
-		_, followUpErr := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
-			Content: "An error occurred while processing your request. Please try again.",
-			Flags:   discordgo.MessageFlagsEphemeral,
-		})
-		if followUpErr != nil {
-			logger.Log.WithError(followUpErr).Error("Error sending follow-up message")
-		}
-	}
-}
-*/
