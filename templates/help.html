@@ -13,86 +13,232 @@
             --text-color: #FFFFFF;
             --background-color: #23272A;
         }
-        
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
         body {
             font-family: 'Helvetica Neue', Arial, sans-serif;
             line-height: 1.6;
             color: var(--text-color);
             background-color: var(--background-color);
         }
-        
         .container {
             max-width: 1200px;
             margin: 0 auto;
             padding: 0 20px;
         }
-        
         header {
             background-color: var(--secondary-color);
             padding: 20px 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
-        
         nav {
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
-        
         .logo {
             font-size: 1.8rem;
             font-weight: bold;
             color: var(--primary-color);
+            text-decoration: none;
         }
-        
         .nav-links a {
             color: var(--text-color);
             text-decoration: none;
             margin-left: 20px;
             transition: color 0.3s ease;
         }
-        
         .nav-links a:hover {
             color: var(--primary-color);
         }
-        
         .help-content {
             padding: 60px 0;
         }
-        
         .help-section {
             background-color: var(--secondary-color);
             border-radius: 10px;
             padding: 30px;
             margin-bottom: 40px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
         }
-        
+        .help-section:hover {
+            transform: translateY(-5px);
+        }
         h1, h2 {
             color: var(--primary-color);
             margin-bottom: 20px;
         }
-        
         h3 {
             margin-top: 20px;
             margin-bottom: 10px;
+            color: var(--accent-color);
         }
-        
         ul, ol {
             margin-left: 20px;
             margin-bottom: 20px;
         }
-        
         code {
-            background-color: var(--accent-color);
-            color: var(--background-color);
+            background-color: rgba(255,255,255,0.1);
+            color: var(--accent-color);
             padding: 2px 5px;
             border-radius: 3px;
             font-family: 'Courier New', Courier, monospace;
         }
-        
-        .comman
+        .collapsible {
+            background-color: var(--secondary-color);
+            color: var(--text-color);
+            cursor: pointer;
+            padding: 18px;
+            width: 100%;
+            border: none;
+            text-align: left;
+            outline: none;
+            font-size: 15px;
+            transition: 0.4s;
+            border-radius: 5px;
+        }
+        .active, .collapsible:hover {
+            background-color: var(--primary-color);
+        }
+        .collapsible:after {
+            content: '\002B';
+            color: var(--text-color);
+            font-weight: bold;
+            float: right;
+            margin-left: 5px;
+        }
+        .active:after {
+            content: "\2212";
+        }
+        .content {
+            padding: 0 18px;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.2s ease-out;
+            background-color: var(--background-color);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <nav>
+                <a href="/" class="logo">COD Status Bot</a>
+                <div class="nav-links">
+                    <a href="/#features">Features</a>
+                    <a href="/#how-it-works">How It Works</a>
+                    <a href="/#stats">Stats</a>
+                    <a href="/help">Help</a>
+                </div>
+            </nav>
+        </div>
+    </header>
+    <div class="help-content">
+        <div class="container">
+            <h1>COD Status Bot Help Center</h1>
+            <div class="help-section">
+                <h2>Getting Started</h2>
+                <p>Welcome to the COD Status Bot help page. Here's how to get started:</p>
+                <ol>
+                    <li>Add the bot to your Discord server using <a href="https://discord.com/application-directory/1211857854324015124" rel="noopener">this link</a>.</li>
+                    <li>Set up your EZ-Captcha API key (optional but recommended).</li>
+                    <li>Add your Call of Duty account(s) for monitoring.</li>
+                </ol>
+            </div>
+            <div class="help-section">
+                <h2>Commands</h2>
+                <button class="collapsible">/setcaptchaservice</button>
+                <div class="content">
+                    <p>Set your EZ-Captcha API key for faster and more frequent checks.</p>
+                    <p>Usage: <code>/setcaptchaservice</code></p>
+                </div>
+                <button class="collapsible">/addaccount</button>
+                <div class="content">
+                    <p>Add a new account to monitor. You'll need to provide your SSO cookie.</p>
+                    <p>Usage: <code>/addaccount</code></p>
+                </div>
+                <button class="collapsible">/removeaccount</button>
+                <div class="content">
+                    <p>Remove a monitored account from the bot.</p>
+                    <p>Usage: <code>/removeaccount</code></p>
+                </div>
+                <button class="collapsible">/listaccounts</button>
+                <div class="content">
+                    <p>View a list of all your monitored accounts.</p>
+                    <p>Usage: <code>/listaccounts</code></p>
+                </div>
+                <button class="collapsible">/checknow</button>
+                <div class="content">
+                    <p>Perform an immediate status check on your account(s).</p>
+                    <p>Usage: <code>/checknow</code></p>
+                </div>
+                <button class="collapsible">/setcheckinterval</button>
+                <div class="content">
+                    <p>Customize how often the bot checks your account status.</p>
+                    <p>Usage: <code>/setcheckinterval</code></p>
+                </div>
+            </div>
+            <div class="help-section">
+                <h2>Obtaining Your SSO Cookie</h2>
+                <p>To add your Call of Duty account to the bot, you'll need to obtain your SSO (Single Sign-On) cookie. Follow these steps:</p>
+                <ol>
+                    <li>Go to <a href="https://www.activision.com/" target="_blank" rel="noopener">Activision's website</a> and log in with the account you want to track.</li>
+                    <li>Open the developer console in your browser (usually by pressing F12 or right-clicking and selecting "Inspect").</li>
+                    <li>In the console tab, paste the following code:
+                        <pre><code>var cookieValue = document.cookie.match(/ACT_SSO_COOKIE=([^;]+)/)[1]; console.log(cookieValue);</code></pre>
+                    </li>
+                    <li>Copy the output value. This is your SSO cookie.</li>
+                </ol>
+            </div>
+            <div class="help-section">
+                <h2>Setting Up EZ-Captcha API Key</h2>
+                <p>Using your own EZ-Captcha API key allows for more frequent account checks:</p>
+                <ol>
+                    <li>Visit <a href="https://dashboard.ez-captcha.com/#/register?inviteCode=uyNrRgWlEKy" target="_blank" rel="noopener">EZ-Captcha's website</a> to register and obtain an API key.</li>
+                    <li>Use the <code>/setcaptchaservice</code> command to set your personal API key.</li>
+                    <li>You can then use <code>/setcheckinterval</code> to customize your account check frequency.</li>
+                </ol>
+            </div>
+            <div class="help-section">
+                <h2>Troubleshooting</h2>
+                <p>If you encounter any issues:</p>
+                <ul>
+                    <li>Ensure your SSO cookie is up to date.</li>
+                    <li>Check if your EZ-Captcha API key is valid and has sufficient balance.</li>
+                    <li>Verify that the bot has the necessary permissions in your Discord server.</li>
+                    <li>For persistent issues, please contact our support team or check our GitHub repository for known issues.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    <footer>
+        <div class="container">
+            <p>&copy; 2024 COD Status Bot. All rights reserved.</p>
+            <p>
+                <a href="https://GitHub.com/bradselph/codstatusbot" target="_blank" rel="noopener">GitHub</a> |
+                <a href="/admin/stats">Admin Stats</a> |
+                <a href="/">Home</a>
+            </p>
+        </div>
+    </footer>
+    <script>
+        var coll = document.getElementsByClassName("collapsible");
+        var i;
+        for (i = 0; i < coll.length; i++) {
+            coll[i].addEventListener("click", function() {
+                this.classList.toggle("active");
+                var content = this.nextElementSibling;
+                if (content.style.maxHeight){
+                    content.style.maxHeight = null;
+                } else {
+                    content.style.maxHeight = content.scrollHeight + "px";
+                }
+            });
+        }
+    </script>
+</body>
+</html>
