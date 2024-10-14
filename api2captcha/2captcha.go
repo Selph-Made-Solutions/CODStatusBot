@@ -36,21 +36,6 @@ type (
 		httpClient       *http.Client
 	}
 
-	Normal struct {
-		File            string
-		Base64          string
-		Phrase          bool
-		CaseSensitive   bool
-		Calc            bool
-		Numberic        int
-		MinLen          int
-		MaxLen          int
-		Lang            string
-		HintText        string
-		HintImageBase64 string
-		HintImageFile   string
-	}
-
 	ReCaptcha struct {
 		SiteKey    string
 		Url        string
@@ -79,18 +64,6 @@ func NewClient(apiKey string) *Client {
 		PollingInterval:  10,
 		RecaptchaTimeout: 600,
 		httpClient:       &http.Client{},
-	}
-}
-
-func NewClientExt(apiKey string, client *http.Client) *Client {
-	base, _ := url.Parse(BaseURL)
-	return &Client{
-		BaseURL:          base,
-		ApiKey:           apiKey,
-		DefaultTimeout:   120,
-		PollingInterval:  10,
-		RecaptchaTimeout: 600,
-		httpClient:       client,
 	}
 }
 
@@ -351,55 +324,6 @@ func (req *Request) SetSoftId(softId int) {
 
 func (req *Request) SetCallback(callback string) {
 	req.Params["pingback"] = callback
-}
-
-func (c *Normal) ToRequest() Request {
-	req := Request{
-		Params: map[string]string{},
-		Files:  map[string]string{},
-	}
-	if c.File != "" {
-		req.Files["file"] = c.File
-		req.Params["method"] = "post"
-	}
-	if c.Base64 != "" {
-		req.Params["body"] = c.Base64
-		req.Params["method"] = "base64"
-	}
-
-	if c.Phrase {
-		req.Params["phrase"] = "1"
-	}
-	if c.CaseSensitive {
-		req.Params["regsense"] = "1"
-	}
-	if c.Calc {
-		req.Params["calc"] = "1"
-	}
-	if c.Numberic != 0 {
-		req.Params["numeric"] = strconv.FormatInt(int64(c.Numberic), 10)
-	}
-	if c.MinLen != 0 {
-		req.Params["min_len"] = strconv.FormatInt(int64(c.MinLen), 10)
-	}
-	if c.MaxLen != 0 {
-		req.Params["max_len"] = strconv.FormatInt(int64(c.MaxLen), 10)
-	}
-
-	if c.Lang != "" {
-		req.Params["lang"] = c.Lang
-	}
-	if c.HintText != "" {
-		req.Params["textinstructions"] = c.HintText
-	}
-	if c.HintImageBase64 != "" {
-		req.Params["imginstructions"] = c.HintImageBase64
-	}
-	if c.HintImageFile != "" {
-		req.Files["imginstructions"] = c.HintImageFile
-	}
-
-	return req
 }
 
 func (c *ReCaptcha) ToRequest() Request {
