@@ -139,6 +139,26 @@ func StatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func TermsHandler(w http.ResponseWriter, r *http.Request) {
+	tmpl, err := template.ParseFiles("templates/terms.html")
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to parse terms template")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	tmpl.Execute(w, nil)
+}
+
+func PolicyHandler(w http.ResponseWriter, r *http.Request) {
+	tmpl, err := template.ParseFiles("templates/policy.html")
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to parse policy template")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	tmpl.Execute(w, nil)
+}
+
 func HomeHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl, err := template.ParseFiles("templates/index.html")
 	if err != nil {
