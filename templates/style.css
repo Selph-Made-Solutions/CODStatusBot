@@ -4,6 +4,7 @@
     --accent-color: #99AAB5;
     --text-color: #FFFFFF;
     --background-color: #23272A;
+    --header-height: 80px;
 }
 
 * {
@@ -17,6 +18,11 @@ body {
     line-height: 1.6;
     color: var(--text-color);
     background-color: var(--background-color);
+    overflow-x: hidden;
+}
+
+.policy-content, .terms-content {
+    padding-top: 80px;
 }
 
 .container {
@@ -28,6 +34,10 @@ body {
 header {
     background-color: var(--secondary-color);
     padding: 20px 0;
+    position: fixed;
+    width: 100%;
+    top: 0;
+    z-index: 1000;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
@@ -72,6 +82,14 @@ nav {
     transform: translateY(-5px);
 }
 
+.content-wrapper {
+    padding-top: var(--header-height);
+}
+
+.policy-content, .terms-content {
+    padding: 40px 0;
+}
+
 h1, h2 {
     color: var(--primary-color);
     margin-bottom: 20px;
@@ -94,6 +112,27 @@ code {
     padding: 2px 5px;
     border-radius: 3px;
     font-family: 'Courier New', Courier, monospace;
+}
+
+section {
+    margin-bottom: 30px;
+}
+
+footer {
+    background-color: var(--secondary-color);
+    padding: 20px 0;
+    text-align: center;
+}
+
+footer a {
+    color: var(--primary-color);
+    text-decoration: none;
+    margin: 0 10px;
+    transition: color 0.3s ease;
+}
+
+footer a:hover {
+    color: var(--accent-color);
 }
 
 .collapsible {
@@ -490,6 +529,9 @@ footer a:hover {
 }
 
 @media (max-width: 768px) {
+    .nav-links {
+        display: none;
+
     .hero h1 {
         font-size: 2.5rem;
     }
