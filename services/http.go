@@ -19,8 +19,6 @@ var (
 	profileURL    = os.Getenv("PROFILE_ENDPOINT")     // Endpoint for retrieving profile information
 	checkVIP      = os.Getenv("CHECK_VIP_ENDPOINT")   // Endpoint for checking VIP status
 	redeemCodeURL = os.Getenv("REDEEM_CODE_ENDPOINT") // Endpoint for redeeming codes
-	siteKey       = os.Getenv("RECAPTCHA_SITE_KEY")
-	pageURL       = os.Getenv("RECAPTCHA_URL")
 )
 
 func VerifySSOCookie(ssoCookie string) bool {
