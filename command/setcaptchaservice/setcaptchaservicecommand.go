@@ -90,7 +90,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	var message string
 	if apiKey != "" {
-		isValid, balance, err := validateCaptchaKey(apiKey, provider)
+		isValid, balance, err := services.ValidateCaptchaKey(apiKey, provider)
 		if err != nil {
 			logger.Log.WithError(err).Errorf("Error validating %s API key for user %s", provider, userID)
 			respondToInteraction(s, i, fmt.Sprintf("Error validating the %s API key: %v. Please try again.", provider, err))
@@ -103,7 +103,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		}
 
 		logger.Log.Infof("Valid %s key set for user: %s. Balance: %.2f points", provider, userID, balance)
-		message = fmt.Sprintf("Your %s API key has been updated for all your accounts. Your current balance is %.2f points.", provider, balance)
+		message = fmt.Sprintf("Your %s API key has been set successfully. Your current balance is %.2f points. You now have access to faster check intervals and no rate limits!", provider, balance)
 	} else {
 		message = fmt.Sprintf("Your %s API key has been removed. The bot's default API key will be used. Your check interval and notification settings have been reset to default values.", provider)
 	}
@@ -113,12 +113,6 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		logger.Log.WithError(err).Errorf("Error setting %s API key for user %s", provider, userID)
 		respondToInteraction(s, i, fmt.Sprintf("Error setting %s API key: %v. Please try again.", provider, err))
 		return
-	}
-
-	if apiKey == "" {
-		message += " The bot's default API key will be used. Your check interval and notification settings have been reset to default values."
-	} else {
-		message += " Your custom API key has been set. You now have access to more frequent checks and notifications."
 	}
 
 	respondToInteraction(s, i, message)
@@ -162,20 +156,33 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	}
 }
 
-func resetNotificationTimestamps(userID string) error {
-	var userSettings models.UserSettings
-	if err := database.DB.Where("user_id = ?", userID).First(&userSettings).Error; err != nil {
-		return err
+// it may be possible to remove this function if it's not used
+func updateUserCaptchaSettings(userID, apiKey, provider string) error {
+	var settings models.UserSettings
+	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
+	if result.Error != nil {
+		return result.Error
 	}
 
-	now := time.Now()
-	userSettings.LastNotification = now
-	userSettings.LastDisabledNotification = now
-	userSettings.LastStatusChangeNotification = now
-	userSettings.LastDailyUpdateNotification = now
-	userSettings.LastCookieExpirationWarning = now
-	userSettings.LastBalanceNotification = now
-	userSettings.LastErrorNotification = now
+	settings.PreferredCaptchaProvider = provider
+	if provider == "ezcaptcha" {
+		settings.EZCaptchaAPIKey = apiKey
+		settings.TwoCaptchaAPIKey = "" // Clear the other provider's key
+	} else if provider == "2captcha" {
+		settings.TwoCaptchaAPIKey = apiKey
+		settings.EZCaptchaAPIKey = "" // Clear the other provider's key
+	}
 
-	return database.DB.Save(&userSettings).Error
+	if apiKey != "" {
+		// Enable custom settings for valid API key
+		settings.CheckInterval = 15        // Allow more frequent checks, e.g., every 15 minutes
+		settings.NotificationInterval = 12 // Allow more frequent notifications, e.g., every 12 hours
+	} else {
+		// Reset to default settings when API key is removed
+		defaultSettings, _ := services.GetDefaultSettings()
+		settings.CheckInterval = defaultSettings.CheckInterval
+		settings.NotificationInterval = defaultSettings.NotificationInterval
+	}
+
+	return database.DB.Save(&settings).Error
 }
