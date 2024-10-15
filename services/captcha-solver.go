@@ -34,7 +34,6 @@ const (
 func NewCaptchaSolver(apiKey, provider string) (CaptchaSolver, error) {
 	switch provider {
 	case "ezcaptcha":
-
 		return &EZCaptchaSolver{APIKey: apiKey}, nil
 	case "2captcha":
 		softID := os.Getenv("SOFT_ID")
@@ -196,7 +195,12 @@ func ValidateCaptchaKey(apiKey, provider string) (bool, float64, error) {
 	if err != nil {
 		return false, 0, fmt.Errorf("failed to send getBalance request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			logger.Log.Errorf("Failed to close response body: %v", err)
+		}
+	}(resp.Body)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
