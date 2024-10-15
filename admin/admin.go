@@ -31,6 +31,7 @@ type Stats struct {
 	TotalAccounts            int
 	ActiveAccounts           int
 	PermaBannedAccounts      int
+	ShadowBannedAccounts     int
 	TotalUsers               int
 	ChecksLastHour           int
 	ChecksLast24Hours        int
