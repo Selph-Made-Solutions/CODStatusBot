@@ -13,17 +13,76 @@ import (
 	"CODStatusBot/logger"
 )
 
+func LoadEnvironmentVariables() error {
+	clientKey = os.Getenv("EZCAPTCHA_CLIENT_KEY")
+	ezappID = os.Getenv("EZAPPID")
+	softID = os.Getenv("SOFT_ID")
+	siteAction = os.Getenv("SITE_ACTION")
+
+	if clientKey == "" || ezappID == "" || softID == "" || siteAction == "" {
+		return fmt.Errorf("EZCAPTCHA_CLIENT_KEY, EZAPPID, SOFT_ID, or SITE_ACTION is not set in the environment")
+	}
+	return nil
+}
+
+var (
+	clientKey  string
+	ezappID    string
+	softID     string
+	siteKey    string
+	pageURL    string
+	siteAction string
+)
+
+type createTaskRequest struct {
+	ClientKey string `json:"clientKey"`
+	softId    string `json:"softId"`
+	EzAppID   string `json:"appId"`
+	Task      task   `json:"task"`
+}
+
+type task struct {
+	Type        string `json:"type"`
+	WebsiteURL  string `json:"websiteURL"`
+	WebsiteKey  string `json:"websiteKey"`
+	IsInvisible bool   `json:"isInvisible"`
+	Action      string `json:"action,omitempty"`
+}
+
+type createTaskResponse struct {
+	ErrorID          int    `json:"errorId"`
+	ErrorCode        string `json:"errorCode"`
+	ErrorDescription string `json:"errorDescription"`
+	TaskID           string `json:"taskId"`
+}
+
+type getTaskResultRequest struct {
+	ClientKey string `json:"clientKey"`
+	TaskID    string `json:"taskId"`
+}
+
+type getTaskResultResponse struct {
+	ErrorID          int    `json:"errorId"`
+	ErrorCode        string `json:"errorCode"`
+	ErrorDescription string `json:"errorDescription"`
+	Status           string `json:"status"`
+	Solution         struct {
+		GRecaptchaResponse string `json:"gRecaptchaResponse"`
+	} `json:"solution"`
+}
+
 type CaptchaSolver interface {
 	SolveReCaptchaV2(siteKey, pageURL string) (string, error)
 }
 
 type EZCaptchaSolver struct {
-	APIKey string
+	APIKey  string
+	EzappID string
 }
 
 type TwoCaptchaSolver struct {
 	APIKey string
-	SoftID int
+	SoftID string
 }
 
 const (
@@ -34,9 +93,9 @@ const (
 func NewCaptchaSolver(apiKey, provider string) (CaptchaSolver, error) {
 	switch provider {
 	case "ezcaptcha":
-		return &EZCaptchaSolver{APIKey: apiKey}, nil
+
+		return &EZCaptchaSolver{APIKey: apiKey, EzappID: ezappID}, nil
 	case "2captcha":
-		softID := os.Getenv("SOFT_ID")
 		return &TwoCaptchaSolver{APIKey: apiKey, SoftID: softID}, nil
 	default:
 		return nil, errors.New("unsupported captcha provider")
@@ -64,7 +123,7 @@ func (s *TwoCaptchaSolver) SolveReCaptchaV2(siteKey, pageURL string) (string, er
 func (s *EZCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 	payload := map[string]interface{}{
 		"clientKey": s.APIKey,
-		"EzAppID":   s.ezappID,
+		"EzAppID":   s.EzappID,
 		"task": map[string]string{
 			"type":       "ReCaptchaV2TaskProxyless",
 			"websiteURL": pageURL,
@@ -86,7 +145,7 @@ func (s *TwoCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 		},
 	}
 
-	return sendRequest("https://2captcha.com/in.php", payload)
+	return sendRequest("https://2captcha.com/createTask", payload)
 }
 
 func (s *EZCaptchaSolver) getTaskResult(taskID string) (string, error) {
@@ -94,7 +153,7 @@ func (s *EZCaptchaSolver) getTaskResult(taskID string) (string, error) {
 }
 
 func (s *TwoCaptchaSolver) getTaskResult(taskID string) (string, error) {
-	return pollForResult("https://2captcha.com/res.php", s.APIKey, taskID)
+	return pollForResult("https://2captcha.com/getTaskResult", s.APIKey, taskID)
 }
 
 func sendRequest(url string, payload interface{}) (string, error) {
