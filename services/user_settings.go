@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"time"
 
-	api2captcha "CODStatusBot/api2captcha"
 	"CODStatusBot/database"
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
@@ -356,10 +355,11 @@ func ValidateEZCaptchaKey(apiKey string) (bool, float64, error) {
 }
 
 func ValidateTwoCaptchaKey(apiKey string) (bool, float64, error) {
-	client := api2captcha.NewClient(apiKey)
-	balance, err := client.GetBalance()
-	if err != nil {
-		return false, 0, err
-	}
-	return true, balance, nil
+	return CheckCaptchaKeyValidity(apiKey)
+	//	client := api2captcha.NewClient(apiKey)
+	//	balance, err := client.GetBalance()
+	//	if err != nil {
+	//		return false, 0, err
+	//	}
+	//	return true, balance, nil
 }
