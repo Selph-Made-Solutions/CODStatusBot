@@ -8,6 +8,7 @@ import (
 	"CODStatusBot/models"
 	"CODStatusBot/services"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -131,6 +132,7 @@ func loadEnvironmentVariables() error {
 		"GLOBAL_NOTIFICATION_COOLDOWN",
 		"COOKIE_EXPIRATION_WARNING",
 		"TEMP_BAN_UPDATE_INTERVAL",
+		"STATIC_DIR",
 	}
 
 	for _, envVar := range requiredEnvVars {
@@ -160,13 +162,10 @@ func startAdminDashboard() *http.Server {
 	r.HandleFunc("/admin", admin.AuthMiddleware(admin.DashboardHandler))
 	r.HandleFunc("/admin/stats", admin.AuthMiddleware(admin.StatsHandler))
 
-	staticDir := "/home/container/"
+	staticDir := os.Getenv("STATIC_DIR")
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
 
 	port := os.Getenv("ADMIN_PORT")
-	if port == "" {
-		port = "443"
-	}
 
 	server := &http.Server{
 		Addr:    ":" + port,
@@ -175,7 +174,7 @@ func startAdminDashboard() *http.Server {
 
 	go func() {
 		logger.Log.Infof("Admin dashboard starting on port %s", port)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Log.WithError(err).Fatal("Failed to start admin dashboard")
 		}
 	}()
@@ -209,7 +208,7 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 				if err := services.SendAnnouncementToAllUsers(s); err != nil {
 					logger.Log.WithError(err).Error("Failed to send global announcement")
 				}
-				time.Sleep(24 * time.Hour) // Check once a day
+				time.Sleep(24 * time.Hour)
 			}
 		}
 	}()
