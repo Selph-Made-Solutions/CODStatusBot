@@ -161,6 +161,7 @@ func startAdminDashboard() *http.Server {
 	r.HandleFunc("/admin/logout", admin.LogoutHandler)
 	r.HandleFunc("/admin", admin.AuthMiddleware(admin.DashboardHandler))
 	r.HandleFunc("/admin/stats", admin.AuthMiddleware(admin.StatsHandler))
+	r.HandleFunc("/api/server-count", admin.ServerCountHandler)
 
 	staticDir := os.Getenv("STATIC_DIR")
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
