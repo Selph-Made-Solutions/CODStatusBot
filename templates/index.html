@@ -3,11 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>COD Status Bot</title>
+    <title>COD Status Bot - Monitor Your Call of Duty Account</title>
     <link rel="stylesheet" href="/static/style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
-          integrity="sha512-iBBXm8fW90+nuLcSKlbmrPcLa0OT92xO1BIsZ+ywDWZCvqsWgccV3gFoRBv0z+8dLJgyAHIhR35VZc2oM/gI1w=="
-          crossorigin="anonymous">
 </head>
 <body>
 <header>
@@ -23,11 +20,11 @@
         </nav>
     </div>
 </header>
+<main role="main">
 <section class="hero">
     <div class="container">
-        <h1>Your Call of Duty Account Guardian</h1>
-        <p>Stay informed about your COD account status, receive instant ban notifications, and track your gaming journey
-            with precision.</p>
+            <h1>Your Call of Duty Account Monitor</h1>
+            <p>Stay informed about your COD account status, receive notifications about shadowbans, or account enforcement updates.</p>
         <div>
             <a href="https://discord.com/application-directory/1211857854324015124" class="btn" rel="noopener">Add to
                 Discord</a>
@@ -89,12 +86,8 @@
         <h2 class="section-title">Bot Statistics</h2>
         <div class="stat-grid">
             <div class="stat">
-                <h3>330+</h3>
+                    <h3 id="serverCount">Loading...</h3>
                 <p>Discord Servers</p>
-            </div>
-            <div class="stat">
-                <h3>50+</h3>
-                <p>Active Users</p>
             </div>
             <div class="stat">
                 <h3>24/7</h3>
@@ -107,18 +100,27 @@
         </div>
     </div>
 </section>
+</main>
 <footer>
     <div class="container">
         <p>&copy; 2024 COD Status Bot. All rights reserved.</p>
-        <nav aria-label="Footer Navigation">
-            <a href="https://GitHub.com/bradselph/codstatusbot" target="_blank" rel="noopener">GitHub</a> |
-            <a href="/admin/stats">Admin Stats</a> |
-            <a href="/help">Help Center</a> |
-            <a href="/contact">Contact Us</a> |
-            <a href="/policy">Privacy Policy</a> |
+        <div class="footer-links">
+            <a href="https://github.com/bradselph/codstatusbot" target="_blank" rel="noopener">GitHub</a>
+            <a href="/admin/stats">Admin Stats</a>
+            <a href="/">Home</a>
+            <a href="/help">Help Center</a>
+            <a href="mailto:dev@codstatusbot.us">Contact Us</a>
+            <a href="/policy">Privacy Policy</a>
             <a href="/terms">Terms of Service</a>
-        </nav>
+        </div>
     </div>
+    <script>
+        function updateServerCount() {
+            document.getElementById('serverCount').textContent = '350+';
+        }
+
+        window.onload = updateServerCount;
+    </script>
 </footer>
 </body>
 </html>
