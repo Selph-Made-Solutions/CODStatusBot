@@ -2,8 +2,10 @@ package admin
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/joho/godotenv"
 	"html/template"
+	"io"
 	"net/http"
 	"os"
 	"sync"
@@ -18,13 +20,19 @@ import (
 	"github.com/gorilla/sessions"
 )
 
+const (
+	discordAPIBase = "https://discord.com/api/v10"
+)
+
 var (
-	statsLimiter      *limiter.Limiter
-	cachedStats       Stats
-	cachedStatsLock   sync.RWMutex
-	cacheInterval     = 15 * time.Minute
-	NotificationMutex sync.Mutex
-	store             *sessions.CookieStore
+	statsLimiter           *limiter.Limiter
+	cachedStats            Stats
+	cachedStatsLock        sync.RWMutex
+	cacheInterval          = 15 * time.Minute
+	NotificationMutex      sync.Mutex
+	store                  *sessions.CookieStore
+	cachedDiscordStats     DiscordStats
+	cachedDiscordStatsLock sync.RWMutex
 )
 
 type Stats struct {
@@ -58,6 +66,10 @@ type Stats struct {
 type HistoricalData struct {
 	Date  string `json:"date"`
 	Value int    `json:"value"`
+}
+
+type DiscordStats struct {
+	ServerCount int `json:"server_count"`
 }
 
 func init() {
@@ -106,15 +118,34 @@ func updateCachedStats() {
 		return
 	}
 
+	botstats, err := fetchDiscordStats()
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to fetch Discord botstats")
+		return
+	}
+
 	cachedStatsLock.Lock()
+	cachedDiscordStatsLock.Lock()
 	cachedStats = stats
+	cachedDiscordStats = botstats
 	cachedStatsLock.Unlock()
+	cachedDiscordStatsLock.Unlock()
+
 }
 
 func GetCachedStats() Stats {
 	cachedStatsLock.RLock()
 	defer cachedStatsLock.RUnlock()
 	return cachedStats
+}
+
+func ServerCountHandler(w http.ResponseWriter, r *http.Request) {
+	cachedDiscordStatsLock.RLock()
+	botstats := cachedDiscordStats
+	cachedDiscordStatsLock.RUnlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(botstats)
 }
 
 func StatsHandler(w http.ResponseWriter, r *http.Request) {
@@ -498,4 +529,49 @@ func getHistoricalData(statType string) ([]HistoricalData, error) {
 	}
 
 	return data, err
+}
+
+func fetchDiscordStats() (DiscordStats, error) {
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	req, err := http.NewRequest("GET", discordAPIBase+"/users/@me/guilds", nil)
+	if err != nil {
+		return DiscordStats{}, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	token := os.Getenv("DISCORD_TOKEN")
+	if token == "" {
+		return DiscordStats{}, fmt.Errorf("DISCORD_TOKEN not set in environment")
+	}
+
+	req.Header.Set("Authorization", "Bot "+token)
+	req.Header.Set("User-Agent", "CodStatusBot, v3.5)")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return DiscordStats{}, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			logger.Log.WithError(err).Error("Failed to close response body")
+		}
+	}(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return DiscordStats{}, fmt.Errorf("discord API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var guilds []interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&guilds); err != nil {
+		return DiscordStats{}, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return DiscordStats{
+		ServerCount: len(guilds),
+	}, nil
 }
