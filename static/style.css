@@ -173,63 +173,8 @@ footer a:hover {
     background-color: var(--background-color);
 }
 
-:root {
-    --primary-color: #7289DA;
-    --secondary-color: #2C2F33;
-    --accent-color: #99AAB5;
-    --text-color: #FFFFFF;
-    --background-color: #23272A;
-}
-
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
-body {
-    font-family: 'Helvetica Neue', Arial, sans-serif;
-    line-height: 1.6;
-    color: var(--text-color);
-    background-color: var(--background-color);
-    overflow-x: hidden;
-}
-
-.container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 0 20px;
-}
-
-header {
-    background-color: var(--secondary-color);
-    padding: 20px 0;
-    position: fixed;
-    width: 100%;
-    top: 0;
-    z-index: 1000;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-}
-
-nav {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
 .logo {
-    font-size: 1.8rem;
-    font-weight: bold;
-    color: var(--primary-color);
     text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-.nav-links a {
-    color: var(--text-color);
-    text-decoration: none;
-    margin-left: 20px;
-    transition: all 0.3s ease;
-    position: relative;
 }
 
 .nav-links a::after {
@@ -254,9 +199,28 @@ nav {
     justify-content: center;
     align-items: center;
     text-align: center;
-    padding-top: 80px;
+    padding: 0 20px;
     position: relative;
     overflow: hidden;
+}
+
+.hero .container {
+    max-width: 800px;
+    z-position: 1;
+}
+
+.hero h1 {
+    font-size: 3.5rem;
+    margin-bottom: 20px;
+    animation: fadeInUp 1s ease-out;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.hero p {
+    font-size: 1.3rem;
+    margin-bottom: 30px;
+    animation: fadeInUp 1s ease-out 0.5s;
+    animation-fill-mode: both;
 }
 
 .hero::before {
@@ -295,19 +259,18 @@ nav {
     }
 }
 
-.hero h1 {
-    font-size: 3.5rem;
-    margin-bottom: 20px;
-    animation: fadeInUp 1s ease-out;
-    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+.hero .btn-container {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    flex-wrap: wrap;
 }
 
-.hero p {
-    font-size: 1.3rem;
-    margin-bottom: 30px;
-    max-width: 600px;
-    animation: fadeInUp 1s ease-out 0.5s;
-    animation-fill-mode: both;
+.feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 40px;
+    max-width: 1200px;
 }
 
 .btn {
@@ -334,10 +297,10 @@ nav {
     width: 100%;
     height: 100%;
     background: linear-gradient(
-            120deg,
-            transparent,
-            rgba(255, 255, 255, 0.3),
-            transparent
+        120deg,
+        transparent,
+        rgba(255, 255, 255, 0.3),
+        transparent
     );
     transition: all 0.6s;
 }
@@ -368,12 +331,6 @@ nav {
     font-size: 2.5rem;
     color: var(--primary-color);
     text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-.feature-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 40px;
 }
 
 .feature {
@@ -500,23 +457,6 @@ nav {
     color: var(--text-color);
 }
 
-footer {
-    background-color: var(--secondary-color);
-    padding: 40px 0;
-    text-align: center;
-}
-
-footer a {
-    color: var(--primary-color);
-    text-decoration: none;
-    margin: 0 10px;
-    transition: color 0.3s ease;
-}
-
-footer a:hover {
-    color: var(--accent-color);
-}
-
 @keyframes fadeInUp {
     from {
         opacity: 0;
@@ -529,6 +469,11 @@ footer a:hover {
 }
 
 @media (max-width: 768px) {
+    .btn-container {
+        flex-direction: column;
+        align-items: center;
+    }
+
     .nav-links {
         display: none;
     }
