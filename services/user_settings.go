@@ -4,16 +4,17 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
 	"io"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
 
-	"CODStatusBot/database"
-	"CODStatusBot/logger"
-	"CODStatusBot/models"
+	"github.com/bwmarrin/discordgo"
+
+	"github.com/bradselph/CODStatusBot/database"
+	"github.com/bradselph/CODStatusBot/logger"
+	"github.com/bradselph/CODStatusBot/models"
 )
 
 var defaultSettings models.UserSettings

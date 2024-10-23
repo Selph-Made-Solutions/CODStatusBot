@@ -1,15 +1,16 @@
 package services
 
 import (
-	"CODStatusBot/admin"
-	"CODStatusBot/database"
-	"CODStatusBot/logger"
-	"CODStatusBot/models"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/bradselph/CODStatusBot/database"
+	"github.com/bradselph/CODStatusBot/logger"
+	"github.com/bradselph/CODStatusBot/models"
+	"github.com/bradselph/CODStatusBot/webserver/admin"
+	"github.com/bwmarrin/discordgo"
 )
 
 func NotifyAdminWithCooldown(s *discordgo.Session, message string, cooldownDuration time.Duration) {

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"CODStatusBot/logger"
-	"CODStatusBot/models"
+	"github.com/bradselph/CODStatusBot/logger"
+	"github.com/bradselph/CODStatusBot/models"
 )
 
 var (

@@ -1,15 +1,16 @@
 package setcaptchaservice
 
 import (
-	"CODStatusBot/database"
-	"CODStatusBot/models"
 	"fmt"
 	"strings"
 	"time"
 
-	"CODStatusBot/logger"
-	"CODStatusBot/services"
-	"CODStatusBot/utils"
+	"github.com/bradselph/CODStatusBot/database"
+	"github.com/bradselph/CODStatusBot/models"
+
+	"github.com/bradselph/CODStatusBot/logger"
+	"github.com/bradselph/CODStatusBot/services"
+	"github.com/bradselph/CODStatusBot/utils"
 	"github.com/bwmarrin/discordgo"
 )
 

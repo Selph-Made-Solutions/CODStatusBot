@@ -1,4 +1,4 @@
-module CODStatusBot
+module github.com/bradselph/CODStatusBot
 
 go 1.23.2
 

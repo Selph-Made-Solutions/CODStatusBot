@@ -1,12 +1,6 @@
 package main
 
 import (
-	"CODStatusBot/admin"
-	"CODStatusBot/bot"
-	"CODStatusBot/database"
-	"CODStatusBot/logger"
-	"CODStatusBot/models"
-	"CODStatusBot/services"
 	"context"
 	"errors"
 	"fmt"
@@ -16,6 +10,13 @@ import (
 	"runtime/debug"
 	"syscall"
 	"time"
+
+	"github.com/bradselph/CODStatusBot/bot"
+	"github.com/bradselph/CODStatusBot/database"
+	"github.com/bradselph/CODStatusBot/logger"
+	"github.com/bradselph/CODStatusBot/models"
+	"github.com/bradselph/CODStatusBot/services"
+	"github.com/bradselph/CODStatusBot/webserver/admin"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/gorilla/mux"

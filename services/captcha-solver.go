@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"CODStatusBot/logger"
+	"github.com/bradselph/CODStatusBot/logger"
 )
 
 func LoadEnvironmentVariables() error {
