@@ -16,7 +16,7 @@ import (
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bradselph/CODStatusBot/services"
-	"github.com/bradselph/CODStatusBot/webserver/admin"
+	"github.com/bradselph/CODStatusBot/webserver"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/gorilla/mux"
@@ -154,15 +154,15 @@ func initializeDatabase() error {
 
 func startAdminDashboard() *http.Server {
 	r := mux.NewRouter()
-	r.HandleFunc("/", admin.HomeHandler)
-	r.HandleFunc("/help", admin.HelpHandler)
-	r.HandleFunc("/terms", admin.TermsHandler)
-	r.HandleFunc("/policy", admin.PolicyHandler)
-	r.HandleFunc("/admin/login", admin.LoginHandler)
-	r.HandleFunc("/admin/logout", admin.LogoutHandler)
-	r.HandleFunc("/admin", admin.AuthMiddleware(admin.DashboardHandler))
-	r.HandleFunc("/admin/stats", admin.AuthMiddleware(admin.StatsHandler))
-	r.HandleFunc("/api/server-count", admin.ServerCountHandler)
+	r.HandleFunc("/", webserver.HomeHandler)
+	r.HandleFunc("/help", webserver.HelpHandler)
+	r.HandleFunc("/terms", webserver.TermsHandler)
+	r.HandleFunc("/policy", webserver.PolicyHandler)
+	r.HandleFunc("/admin/login", webserver.LoginHandler)
+	r.HandleFunc("/admin/logout", webserver.LogoutHandler)
+	r.HandleFunc("/admin", webserver.AuthMiddleware(webserver.DashboardHandler))
+	r.HandleFunc("/admin/stats", webserver.AuthMiddleware(webserver.StatsHandler))
+	r.HandleFunc("/api/server-count", webserver.ServerCountHandler)
 
 	staticDir := os.Getenv("STATIC_DIR")
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
@@ -199,7 +199,7 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 		}
 	}()
 
-	go admin.StartStatsCaching()
+	go webserver.StartStatsCaching()
 	go services.ScheduleBalanceChecks(s)
 
 	go func() {
