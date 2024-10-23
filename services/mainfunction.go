@@ -5,14 +5,15 @@ import (
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
 	"fmt"
-	"github.com/bwmarrin/discordgo"
-	"github.com/joho/godotenv"
-	"github.com/patrickmn/go-cache"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/bwmarrin/discordgo"
+	"github.com/joho/godotenv"
+	"github.com/patrickmn/go-cache"
 )
 
 type NotificationConfig struct {
