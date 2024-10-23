@@ -12,37 +12,6 @@ import (
 
 	"CODStatusBot/logger"
 	"CODStatusBot/models"
-
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-)
-
-var (
-	httpRequestDuration = promauto.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "http_request_duration_seconds",
-			Help:    "Duration of HTTP requests",
-			Buckets: prometheus.LinearBuckets(0, 1, 10),
-		},
-		[]string{"user_id"},
-	)
-
-	httpRequestErrors = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "http_request_errors_total",
-			Help: "Total number of HTTP request errors",
-		},
-		[]string{"user_id", "error_type"},
-	)
-
-	checkDuration = promauto.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "check_duration_seconds",
-			Help:    "Total duration of account checks",
-			Buckets: prometheus.LinearBuckets(0, 1, 10),
-		},
-		[]string{"user_id"},
-	)
 )
 
 var (
@@ -98,26 +67,15 @@ func VerifySSOCookie(ssoCookie string) bool {
 func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models.Status, error) {
 	logger.Log.Info("Starting CheckAccount function")
 
-	checkStart := time.Now()
-	defer func() {
-		checkDuration.WithLabelValues(userID).Observe(time.Since(checkStart).Seconds())
-	}()
-
 	solver, err := GetCaptchaSolver(userID)
 	if err != nil {
-		captchaSolveErrors.WithLabelValues(userID, "solver_init").Inc()
 		return models.StatusUnknown, fmt.Errorf("failed to get captcha solver: %w", err)
 	}
 
-	solveStart := time.Now()
 	gRecaptchaResponse, err := solver.SolveReCaptchaV2(siteKey, pageURL)
 	if err != nil {
-		captchaSolveErrors.WithLabelValues(userID, "solve_failed").Inc()
 		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %w", err)
 	}
-
-	captchaSolveTotal.WithLabelValues(userID, "success").Inc()
-	captchaSolveDuration.WithLabelValues(userID).Observe(time.Since(solveStart).Seconds())
 
 	logger.Log.Info("Successfully received reCAPTCHA response")
 
@@ -142,18 +100,10 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 	var resp *http.Response
 	var body []byte
 	maxRetries := 3
-
 	for i := 0; i < maxRetries; i++ {
 		logger.Log.Infof("Sending HTTP request to check account (attempt %d/%d)", i+1, maxRetries)
-
-		requestStart := time.Now()
 		resp, err = client.Do(req)
-		requestDuration := time.Since(requestStart)
-
-		httpRequestDuration.WithLabelValues(userID).Observe(requestDuration.Seconds())
-
 		if err != nil {
-			httpRequestErrors.WithLabelValues(userID, "request_failed").Inc()
 			if i == maxRetries-1 {
 				return models.StatusUnknown, fmt.Errorf("failed to send HTTP request after %d attempts: %w", maxRetries, err)
 			}
@@ -170,7 +120,6 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 
 		body, err = io.ReadAll(resp.Body)
 		if err != nil {
-			httpRequestErrors.WithLabelValues(userID, "read_failed").Inc()
 			if i == maxRetries-1 {
 				return models.StatusUnknown, fmt.Errorf("failed to read response body after %d attempts: %w", maxRetries, err)
 			}
