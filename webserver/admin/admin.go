@@ -3,7 +3,6 @@ package admin
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/joho/godotenv"
 	"html/template"
 	"io"
 	"net/http"
@@ -11,9 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"CODStatusBot/database"
-	"CODStatusBot/logger"
-	"CODStatusBot/models"
+	"github.com/joho/godotenv"
+
+	"github.com/bradselph/CODStatusBot/database"
+	"github.com/bradselph/CODStatusBot/logger"
+	"github.com/bradselph/CODStatusBot/models"
 
 	"github.com/didip/tollbooth"
 	"github.com/didip/tollbooth/limiter"
@@ -139,7 +140,7 @@ func GetCachedStats() Stats {
 	return cachedStats
 }
 
-func ServerCountHandler(w http.ResponseWriter, r *http.Request) {
+func ServerCountHandler(w http.ResponseWriter) {
 	cachedDiscordStatsLock.RLock()
 	botstats := cachedDiscordStats
 	cachedDiscordStatsLock.RUnlock()
@@ -168,7 +169,7 @@ func StatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func TermsHandler(w http.ResponseWriter, r *http.Request) {
+func TermsHandler(w http.ResponseWriter) {
 	tmpl, err := template.ParseFiles("templates/terms.html")
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to parse terms template")
@@ -178,7 +179,7 @@ func TermsHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, nil)
 }
 
-func PolicyHandler(w http.ResponseWriter, r *http.Request) {
+func PolicyHandler(w http.ResponseWriter) {
 	tmpl, err := template.ParseFiles("templates/policy.html")
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to parse policy template")
@@ -188,7 +189,7 @@ func PolicyHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, nil)
 }
 
-func HomeHandler(w http.ResponseWriter, r *http.Request) {
+func HomeHandler(w http.ResponseWriter) {
 	tmpl, err := template.ParseFiles("templates/index.html")
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to parse index template")
@@ -198,7 +199,7 @@ func HomeHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, nil)
 }
 
-func HelpHandler(w http.ResponseWriter, r *http.Request) {
+func HelpHandler(w http.ResponseWriter) {
 	tmpl, err := template.ParseFiles("templates/help.html")
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to parse help template")
