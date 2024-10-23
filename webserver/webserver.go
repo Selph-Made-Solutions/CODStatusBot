@@ -1,4 +1,4 @@
-package admin
+package webserver
 
 import (
 	"encoding/json"
@@ -169,7 +169,7 @@ func StatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func TermsHandler(w http.ResponseWriter) {
+func TermsHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl, err := template.ParseFiles("templates/terms.html")
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to parse terms template")
@@ -179,7 +179,7 @@ func TermsHandler(w http.ResponseWriter) {
 	tmpl.Execute(w, nil)
 }
 
-func PolicyHandler(w http.ResponseWriter) {
+func PolicyHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl, err := template.ParseFiles("templates/policy.html")
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to parse policy template")
@@ -189,7 +189,7 @@ func PolicyHandler(w http.ResponseWriter) {
 	tmpl.Execute(w, nil)
 }
 
-func HomeHandler(w http.ResponseWriter) {
+func HomeHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl, err := template.ParseFiles("templates/index.html")
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to parse index template")
@@ -199,7 +199,7 @@ func HomeHandler(w http.ResponseWriter) {
 	tmpl.Execute(w, nil)
 }
 
-func HelpHandler(w http.ResponseWriter) {
+func HelpHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl, err := template.ParseFiles("templates/help.html")
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to parse help template")
