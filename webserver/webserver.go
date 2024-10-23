@@ -140,7 +140,7 @@ func GetCachedStats() Stats {
 	return cachedStats
 }
 
-func ServerCountHandler(w http.ResponseWriter) {
+func ServerCountHandler(w http.ResponseWriter, r *http.Request) {
 	cachedDiscordStatsLock.RLock()
 	botstats := cachedDiscordStats
 	cachedDiscordStatsLock.RUnlock()
