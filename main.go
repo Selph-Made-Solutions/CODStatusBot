@@ -33,7 +33,7 @@ func main() {
 
 	if err := run(); err != nil {
 		logger.Log.WithError(err).Error("Bot encountered an error and is shutting down")
-		os.Exit(1)
+		logger.Log.Fatal("Exiting due to error")
 	}
 }
 
@@ -169,8 +169,9 @@ func startAdminDashboard() *http.Server {
 	port := os.Getenv("ADMIN_PORT")
 
 	server := &http.Server{
-		Addr:    ":" + port,
-		Handler: r,
+		Addr:              ":" + port,
+		Handler:           r,
+		ReadHeaderTimeout: 20 * time.Second,
 	}
 
 	go func() {
