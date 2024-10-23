@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	checkURL      = os.Getenv("CHECK_ENDPOINT")       //account status check endpoint.
+	checkURL      = os.Getenv("CHECK_ENDPOINT")       // account status check endpoint.
 	profileURL    = os.Getenv("PROFILE_ENDPOINT")     // Endpoint for retrieving profile information
 	checkVIP      = os.Getenv("CHECK_VIP_ENDPOINT")   // Endpoint for checking VIP status
 	redeemCodeURL = os.Getenv("REDEEM_CODE_ENDPOINT") // Endpoint for redeeming codes
@@ -38,7 +38,14 @@ func VerifySSOCookie(ssoCookie string) bool {
 		logger.Log.WithError(err).Error("Error sending verification request")
 		return false
 	}
-	defer resp.Body.Close()
+
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			logger.Log.WithError(err).Error("Error closing response body")
+		}
+	}(resp.Body)
+
 	if resp.StatusCode != http.StatusOK {
 		logger.Log.Errorf("Invalid SSOCookie, status code: %d", resp.StatusCode)
 		return false
@@ -253,7 +260,13 @@ func CheckVIPStatus(ssoCookie string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to send HTTP request to check VIP status: %w", err)
 	}
-	defer resp.Body.Close()
+
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			logger.Log.Errorf("Failed to close response body: %v", err)
+		}
+	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return false, fmt.Errorf("invalid response status code: %d", resp.StatusCode)
@@ -298,7 +311,12 @@ func RedeemCode(ssoCookie, code string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to send HTTP request to redeem code: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			logger.Log.Errorf("Failed to close response body: %v", err)
+		}
+	}(resp.Body)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
