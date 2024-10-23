@@ -9,13 +9,13 @@ import (
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
-	"github.com/bradselph/CODStatusBot/webserver/admin"
+	"github.com/bradselph/CODStatusBot/webserver"
 	"github.com/bwmarrin/discordgo"
 )
 
 func NotifyAdminWithCooldown(s *discordgo.Session, message string, cooldownDuration time.Duration) {
-	admin.NotificationMutex.Lock()
-	defer admin.NotificationMutex.Unlock()
+	webserver.NotificationMutex.Lock()
+	defer webserver.NotificationMutex.Unlock()
 
 	notificationType := "admin_" + strings.Split(message, " ")[0] // Use first word of message as type
 
