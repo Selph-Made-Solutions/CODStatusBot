@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COD Status Bot - Monitor Your Call of Duty Account</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
+          integrity="sha512-iBBXm8fW90+nuLcSKlbmrPcLa0OT92xO1BIsZ+ywDWZCvqsWgccV3gFoRBv0z+8dLJgyAHIhR35VZc2oM/gI1w=="
+          crossorigin="anonymous">
+</head>
+<body>
+<header>
+    <div class="container">
+        <nav aria-label="Header Navigation">
+            <div class="logo">COD Status Bot</div>
+            <div class="nav-links">
+                <a href="#features">Features</a>
+                <a href="#how-it-works">How It Works</a>
+                <a href="#stats">Stats</a>
+                <a href="/help">Help</a>
+            </div>
+        </nav>
+    </div>
+</header>
+<main role="main">
+    <section class="hero">
+        <div class="container">
+            <h1>Your Call of Duty Account Monitor</h1>
+            <p>Stay informed about your COD account status, receive notifications about shadowbans, or account
+                enforcement updates.</p>
+            <div class="btn-container">
+                <a href="https://discord.com/application-directory/1211857854324015124"
+                   class="btn"
+                   rel="noopener">Add to Discord</a>
+                <a href="/help" class="btn btn-secondary">Learn More</a>
+            </div>
+        </div>
+    </section>
+    <section id="features" class="features">
+        <div class="container">
+            <h2 class="section-title">Powerful Features</h2>
+            <div class="feature-grid">
+                <div class="feature">
+                    <i class="fas fa-bell"></i>
+                    <h3>Real-time Alerts</h3>
+                    <p>Receive instant notifications about your account status changes and bans</p>
+                </div>
+                <div class="feature">
+                    <i class="fas fa-user-shield"></i>
+                    <h3>Multi-Account Support</h3>
+                    <p>Monitor multiple COD accounts from a single Discord server</p>
+                </div>
+                <div class="feature">
+                    <i class="fas fa-history"></i>
+                    <h3>Detailed Ban History</h3>
+                    <p>Keep track of your account's ban history, including durations and affected games</p>
+                </div>
+                <div class="feature">
+                    <i class="fas fa-cogs"></i>
+                    <h3>Customizable Settings</h3>
+                    <p>Tailor notification preferences and check intervals to your specific needs</p>
+                </div>
+            </div>
+        </div>
+    </section>
+    <section id="how-it-works" class="how-it-works">
+        <div class="container">
+            <h2 class="section-title">How It Works</h2>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <h3>Add Bot to Discord</h3>
+                    <p>Invite COD Status Bot to your Discord server with just a click</p>
+                </div>
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <h3>Set Up Your Account</h3>
+                    <p>Use simple commands to add your COD account(s) for monitoring</p>
+                </div>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <h3>Stay Informed</h3>
+                    <p>Receive real-time updates and manage your accounts effortlessly</p>
+                </div>
+            </div>
+        </div>
+    </section>
+    <section id="stats" class="stats">
+        <div class="container">
+            <h2 class="section-title">Bot Statistics</h2>
+            <div class="stat-grid">
+                <div class="stat">
+                    <h3 id="serverCount">Loading...</h3>
+                    <p>Discord Servers</p>
+                </div>
+                <div class="stat">
+                    <h3>24/7</h3>
+                    <p>Continuous Monitoring</p>
+                </div>
+                <div class="stat">
+                    <h3>100%</h3>
+                    <p>Discord Verified</p>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+<footer>
+    <div class="container">
+        <p>&copy; 2024 COD Status Bot. All rights reserved.</p>
+        <div class="footer-links">
+            <a href="https://github.com/bradselph/codstatusbot" target="_blank" rel="noopener">GitHub</a> |
+            <a href="/admin/stats">Admin Stats</a> |
+            <a href="/">Home</a> |
+            <a href="/help">Help Center</a> |
+            <a href="mailto:dev@codstatusbot.us">Contact Us</a> |
+            <a href="/policy">Privacy Policy</a> |
+            <a href="/terms">Terms of Service</a>
+        </div>
+    </div>
+    <script>
+        function updateServerCount() {
+            document.getElementById('serverCount').textContent = '350+';
+        }
+
+        window.onload = updateServerCount;
+    </script>
+</footer>
+</body>
+</html>
