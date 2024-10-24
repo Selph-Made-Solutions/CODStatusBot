@@ -10,15 +10,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 )
 
 var (
-	checkURL      = os.Getenv("CHECK_ENDPOINT")       // account status check endpoint.
-	profileURL    = os.Getenv("PROFILE_ENDPOINT")     // Endpoint for retrieving profile information
-	checkVIP      = os.Getenv("CHECK_VIP_ENDPOINT")   // Endpoint for checking VIP status
-	redeemCodeURL = os.Getenv("REDEEM_CODE_ENDPOINT") // Endpoint for redeeming codes
+	checkURL         = os.Getenv("CHECK_ENDPOINT")       // account status check endpoint.
+	profileURL       = os.Getenv("PROFILE_ENDPOINT")     // Endpoint for retrieving profile information
+	checkVIP         = os.Getenv("CHECK_VIP_ENDPOINT")   // Endpoint for checking VIP status
+	redeemCodeURL    = os.Getenv("REDEEM_CODE_ENDPOINT") // Endpoint for redeeming codes
+	recaptchaSiteKey = os.Getenv("RECAPTCHA_SITE_KEY")   // Site key for reCAPTCHA
+	recaptchaURL     = os.Getenv("RECAPTCHA_URL")        // URL for reCAPTCHA
 )
 
 func VerifySSOCookie(ssoCookie string) bool {
@@ -63,26 +66,36 @@ func VerifySSOCookie(ssoCookie string) bool {
 	return true
 }
 
-// TODO move timeout to when the recaptcha is solved to ensure it doesn't timeout before the request is sent
 func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models.Status, error) {
 	logger.Log.Info("Starting CheckAccount function")
 
-	solver, err := GetCaptchaSolver(userID)
+	_, err := GetUserSettings(userID)
 	if err != nil {
-		return models.StatusUnknown, fmt.Errorf("failed to get captcha solver: %w", err)
+		return models.StatusUnknown, fmt.Errorf("failed to get user settings: %w", err)
 	}
 
-	gRecaptchaResponse, err := solver.SolveReCaptchaV2(siteKey, pageURL)
+	solver, err := GetCaptchaSolver(userID)
 	if err != nil {
+		return models.StatusUnknown, fmt.Errorf("failed to create captcha solver: %w", err)
+	}
+
+	gRecaptchaResponse, err := solver.SolveReCaptchaV2(recaptchaSiteKey, recaptchaURL)
+	if err != nil {
+		if strings.Contains(err.Error(), "insufficient balance") {
+			if err := DisableUserCaptcha(nil, userID, "Insufficient balance"); err != nil {
+				logger.Log.WithError(err).Error("Failed to disable user captcha service")
+			}
+			return models.StatusUnknown, fmt.Errorf("insufficient captcha balance")
+		}
 		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %w", err)
 	}
 
 	logger.Log.Info("Successfully received reCAPTCHA response")
 
-	checkrequest := checkURL + "?locale=en" + "&g-cc=" + gRecaptchaResponse
-	logger.Log.WithField("url", checkrequest).Info("Constructed account check request")
+	checkRequest := fmt.Sprintf("%s?locale=en&g-cc=%s", checkURL, gRecaptchaResponse)
+	logger.Log.WithField("url", checkRequest).Info("Constructed account check request")
 
-	req, err := http.NewRequest("GET", checkrequest, nil)
+	req, err := http.NewRequest("GET", checkRequest, nil)
 	if err != nil {
 		return models.StatusUnknown, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
@@ -100,6 +113,7 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 	var resp *http.Response
 	var body []byte
 	maxRetries := 3
+
 	for i := 0; i < maxRetries; i++ {
 		logger.Log.Infof("Sending HTTP request to check account (attempt %d/%d)", i+1, maxRetries)
 		resp, err = client.Do(req)
@@ -110,11 +124,7 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 			time.Sleep(time.Duration(i+1) * time.Second)
 			continue
 		}
-		defer func(Body io.ReadCloser) {
-			err := Body.Close()
-			if err != nil {
-			}
-		}(resp.Body)
+		defer resp.Body.Close()
 
 		logger.Log.WithField("status", resp.Status).Info("Received response")
 
@@ -143,7 +153,7 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 	if err := json.Unmarshal(body, &errorResponse); err == nil {
 		logger.Log.WithField("errorResponse", errorResponse).Info("Parsed error response")
 		if errorResponse.Status == 400 && errorResponse.Path == "/api/bans/v2/appeal" {
-			return models.StatusUnknown, fmt.Errorf("invalid request to new endpoint: %s", errorResponse.Error)
+			return models.StatusUnknown, fmt.Errorf("invalid request to endpoint: %s", errorResponse.Error)
 		}
 	}
 
@@ -167,6 +177,10 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 	}
 	logger.Log.WithField("data", data).Info("Parsed ban data")
 
+	if err := UpdateCaptchaUsage(userID); err != nil {
+		logger.Log.WithError(err).Error("Failed to update captcha usage")
+	}
+
 	if len(data.Bans) == 0 {
 		logger.Log.Info("No bans found, account status is good")
 		return models.StatusGood, nil
@@ -189,6 +203,38 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 
 	logger.Log.Info("Unknown account status")
 	return models.StatusUnknown, nil
+}
+
+func UpdateCaptchaUsage(userID string) error {
+	settings, err := GetUserSettings(userID)
+	if err != nil {
+		return err
+	}
+
+	if settings.EZCaptchaAPIKey == "" && settings.TwoCaptchaAPIKey == "" {
+		return nil
+	}
+
+	apiKey := settings.EZCaptchaAPIKey
+	provider := "ezcaptcha"
+	if settings.PreferredCaptchaProvider == "2captcha" {
+		apiKey = settings.TwoCaptchaAPIKey
+		provider = "2captcha"
+	}
+
+	isValid, balance, err := ValidateCaptchaKey(apiKey, provider)
+	if err != nil {
+		return err
+	}
+
+	if !isValid {
+		return errors.New("invalid captcha key")
+	}
+
+	settings.CaptchaBalance = balance
+	settings.LastBalanceCheck = time.Now()
+
+	return database.DB.Save(&settings).Error
 }
 
 func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
