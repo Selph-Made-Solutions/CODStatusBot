@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"os"
 	"time"
-
-	"github.com/bradselph/CODStatusBot/logger"
 )
 
 func LoadEnvironmentVariables() error {
@@ -34,43 +32,6 @@ var (
 	siteAction string
 )
 
-type createTaskRequest struct {
-	ClientKey string `json:"clientKey"`
-	softId    string `json:"softId"`
-	EzAppID   string `json:"appId"`
-	Task      task   `json:"task"`
-}
-
-type task struct {
-	Type        string `json:"type"`
-	WebsiteURL  string `json:"websiteURL"`
-	WebsiteKey  string `json:"websiteKey"`
-	IsInvisible bool   `json:"isInvisible"`
-	Action      string `json:"action,omitempty"`
-}
-
-type createTaskResponse struct {
-	ErrorID          int    `json:"errorId"`
-	ErrorCode        string `json:"errorCode"`
-	ErrorDescription string `json:"errorDescription"`
-	TaskID           string `json:"taskId"`
-}
-
-type getTaskResultRequest struct {
-	ClientKey string `json:"clientKey"`
-	TaskID    string `json:"taskId"`
-}
-
-type getTaskResultResponse struct {
-	ErrorID          int    `json:"errorId"`
-	ErrorCode        string `json:"errorCode"`
-	ErrorDescription string `json:"errorDescription"`
-	Status           string `json:"status"`
-	Solution         struct {
-		GRecaptchaResponse string `json:"gRecaptchaResponse"`
-	} `json:"solution"`
-}
-
 type CaptchaSolver interface {
 	SolveReCaptchaV2(siteKey, pageURL string) (string, error)
 }
@@ -88,12 +49,16 @@ type TwoCaptchaSolver struct {
 const (
 	MaxRetries    = 6
 	RetryInterval = 10 * time.Second
+
+	EZCaptchaCreateEndpoint  = "https://api.ez-captcha.com/createTask"
+	EZCaptchaResultEndpoint  = "https://api.ez-captcha.com/getTaskResult"
+	TwoCaptchaCreateEndpoint = "https://api.2captcha.com/createTask"
+	TwoCaptchaResultEndpoint = "https://api.2captcha.com/getTaskResult"
 )
 
 func NewCaptchaSolver(apiKey, provider string) (CaptchaSolver, error) {
 	switch provider {
 	case "ezcaptcha":
-
 		return &EZCaptchaSolver{APIKey: apiKey, EzappID: ezappID}, nil
 	case "2captcha":
 		return &TwoCaptchaSolver{APIKey: apiKey, SoftID: softID}, nil
@@ -107,7 +72,6 @@ func (s *EZCaptchaSolver) SolveReCaptchaV2(siteKey, pageURL string) (string, err
 	if err != nil {
 		return "", fmt.Errorf("failed to create captcha task: %w", err)
 	}
-
 	return s.getTaskResult(taskID)
 }
 
@@ -116,117 +80,172 @@ func (s *TwoCaptchaSolver) SolveReCaptchaV2(siteKey, pageURL string) (string, er
 	if err != nil {
 		return "", fmt.Errorf("failed to create captcha task: %w", err)
 	}
-
 	return s.getTaskResult(taskID)
 }
 
 func (s *EZCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 	payload := map[string]interface{}{
 		"clientKey": s.APIKey,
-		"EzAppID":   s.EzappID,
-		"task": map[string]string{
-			"type":       "ReCaptchaV2TaskProxyless",
-			"websiteURL": pageURL,
-			"websiteKey": siteKey,
+		"appId":     s.EzappID,
+		"task": map[string]interface{}{
+			"type":        "ReCaptchaV2TaskProxyless",
+			"websiteURL":  pageURL,
+			"websiteKey":  siteKey,
+			"isInvisible": false,
 		},
 	}
 
-	return sendRequest("https://api.ez-captcha.com/createTask", payload)
+	resp, err := sendRequest(EZCaptchaCreateEndpoint, payload)
+	if err != nil {
+		return "", err
+	}
+
+	var result struct {
+		ErrorId          int    `json:"errorId"`
+		ErrorCode        string `json:"errorCode"`
+		ErrorDescription string `json:"errorDescription"`
+		TaskId           string `json:"taskId"`
+	}
+
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if result.ErrorId != 0 {
+		return "", fmt.Errorf("API error: %s - %s", result.ErrorCode, result.ErrorDescription)
+	}
+
+	return result.TaskId, nil
 }
 
 func (s *TwoCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 	payload := map[string]interface{}{
 		"clientKey": s.APIKey,
 		"softId":    s.SoftID,
-		"task": map[string]string{
+		"task": map[string]interface{}{
 			"type":       "ReCaptchaV2TaskProxyless",
 			"websiteURL": pageURL,
 			"websiteKey": siteKey,
 		},
 	}
 
-	return sendRequest("https://2captcha.com/createTask", payload)
-}
-
-func (s *EZCaptchaSolver) getTaskResult(taskID string) (string, error) {
-	return pollForResult("https://api.ez-captcha.com/getTaskResult", s.APIKey, taskID)
-}
-
-func (s *TwoCaptchaSolver) getTaskResult(taskID string) (string, error) {
-	return pollForResult("https://2captcha.com/getTaskResult", s.APIKey, taskID)
-}
-
-func sendRequest(url string, payload interface{}) (string, error) {
-	jsonPayload, err := json.Marshal(payload)
+	resp, err := sendRequest(TwoCaptchaCreateEndpoint, payload)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal JSON payload: %w", err)
-	}
-
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonPayload))
-	if err != nil {
-		return "", fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %w", err)
+		return "", err
 	}
 
 	var result struct {
-		TaskID string `json:"taskId"`
-	}
-	err = json.Unmarshal(body, &result)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse JSON response: %w", err)
+		ErrorId int `json:"errorId"`
+		TaskId  int `json:"taskId"`
 	}
 
-	return result.TaskID, nil
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if result.ErrorId != 0 {
+		return "", fmt.Errorf("API error creating task")
+	}
+
+	return fmt.Sprintf("%d", result.TaskId), nil
 }
 
-func pollForResult(url, apiKey, taskID string) (string, error) {
+func (s *EZCaptchaSolver) getTaskResult(taskID string) (string, error) {
 	for i := 0; i < MaxRetries; i++ {
-		payload := map[string]string{
-			"clientKey": apiKey,
+		payload := map[string]interface{}{
+			"clientKey": s.APIKey,
 			"taskId":    taskID,
 		}
 
-		jsonPayload, err := json.Marshal(payload)
+		resp, err := sendRequest(EZCaptchaResultEndpoint, payload)
 		if err != nil {
-			return "", fmt.Errorf("failed to marshal JSON payload: %w", err)
-		}
-
-		resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonPayload))
-		if err != nil {
-			return "", fmt.Errorf("failed to send request: %w", err)
-		}
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return "", fmt.Errorf("failed to read response body: %w", err)
+			return "", err
 		}
 
 		var result struct {
-			Status   string `json:"status"`
-			Solution struct {
+			ErrorId          int    `json:"errorId"`
+			ErrorCode        string `json:"errorCode"`
+			ErrorDescription string `json:"errorDescription"`
+			Status           string `json:"status"`
+			Solution         struct {
 				GRecaptchaResponse string `json:"gRecaptchaResponse"`
 			} `json:"solution"`
 		}
-		err = json.Unmarshal(body, &result)
-		if err != nil {
-			return "", fmt.Errorf("failed to parse JSON response: %w", err)
+
+		if err := json.Unmarshal(resp, &result); err != nil {
+			return "", fmt.Errorf("failed to parse response: %w", err)
+		}
+
+		if result.ErrorId != 0 {
+			return "", fmt.Errorf("API error: %s - %s", result.ErrorCode, result.ErrorDescription)
 		}
 
 		if result.Status == "ready" {
 			return result.Solution.GRecaptchaResponse, nil
 		}
 
-		logger.Log.Infof("Waiting for captcha solution. Attempt %d/%d", i+1, MaxRetries)
 		time.Sleep(RetryInterval)
 	}
 
-	return "", errors.New("max retries reached, captcha solving timed out")
+	return "", errors.New("max retries reached waiting for result")
+}
+
+func (s *TwoCaptchaSolver) getTaskResult(taskID string) (string, error) {
+	for i := 0; i < MaxRetries; i++ {
+		payload := map[string]interface{}{
+			"clientKey": s.APIKey,
+			"taskId":    taskID,
+		}
+
+		resp, err := sendRequest(TwoCaptchaResultEndpoint, payload)
+		if err != nil {
+			return "", err
+		}
+
+		var result struct {
+			ErrorId  int    `json:"errorId"`
+			Status   string `json:"status"`
+			Solution struct {
+				GRecaptchaResponse string `json:"gRecaptchaResponse"`
+			} `json:"solution"`
+		}
+
+		if err := json.Unmarshal(resp, &result); err != nil {
+			return "", fmt.Errorf("failed to parse response: %w", err)
+		}
+
+		if result.ErrorId != 0 {
+			return "", fmt.Errorf("API error getting result")
+		}
+
+		if result.Status == "ready" {
+			return result.Solution.GRecaptchaResponse, nil
+		}
+
+		time.Sleep(RetryInterval)
+	}
+
+	return "", errors.New("max retries reached waiting for result")
+}
+
+func sendRequest(url string, payload interface{}) ([]byte, error) {
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	return body, nil
 }
 
 func ValidateCaptchaKey(apiKey, provider string) (bool, float64, error) {
@@ -245,25 +264,9 @@ func ValidateCaptchaKey(apiKey, provider string) (bool, float64, error) {
 		"action":    "getBalance",
 	}
 
-	jsonPayload, err := json.Marshal(payload)
+	resp, err := sendRequest(url, payload)
 	if err != nil {
-		return false, 0, fmt.Errorf("failed to marshal JSON payload: %v", err)
-	}
-
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonPayload))
-	if err != nil {
-		return false, 0, fmt.Errorf("failed to send getBalance request: %v", err)
-	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			logger.Log.Errorf("Failed to close response body: %v", err)
-		}
-	}(resp.Body)
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return false, 0, fmt.Errorf("failed to read response body: %v", err)
+		return false, 0, err
 	}
 
 	var result struct {
@@ -271,9 +274,8 @@ func ValidateCaptchaKey(apiKey, provider string) (bool, float64, error) {
 		Balance float64 `json:"balance"`
 	}
 
-	err = json.Unmarshal(body, &result)
-	if err != nil {
-		return false, 0, fmt.Errorf("failed to parse JSON response: %v", err)
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return false, 0, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	if result.ErrorId != 0 {
