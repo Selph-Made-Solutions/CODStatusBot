@@ -6,9 +6,8 @@ import (
 	"time"
 
 	"github.com/bradselph/CODStatusBot/database"
-	"github.com/bradselph/CODStatusBot/models"
-
 	"github.com/bradselph/CODStatusBot/logger"
+	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bradselph/CODStatusBot/services"
 	"github.com/bradselph/CODStatusBot/utils"
 	"github.com/bwmarrin/discordgo"
@@ -36,7 +35,7 @@ func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCrea
 					Components: []discordgo.MessageComponent{
 						discordgo.TextInput{
 							CustomID:    "api_key",
-							Label:       "Enter your Captcha API key",
+							Label:       "API Key",
 							Style:       discordgo.TextInputShort,
 							Placeholder: "Leave blank to use bot's default key",
 							Required:    false,
@@ -103,45 +102,49 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			return
 		}
 
+		var settings models.UserSettings
+		if err := database.DB.Where("user_id = ?", userID).FirstOrCreate(&settings).Error; err != nil {
+			logger.Log.WithError(err).Error("Error getting/creating user settings")
+			respondToInteraction(s, i, "Error updating settings. Please try again.")
+			return
+		}
+
+		settings.PreferredCaptchaProvider = provider
+		settings.CheckInterval = 15
+		settings.NotificationInterval = 12
+		settings.CustomSettings = true
+
+		if provider == "ezcaptcha" {
+			settings.EZCaptchaAPIKey = apiKey
+			settings.TwoCaptchaAPIKey = ""
+		} else {
+			settings.TwoCaptchaAPIKey = apiKey
+			settings.EZCaptchaAPIKey = ""
+		}
+
+		if err := database.DB.Save(&settings).Error; err != nil {
+			logger.Log.WithError(err).Error("Error saving user settings")
+			respondToInteraction(s, i, "Error saving settings. Please try again.")
+			return
+		}
+
 		logger.Log.Infof("Valid %s key set for user: %s. Balance: %.2f points", provider, userID, balance)
 		message = fmt.Sprintf("Your %s API key has been set successfully. Your current balance is %.2f points. You now have access to faster check intervals and no rate limits!", provider, balance)
 	} else {
-		message = fmt.Sprintf("Your %s API key has been removed. The bot's default API key will be used. Your check interval and notification settings have been reset to default values.", provider)
-	}
-
-	err := services.SetUserCaptchaKey(userID, apiKey, provider)
-	if err != nil {
-		logger.Log.WithError(err).Errorf("Error setting %s API key for user %s", provider, userID)
-		respondToInteraction(s, i, fmt.Sprintf("Error setting %s API key: %v. Please try again.", provider, err))
-		return
+		if err := services.RemoveCaptchaKey(userID); err != nil {
+			logger.Log.WithError(err).Error("Error removing API key")
+			respondToInteraction(s, i, "Error removing API key. Please try again.")
+			return
+		}
+		message = "Your API key has been removed. The bot's default API key will be used. Your check interval and notification settings have been reset to default values."
 	}
 
 	respondToInteraction(s, i, message)
-}
 
-func validateCaptchaKey(apiKey, provider string) (bool, float64, error) {
-	switch provider {
-	case "ezcaptcha":
-		return services.ValidateEZCaptchaKey(apiKey)
-	case "2captcha":
-		isValid, balance, err := services.ValidateTwoCaptchaKey(apiKey)
-		if err != nil {
-			if strings.Contains(err.Error(), "CAPCHA_NOT_READY") || strings.Contains(err.Error(), "ERROR_CAPTCHA_UNSOLVABLE") {
-				logger.Log.WithError(err).Warn("Temporary 2captcha error, retrying...")
-				time.Sleep(2 * time.Second)
-				return services.ValidateTwoCaptchaKey(apiKey)
-			}
-			logger.Log.WithError(err).Error("Error validating 2captcha key")
-			return false, 0, fmt.Errorf("2captcha validation error: %w", err)
-		}
-		if !isValid {
-			logger.Log.Error("2captcha key is invalid")
-			return false, 0, nil
-		}
-		return true, balance, nil
-	default:
-		return false, 0, fmt.Errorf("unsupported captcha provider")
-	}
+	go func() {
+		time.Sleep(5 * time.Second)
+		services.CheckAndNotifyBalance(s, userID, 0)
+	}()
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
@@ -155,35 +158,4 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction")
 	}
-}
-
-// it may be possible to remove this function if it's not used
-func updateUserCaptchaSettings(userID, apiKey, provider string) error {
-	var settings models.UserSettings
-	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
-	if result.Error != nil {
-		return result.Error
-	}
-
-	settings.PreferredCaptchaProvider = provider
-	if provider == "ezcaptcha" {
-		settings.EZCaptchaAPIKey = apiKey
-		settings.TwoCaptchaAPIKey = "" // Clear the other provider's key
-	} else if provider == "2captcha" {
-		settings.TwoCaptchaAPIKey = apiKey
-		settings.EZCaptchaAPIKey = "" // Clear the other provider's key
-	}
-
-	if apiKey != "" {
-		// Enable custom settings for valid API key
-		settings.CheckInterval = 15        // Allow more frequent checks, e.g., every 15 minutes
-		settings.NotificationInterval = 12 // Allow more frequent notifications, e.g., every 12 hours
-	} else {
-		// Reset to default settings when API key is removed
-		defaultSettings, _ := services.GetDefaultSettings()
-		settings.CheckInterval = defaultSettings.CheckInterval
-		settings.NotificationInterval = defaultSettings.NotificationInterval
-	}
-
-	return database.DB.Save(&settings).Error
 }
