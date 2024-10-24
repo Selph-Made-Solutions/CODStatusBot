@@ -62,7 +62,7 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			return
 		}
 
-		if balance < 6 {
+		if balance < 0 {
 			respondToInteraction(s, i, fmt.Sprintf("Your captcha balance (%.2f) is too low for checking accounts. Please recharge your balance.", balance))
 			return
 		}
