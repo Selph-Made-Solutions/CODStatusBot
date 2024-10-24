@@ -8,9 +8,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"time"
-
-	"github.com/bwmarrin/discordgo"
 
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
@@ -333,37 +330,6 @@ func CheckCaptchaKeyValidity(captchaKey string) (bool, float64, error) {
 	}
 
 	return true, result.Balance, nil
-}
-
-func ScheduleBalanceChecks(s *discordgo.Session) {
-	ticker := time.NewTicker(6 * time.Hour)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		var users []models.UserSettings
-		if err := database.DB.Find(&users).Error; err != nil {
-			logger.Log.WithError(err).Error("Failed to fetch users for balance check")
-			continue
-		}
-
-		for _, user := range users {
-			if user.EZCaptchaAPIKey != "" {
-				_, balance, err := ValidateCaptchaKey(user.EZCaptchaAPIKey, "ezcaptcha")
-				if err != nil {
-					logger.Log.WithError(err).Errorf("Failed to validate EZCaptcha key for user %s", user.UserID)
-					continue
-				}
-				CheckAndNotifyBalance(s, user.UserID, balance)
-			} else if user.TwoCaptchaAPIKey != "" {
-				_, balance, err := ValidateCaptchaKey(user.TwoCaptchaAPIKey, "2captcha")
-				if err != nil {
-					logger.Log.WithError(err).Errorf("Failed to validate 2captcha key for user %s", user.UserID)
-					continue
-				}
-				CheckAndNotifyBalance(s, user.UserID, balance)
-			}
-		}
-	}
 }
 
 func ValidateEZCaptchaKey(apiKey string) (bool, float64, error) {
