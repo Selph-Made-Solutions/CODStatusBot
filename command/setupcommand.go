@@ -14,6 +14,7 @@ import (
 	"github.com/bradselph/CODStatusBot/command/removeaccount"
 	"github.com/bradselph/CODStatusBot/command/setcaptchaservice"
 	"github.com/bradselph/CODStatusBot/command/setcheckinterval"
+	"github.com/bradselph/CODStatusBot/command/setnotifications"
 	"github.com/bradselph/CODStatusBot/command/togglecheck"
 	"github.com/bradselph/CODStatusBot/command/updateaccount"
 	"github.com/bradselph/CODStatusBot/database"
@@ -41,6 +42,11 @@ func RegisterCommands(s *discordgo.Session) error {
 		{
 			Name:         "setcheckinterval",
 			Description:  "Set check interval, notification interval, and notification type",
+			DMPermission: BoolPtr(true),
+		},
+		{
+			Name:         "setnotifications",
+			Description:  "Set your notification preferences (channel or DM)",
 			DMPermission: BoolPtr(true),
 		},
 		{
@@ -134,7 +140,9 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["removeaccount"] = removeaccount.CommandRemoveAccount
 	Handlers["updateaccount"] = updateaccount.CommandUpdateAccount
 	Handlers["togglecheck"] = togglecheck.CommandToggleCheck
+	Handlers["setnotifications"] = setnotifications.CommandSetNotifications
 
+	Handlers["set_notifications_modal"] = setnotifications.HandleModalSubmit
 	Handlers["setcaptchaservice_modal"] = setcaptchaservice.HandleModalSubmit
 	Handlers["addaccount_modal"] = addaccount.HandleModalSubmit
 	Handlers["updateaccount_modal"] = updateaccount.HandleModalSubmit
