@@ -24,19 +24,6 @@ import (
 var discord *discordgo.Session
 
 func StartBot() (*discordgo.Session, error) {
-	if !services.isServiceEnabled("ezcaptcha") && !services.isServiceEnabled("2captcha") {
-		logger.Log.Warn("No captcha services are enabled. Bot functionality will be limited.")
-	} else {
-		var enabledServices []string
-		if services.isServiceEnabled("ezcaptcha") {
-			enabledServices = append(enabledServices, "EZCaptcha")
-		}
-		if services.isServiceEnabled("2captcha") {
-			enabledServices = append(enabledServices, "2Captcha")
-		}
-		logger.Log.Infof("Starting bot with enabled captcha services: %s", strings.Join(enabledServices, ", "))
-	}
-
 	envToken := os.Getenv("DISCORD_TOKEN")
 	if envToken == "" {
 		err := errors.New("DISCORD_TOKEN environment variable not set")
@@ -75,25 +62,6 @@ func StartBot() (*discordgo.Session, error) {
 	})
 
 	return discord, nil
-}
-
-func checkCaptchaServiceStatus() string {
-	var status strings.Builder
-	status.WriteString("Captcha Service Status:\n")
-
-	if services.isServiceEnabled("ezcaptcha") {
-		status.WriteString("✅ EZCaptcha: Enabled\n")
-	} else {
-		status.WriteString("❌ EZCaptcha: Disabled\n")
-	}
-
-	if services.isServiceEnabled("2captcha") {
-		status.WriteString("✅ 2Captcha: Enabled\n")
-	} else {
-		status.WriteString("❌ 2Captcha: Disabled\n")
-	}
-
-	return status.String()
 }
 
 func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
