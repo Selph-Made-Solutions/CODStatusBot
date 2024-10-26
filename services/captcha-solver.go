@@ -121,12 +121,13 @@ func (s *EZCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 func (s *TwoCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 	payload := map[string]interface{}{
 		"clientKey": s.APIKey,
+		"softId":    s.SoftID,
 		"task": map[string]interface{}{
-			"type":       "ReCaptchaV2TaskProxyless",
-			"websiteURL": pageURL,
-			"websiteKey": siteKey,
+			"type":        "ReCaptchaV2TaskProxyless",
+			"websiteURL":  pageURL,
+			"websiteKey":  siteKey,
+			"isInvisible": false,
 		},
-		"softId": s.SoftID,
 	}
 
 	resp, err := sendRequest(TwoCaptchaCreateEndpoint, payload)
@@ -135,8 +136,10 @@ func (s *TwoCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 	}
 
 	var result struct {
-		ErrorId int `json:"errorId"`
-		TaskId  int `json:"taskId"`
+		ErrorId          int    `json:"errorId"`
+		ErrorCode        string `json:"errorCode"`
+		ErrorDescription string `json:"errorDescription"`
+		TaskId           string `json:"taskId"`
 	}
 
 	if err := json.Unmarshal(resp, &result); err != nil {
@@ -144,10 +147,10 @@ func (s *TwoCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 	}
 
 	if result.ErrorId != 0 {
-		return "", fmt.Errorf("API error creating task")
+		return "", fmt.Errorf("API error creating task: %s - %s", result.ErrorCode, result.ErrorDescription)
 	}
 
-	return fmt.Sprintf("%d", result.TaskId), nil
+	return result.TaskId, nil
 }
 
 func (s *EZCaptchaSolver) getTaskResult(taskID string) (string, error) {
