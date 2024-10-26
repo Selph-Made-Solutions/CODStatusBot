@@ -161,6 +161,30 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
+	if !services.IsServiceEnabled("ezcaptcha") && !services.IsServiceEnabled("2captcha") {
+		respondToInteraction(s, i, "Account updates are currently unavailable as no captcha services are enabled. Please try again later.")
+		return
+	}
+
+	userSettings, err := services.GetUserSettings(userID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error fetching user settings")
+		respondToInteraction(s, i, "Error fetching user settings. Please try again.")
+		return
+	}
+
+	if !services.IsServiceEnabled(userSettings.PreferredCaptchaProvider) {
+		msg := fmt.Sprintf("Your preferred captcha service (%s) is currently disabled. ", userSettings.PreferredCaptchaProvider)
+		if services.IsServiceEnabled("ezcaptcha") {
+			msg += "Please switch to EZCaptcha using /setcaptchaservice."
+		} else if services.IsServiceEnabled("2captcha") {
+			msg += "Please switch to 2Captcha using /setcaptchaservice."
+		} else {
+			msg += "No captcha services are currently available. Please try again later."
+		}
+		respondToInteraction(s, i, msg)
+		return
+	}
 	if account.UserID != userID {
 		logger.Log.Error("User attempted to update an account they don't own")
 		respondToInteraction(s, i, "Error: You don't have permission to update this account.")
