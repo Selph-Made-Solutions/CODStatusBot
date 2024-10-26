@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sort"
 	"sync"
 	"time"
 
@@ -390,6 +391,12 @@ func getShadowBannedAccounts() (int, error) {
 	return int(count), err
 }
 
+func getTotalShadowbans() (int, error) {
+	var count int64
+	err := database.DB.Model(&models.Ban{}).Where("status = ?", models.StatusShadowban).Count(&count).Error
+	return int(count), err
+}
+
 func getTotalUsers() (int, error) {
 	var count int64
 	err := database.DB.Model(&models.UserSettings{}).Count(&count).Error
@@ -490,11 +497,13 @@ func getBanDataForChart() ([]string, []int, error) {
 	var banData []struct {
 		Date  time.Time
 		Count int
+		Type  string
 	}
+
 	err := database.DB.Model(&models.Ban{}).
-		Select("DATE(created_at) as date, COUNT(*) as count").
+		Select("DATE(created_at) as date, COUNT(*) as count, status as type").
 		Where("created_at > ?", time.Now().AddDate(0, 0, -30)).
-		Group("DATE(created_at)").
+		Group("DATE(created_at), status").
 		Order("date").
 		Scan(&banData).Error
 	if err != nil {
@@ -503,10 +512,29 @@ func getBanDataForChart() ([]string, []int, error) {
 
 	var dates []string
 	var counts []int
+	shadowbanCounts := make(map[string]int)
+	permaBanCounts := make(map[string]int)
+	tempBanCounts := make(map[string]int)
+
 	for _, data := range banData {
-		dates = append(dates, data.Date.Format("2006-01-02"))
-		counts = append(counts, data.Count)
+		dateStr := data.Date.Format("2006-01-02")
+		switch data.Type {
+		case string(models.StatusShadowban):
+			shadowbanCounts[dateStr] += data.Count
+		case string(models.StatusPermaban):
+			permaBanCounts[dateStr] += data.Count
+		case string(models.StatusTempban):
+			tempBanCounts[dateStr] += data.Count
+		}
 	}
+
+	for dateStr := range shadowbanCounts {
+		dates = append(dates, dateStr)
+		totalCount := shadowbanCounts[dateStr] + permaBanCounts[dateStr] + tempBanCounts[dateStr]
+		counts = append(counts, totalCount)
+	}
+
+	sort.Strings(dates)
 
 	return dates, counts, nil
 }
