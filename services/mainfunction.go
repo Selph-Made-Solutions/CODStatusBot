@@ -527,50 +527,6 @@ func disableAccount(s *discordgo.Session, account models.Account, reason string)
 	NotifyUserAboutDisabledAccount(s, account, reason)
 }
 
-func handleInvalidCookie(s *discordgo.Session, account models.Account) {
-	userSettings, _ := GetUserSettings(account.UserID)
-	lastNotification := time.Unix(account.LastCookieNotification, 0)
-	now := time.Now()
-
-	timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
-	if err != nil {
-		logger.Log.WithError(err).Errorf("Error checking SSO cookie expiration for account %s", account.Title)
-		return
-	}
-
-	if timeUntilExpiration > 0 && timeUntilExpiration <= 24*time.Hour &&
-		(now.Sub(lastNotification).Hours() >= userSettings.CooldownDuration || account.LastCookieNotification == 0) {
-
-		logger.Log.Infof("Account %s SSO cookie is expiring soon", account.Title)
-		embed := &discordgo.MessageEmbed{
-			Title:       fmt.Sprintf("%s - SSO Cookie Expiring Soon", account.Title),
-			Description: fmt.Sprintf("The SSO cookie for account %s will expire in %s. Please update the cookie using the /updateaccount command before it expires.", account.Title, FormatDuration(timeUntilExpiration)),
-			Color:       0xFFA500, // Orange color for warning
-			Timestamp:   now.Format(time.RFC3339),
-		}
-
-		err := SendNotification(s, account, embed, "", "cookie_expiring_soon")
-		if err != nil {
-			logger.Log.WithError(err).Errorf("Failed to send cookie expiration notification for account %s", account.Title)
-		} else {
-			DBMutex.Lock()
-			account.LastCookieNotification = now.Unix()
-			if err := database.DB.Save(&account).Error; err != nil {
-				logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
-			}
-			DBMutex.Unlock()
-		}
-	} else if timeUntilExpiration <= 0 {
-		logger.Log.Infof("Account %s has an expired SSO cookie", account.Title)
-		account.IsExpiredCookie = true
-		if err := database.DB.Save(&account).Error; err != nil {
-			logger.Log.WithError(err).Errorf("Failed to update expired cookie status for account %s", account.Title)
-		}
-	} else {
-		logger.Log.Infof("Skipping cookie expiration notification for account %s (not expiring soon or cooldown)", account.Title)
-	}
-}
-
 func updateAccountStatus(s *discordgo.Session, account models.Account, result models.Status) {
 	DBMutex.Lock()
 	defer DBMutex.Unlock()
