@@ -47,6 +47,19 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
+	if !services.IsServiceEnabled(userSettings.PreferredCaptchaProvider) {
+		msg := fmt.Sprintf("Your preferred captcha service (%s) is currently disabled. ", userSettings.PreferredCaptchaProvider)
+		if services.IsServiceEnabled("ezcaptcha") {
+			msg += "Please switch to EZCaptcha using /setcaptchaservice."
+		} else if services.IsServiceEnabled("2captcha") {
+			msg += "Please switch to 2Captcha using /setcaptchaservice."
+		} else {
+			msg += "No captcha services are currently available. Please try again later."
+		}
+		respondToInteraction(s, i, msg)
+		return
+	}
+
 	if userSettings.EZCaptchaAPIKey == "" && userSettings.TwoCaptchaAPIKey == "" {
 		if !checkRateLimit(userID) {
 			respondToInteraction(s, i, fmt.Sprintf("You're using the bot's default API key and are rate limited. Please wait %v before trying again, or set up your own API key using /setcaptchaservice for unlimited checks.", rateLimit))
