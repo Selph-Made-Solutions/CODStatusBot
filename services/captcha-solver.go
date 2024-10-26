@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/bradselph/CODStatusBot/logger"
 )
 
 func LoadEnvironmentVariables() error {
@@ -123,17 +125,22 @@ func (s *TwoCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 		"clientKey": s.APIKey,
 		"softId":    s.SoftID,
 		"task": map[string]interface{}{
-			"type":        "ReCaptchaV2TaskProxyless",
+			"type":        "RecaptchaV2TaskProxyless",
 			"websiteURL":  pageURL,
 			"websiteKey":  siteKey,
 			"isInvisible": false,
 		},
 	}
 
+	jsonBytes, _ := json.Marshal(payload)
+	logger.Log.Infof("2captcha request payload: %s", string(jsonBytes))
+
 	resp, err := sendRequest(TwoCaptchaCreateEndpoint, payload)
 	if err != nil {
 		return "", err
 	}
+
+	logger.Log.Infof("2captcha response: %s", string(resp))
 
 	var result struct {
 		ErrorId          int    `json:"errorId"`
@@ -150,7 +157,7 @@ func (s *TwoCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 		return "", fmt.Errorf("API error creating task: %s - %s", result.ErrorCode, result.ErrorDescription)
 	}
 
-	return result.TaskId, nil
+	return fmt.Sprintf("%d", result.TaskId), nil
 }
 
 func (s *EZCaptchaSolver) getTaskResult(taskID string) (string, error) {
