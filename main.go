@@ -2,12 +2,11 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,7 +18,6 @@ import (
 	"github.com/bradselph/CODStatusBot/webserver"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 )
 
@@ -46,6 +44,21 @@ func run() error {
 	}
 	logger.Log.Info("Environment variables loaded successfully")
 
+	if !services.IsServiceEnabled("ezcaptcha") && !services.IsServiceEnabled("2captcha") {
+		logger.Log.Warn("Starting bot with no captcha services enabled - functionality will be limited")
+	} else {
+		var enabledServices []string
+		if services.IsServiceEnabled("ezcaptcha") {
+			enabledServices = append(enabledServices, "EZCaptcha")
+			logger.Log.Info("EZCaptcha service enabled")
+		}
+		if services.IsServiceEnabled("2captcha") {
+			enabledServices = append(enabledServices, "2Captcha")
+			logger.Log.Info("2Captcha service enabled")
+		}
+		logger.Log.Infof("Enabled captcha services: %s", strings.Join(enabledServices, ", "))
+	}
+
 	if err := services.LoadEnvironmentVariables(); err != nil {
 		return fmt.Errorf("failed to initialize EZ-Captcha service: %w", err)
 	}
@@ -61,7 +74,7 @@ func run() error {
 	}
 	logger.Log.Info("Database initialized successfully")
 
-	server := startAdminDashboard()
+	server := webserver.StartAdminDashboard()
 
 	var err error
 	discord, err = bot.StartBot()
@@ -86,7 +99,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := server.Shutdown(ctx); err != nil {
-		logger.Log.WithError(err).Error("Error shutting down admin dashboard server")
+		logger.Log.WithError(err).Error("Error shutting down webpage server")
 	}
 
 	if err := discord.Close(); err != nil {
@@ -110,30 +123,42 @@ func loadEnvironmentVariables() error {
 
 	requiredEnvVars := []string{
 		"DISCORD_TOKEN",
-		"EZCAPTCHA_CLIENT_KEY",
-		"RECAPTCHA_SITE_KEY",
-		"RECAPTCHA_URL",
+		"DEVELOPER_ID",
 		"DB_USER",
 		"DB_PASSWORD",
+		"DB_NAME",
 		"DB_HOST",
 		"DB_PORT",
-		"DB_NAME",
 		"DB_VAR",
-		"DEVELOPER_ID",
-		"ADMIN_PORT",
-		"ADMIN_USERNAME",
-		"ADMIN_PASSWORD",
-		"SESSION_KEY",
+		"EZCAPTCHA_ENABLED",
+		"TWOCAPTCHA_ENABLED",
+		"MAX_RETRIES",
+		"RECAPTCHA_SITE_KEY",
+		"RECAPTCHA_URL",
+		"SITE_ACTION",
+		"EZAPPID",
+		"EZCAPTCHA_CLIENT_KEY",
+		"SOFT_ID",
+		"COOLDOWN_DURATION",
 		"CHECK_INTERVAL",
 		"NOTIFICATION_INTERVAL",
-		"COOLDOWN_DURATION",
 		"SLEEP_DURATION",
 		"COOKIE_CHECK_INTERVAL_PERMABAN",
 		"STATUS_CHANGE_COOLDOWN",
 		"GLOBAL_NOTIFICATION_COOLDOWN",
 		"COOKIE_EXPIRATION_WARNING",
 		"TEMP_BAN_UPDATE_INTERVAL",
+		"CHECK_ENDPOINT",
+		"PROFILE_ENDPOINT",
+		"CHECK_VIP_ENDPOINT",
+		"REDEEM_CODE_ENDPOINT",
+		"SESSION_KEY",
 		"STATIC_DIR",
+		"ADMIN_PORT",
+		"ADMIN_USERNAME",
+		"ADMIN_PASSWORD",
+		"CHECK_NOW_RATE_LIMIT",
+		"DEFAULT_RATE_LIMIT",
 	}
 
 	for _, envVar := range requiredEnvVars {
@@ -150,39 +175,6 @@ func initializeDatabase() error {
 		return fmt.Errorf("failed to migrate database tables: %w", err)
 	}
 	return nil
-}
-
-func startAdminDashboard() *http.Server {
-	r := mux.NewRouter()
-	r.HandleFunc("/", webserver.HomeHandler)
-	r.HandleFunc("/help", webserver.HelpHandler)
-	r.HandleFunc("/terms", webserver.TermsHandler)
-	r.HandleFunc("/policy", webserver.PolicyHandler)
-	r.HandleFunc("/admin/login", webserver.LoginHandler)
-	r.HandleFunc("/admin/logout", webserver.LogoutHandler)
-	r.HandleFunc("/admin", webserver.AuthMiddleware(webserver.DashboardHandler))
-	r.HandleFunc("/admin/stats", webserver.AuthMiddleware(webserver.StatsHandler))
-	r.HandleFunc("/api/server-count", webserver.ServerCountHandler)
-
-	staticDir := os.Getenv("STATIC_DIR")
-	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
-
-	port := os.Getenv("ADMIN_PORT")
-
-	server := &http.Server{
-		Addr:              ":" + port,
-		Handler:           r,
-		ReadHeaderTimeout: 20 * time.Second,
-	}
-
-	go func() {
-		logger.Log.Infof("Admin dashboard starting on port %s", port)
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Log.WithError(err).Fatal("Failed to start admin dashboard")
-		}
-	}()
-
-	return server
 }
 
 func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
