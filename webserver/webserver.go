@@ -199,9 +199,9 @@ func StatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	stats := GetCachedStats()
 	w.Header().Set("Content-Type", "application/json")
-	err := json.NewEncoder(w).Encode(stats)
-	if err != nil {
-		return
+	if err := json.NewEncoder(w).Encode(stats); err != nil {
+		logger.Log.WithError(err).Error("Error encoding stats")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
 }
 
@@ -333,7 +333,9 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to execute dashboard template")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+
 	logger.Log.Info("Dashboard rendered successfully")
 }
 
