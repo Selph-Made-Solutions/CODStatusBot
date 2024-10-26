@@ -52,6 +52,7 @@ var (
 	notificationConfigs         = map[string]NotificationConfig{
 		"status_change":        {Cooldown: time.Hour, AllowConsolidated: false},
 		"permaban":             {Cooldown: 24 * time.Hour, AllowConsolidated: false},
+		"shadowban":            {Cooldown: 12 * time.Hour, AllowConsolidated: false},
 		"daily_update":         {Cooldown: 0, AllowConsolidated: true},
 		"invalid_cookie":       {Cooldown: 6 * time.Hour, AllowConsolidated: true},
 		"cookie_expiring_soon": {Cooldown: 24 * time.Hour, AllowConsolidated: true},
@@ -126,13 +127,14 @@ func getStatusDescription(status models.Status, accountTitle string, ban models.
 	case models.StatusPermaban:
 		return fmt.Sprintf("The account %s has been permanently banned.\nAffected games: %s", accountTitle, gamesList)
 	case models.StatusShadowban:
-		return fmt.Sprintf("The account %s is currently shadowbanned.\nAffected games: %s", accountTitle, gamesList)
+		return fmt.Sprintf("The account %s has been placed under review (shadowban).\nAffected games: %s", accountTitle, gamesList)
 	case models.StatusTempban:
 		return fmt.Sprintf("The account %s is temporarily banned for %s.\nAffected games: %s", accountTitle, ban.TempBanDuration, gamesList)
 	default:
 		return fmt.Sprintf("The account %s is currently not banned.", accountTitle)
 	}
 }
+
 func createTempBanLiftedEmbed(account models.Account) *discordgo.MessageEmbed {
 	return &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%s - Temporary Ban Lifted", account.Title),
@@ -199,7 +201,7 @@ func EmbedTitleFromStatus(status models.Status) string {
 	case models.StatusPermaban:
 		return "PERMANENT BAN DETECTED"
 	case models.StatusShadowban:
-		return "SHADOWBAN DETECTED"
+		return "ACCOUNT UNDER REVIEW (SHADOWBAN)"
 	default:
 		return "ACCOUNT NOT BANNED"
 	}
@@ -258,16 +260,16 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 
 	now := time.Now()
 
-	// Check cooldown
 	if now.Sub(userSettings.LastStatusChangeNotification) < time.Duration(userSettings.StatusChangeCooldown)*time.Hour {
 		logger.Log.Infof("Skipping status change notification for account %s (cooldown)", account.Title)
 		return
 	}
 
-	//previousStatus := account.LastStatus
 	account.LastStatus = newStatus
 	account.LastStatusChange = now.Unix()
 	account.IsPermabanned = newStatus == models.StatusPermaban
+	account.IsShadowbanned = newStatus == models.StatusShadowban
+
 	if err := database.DB.Save(&account).Error; err != nil {
 		logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
 		return
@@ -282,8 +284,6 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 	}
 
 	if newStatus == models.StatusTempban {
-		//banDuration := 7 * 24 * time.Hour
-
 		ban.TempBanDuration = calculateBanDuration(now)
 	}
 
@@ -301,20 +301,20 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 	notificationType := "status_change"
 	if newStatus == models.StatusPermaban {
 		notificationType = "permaban"
+	} else if newStatus == models.StatusShadowban {
+		notificationType = "shadowban"
 	}
 
 	err := SendNotification(s, account, embed, fmt.Sprintf("<@%s>", account.UserID), notificationType)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to send status update message for account %s", account.Title)
 	} else {
-		// Update last notification time
 		userSettings.LastStatusChangeNotification = now
 		if err := database.DB.Save(&userSettings).Error; err != nil {
 			logger.Log.WithError(err).Errorf("Failed to update LastStatusChangeNotification for user %s", account.UserID)
 		}
 	}
 
-	// Schedule temp ban notifications for non-permabanned accounts
 	if newStatus == models.StatusTempban {
 		go ScheduleTempBanNotification(s, account, ban.TempBanDuration)
 	}
@@ -824,7 +824,7 @@ func GetColorForStatus(status models.Status, isExpiredCookie bool, isCheckDisabl
 	case models.StatusPermaban:
 		return 0x8B0000 // Dark Red for permanent ban
 	case models.StatusShadowban:
-		return 0xFFD700 // Gold for shadowban
+		return 0xFFA500 // Orange for shadowban
 	case models.StatusTempban:
 		return 0xFF8C00 // Dark Orange for temporary ban
 	case models.StatusGood:
@@ -833,7 +833,6 @@ func GetColorForStatus(status models.Status, isExpiredCookie bool, isCheckDisabl
 		return 0x708090 // Slate Gray for unknown status
 	}
 }
-
 func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 	var userSettings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings)
