@@ -58,7 +58,22 @@ const (
 	TwoCaptchaResultEndpoint = "https://api.2captcha.com/getTaskResult"
 )
 
+func isServiceEnabled(provider string) bool {
+	switch provider {
+	case "ezcaptcha":
+		return os.Getenv("EZCAPTCHA_ENABLED") == "true"
+	case "2captcha":
+		return os.Getenv("TWOCAPTCHA_ENABLED") == "true"
+	default:
+		return false
+	}
+}
+
 func NewCaptchaSolver(apiKey, provider string) (CaptchaSolver, error) {
+	if !isServiceEnabled(provider) {
+		return nil, fmt.Errorf("captcha service %s is currently disabled", provider)
+	}
+
 	switch provider {
 	case "ezcaptcha":
 		return &EZCaptchaSolver{APIKey: apiKey, EzappID: ezappID}, nil
