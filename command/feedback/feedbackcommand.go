@@ -40,7 +40,6 @@ func CommandFeedback(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Store the feedback message temporarily
 	tempFeedbackStore.Lock()
 	tempFeedbackStore.m[userID] = feedbackEntry{
 		message:   feedbackMessage,
@@ -50,7 +49,6 @@ func CommandFeedback(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	logger.Log.WithField("userID", userID).Info("Stored feedback message")
 
-	// Create a message with buttons for anonymity choice.
 	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
