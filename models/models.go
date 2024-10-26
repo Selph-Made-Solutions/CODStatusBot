@@ -82,9 +82,3 @@ const (
 	EZCaptcha  CaptchaProvider = "ezcaptcha"
 	TwoCaptcha CaptchaProvider = "2captcha"
 )
-
-type CaptchaBalance struct {
-	Provider  CaptchaProvider
-	Balance   float64
-	CheckTime time.Time
-}
