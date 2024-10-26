@@ -171,7 +171,7 @@ func loadEnvironmentVariables() error {
 }
 
 func initializeDatabase() error {
-	if err := database.DB.AutoMigrate(&models.Account{}, &models.CaptchaBalance{}, &models.Ban{}, &models.UserSettings{}); err != nil {
+	if err := database.DB.AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{}); err != nil {
 		return fmt.Errorf("failed to migrate database tables: %w", err)
 	}
 
