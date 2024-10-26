@@ -25,6 +25,11 @@ func sanitizeInput(input string) string {
 }
 
 func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	if !services.IsServiceEnabled("ezcaptcha") && !services.IsServiceEnabled("2captcha") {
+		respondToInteraction(s, i, "Account monitoring is currently unavailable as no captcha services are enabled. Please try again later.")
+		return
+	}
+
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseModal,
 		Data: &discordgo.InteractionResponseData{
@@ -62,6 +67,7 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	})
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding with modal")
+
 	}
 }
 
@@ -72,14 +78,12 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	ssoCookie := strings.TrimSpace(data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)
 	logger.Log.Infof("Attempting to add account. Title: %s, SSO Cookie length: %d", title, len(ssoCookie))
 
-	// Verify SSO Cookie
 	if !services.VerifySSOCookie(ssoCookie) {
 		logger.Log.Error("Invalid SSO cookie provided")
 		respondToInteraction(s, i, "Invalid SSO cookie. Please make sure you've copied the entire cookie value.")
 		return
 	}
 
-	// Get SSO Cookie expiration
 	expirationTimestamp, err := services.DecodeSSOCookie(ssoCookie)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error decoding SSO cookie")
@@ -94,7 +98,6 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		channelID = i.ChannelID
 	} else if i.User != nil {
 		userID = i.User.ID
-		// For user applications, we'll use DM as the default channel.
 		channel, err := s.UserChannelCreate(userID)
 		if err != nil {
 			logger.Log.WithError(err).Error("Error creating DM channel")
@@ -108,19 +111,36 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Get the user's current notification preference
+	userSettings, err := services.GetUserSettings(userID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error fetching user settings")
+		respondToInteraction(s, i, "Error fetching user settings. Please try again.")
+		return
+	}
+
+	if !services.IsServiceEnabled(userSettings.PreferredCaptchaProvider) {
+		msg := fmt.Sprintf("Your preferred captcha service (%s) is currently disabled. ", userSettings.PreferredCaptchaProvider)
+		if services.IsServiceEnabled("ezcaptcha") {
+			msg += "Please set up EZCaptcha using /setcaptchaservice before adding accounts."
+		} else if services.IsServiceEnabled("2captcha") {
+			msg += "Please set up 2Captcha using /setcaptchaservice before adding accounts."
+		} else {
+			msg += "No captcha services are currently available. Please try again later."
+		}
+		respondToInteraction(s, i, msg)
+		return
+	}
+
 	var existingAccount models.Account
 	result := database.DB.Where("user_id = ?", userID).First(&existingAccount)
 
-	notificationType := "channel" // Default to channel if no existing preference
+	notificationType := "channel"
 	if result.Error == nil {
 		notificationType = existingAccount.NotificationType
 	} else if i.User != nil {
-		// If it is a user application and no existing preference, default to DM.
 		notificationType = "dm"
 	}
 
-	// Create new account
 	account := models.Account{
 		UserID:              userID,
 		Title:               title,
@@ -130,7 +150,6 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		NotificationType:    notificationType,
 	}
 
-	// Save to database
 	result = database.DB.Create(&account)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error creating account")
