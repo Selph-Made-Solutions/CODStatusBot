@@ -1,4 +1,4 @@
-package captchabalance
+package checkcaptchabalance
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-func CommandCaptchaBalance(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func CommandCheckCaptchaBalance(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
