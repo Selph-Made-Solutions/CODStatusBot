@@ -309,7 +309,7 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 		return
 	}
 
-	if !isServiceEnabled(userSettings.PreferredCaptchaProvider) {
+	if !IsServiceEnabled(userSettings.PreferredCaptchaProvider) {
 		logger.Log.Infof("Skipping balance check for disabled service: %s", userSettings.PreferredCaptchaProvider)
 		return
 	}
@@ -378,7 +378,7 @@ func ScheduleBalanceChecks(s *discordgo.Session) {
 		}
 
 		for _, user := range users {
-			if !isServiceEnabled(user.PreferredCaptchaProvider) {
+			if !IsServiceEnabled(user.PreferredCaptchaProvider) {
 				continue
 			}
 
@@ -430,9 +430,9 @@ func DisableUserCaptcha(s *discordgo.Session, userID string, reason string) erro
 	}
 
 	settings.TwoCaptchaAPIKey = ""
-	if isServiceEnabled("ezcaptcha") {
+	if IsServiceEnabled("ezcaptcha") {
 		settings.PreferredCaptchaProvider = "ezcaptcha"
-	} else if isServiceEnabled("2captcha") {
+	} else if IsServiceEnabled("2captcha") {
 		settings.PreferredCaptchaProvider = "2captcha"
 	} else {
 		settings.PreferredCaptchaProvider = "ezcaptcha"
@@ -468,10 +468,10 @@ func DisableUserCaptcha(s *discordgo.Session, userID string, reason string) erro
 
 func getEnabledServicesString() string {
 	var enabledServices []string
-	if isServiceEnabled("ezcaptcha") {
+	if IsServiceEnabled("ezcaptcha") {
 		enabledServices = append(enabledServices, "EZCaptcha")
 	}
-	if isServiceEnabled("2captcha") {
+	if IsServiceEnabled("2captcha") {
 		enabledServices = append(enabledServices, "2Captcha")
 	}
 	if len(enabledServices) == 0 {
