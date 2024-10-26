@@ -4,7 +4,7 @@ import (
 	"github.com/bradselph/CODStatusBot/command/accountage"
 	"github.com/bradselph/CODStatusBot/command/accountlogs"
 	"github.com/bradselph/CODStatusBot/command/addaccount"
-	"github.com/bradselph/CODStatusBot/command/captchabalance"
+	"github.com/bradselph/CODStatusBot/command/checkcaptchabalance"
 	"github.com/bradselph/CODStatusBot/command/checknow"
 	"github.com/bradselph/CODStatusBot/command/feedback"
 	"github.com/bradselph/CODStatusBot/command/globalannouncement"
@@ -35,7 +35,7 @@ func RegisterCommands(s *discordgo.Session) error {
 		},
 		{
 			Name:         "setcaptchaservice",
-			Description:  "Set your EZ-Captcha API key",
+			Description:  "Set your Captcha API key",
 			DMPermission: BoolPtr(true),
 		},
 		{
@@ -49,7 +49,7 @@ func RegisterCommands(s *discordgo.Session) error {
 			DMPermission: BoolPtr(true),
 		},
 		{
-			Name:         "captchabalance",
+			Name:         "checkcaptchabalance",
 			Description:  "Check your captcha service balance",
 			DMPermission: BoolPtr(true),
 		},
@@ -119,10 +119,10 @@ func RegisterCommands(s *discordgo.Session) error {
 		return err
 	}
 
+	Handlers["checkcaptchabalance"] = checkcaptchabalance.CommandCheckCaptchaBalance
 	Handlers["globalannouncement"] = globalannouncement.CommandGlobalAnnouncement
 	Handlers["setcaptchaservice"] = setcaptchaservice.CommandSetCaptchaService
 	Handlers["setcheckinterval"] = setcheckinterval.CommandSetCheckInterval
-	Handlers["captchabalance"] = captchabalance.CommandCaptchaBalance
 	Handlers["addaccount"] = addaccount.CommandAddAccount
 	Handlers["helpcookie"] = helpcookie.CommandHelpCookie
 	Handlers["helpapi"] = helpapi.CommandHelpApi
