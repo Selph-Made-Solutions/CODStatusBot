@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>COD Status Bot Admin Dashboard</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" integrity="sha512-iBBXm8fW90+nuLcSKlbmrPcLa0OT92xO1BIsZ+ywDWZCvqsWgccV3gFoRBv0z+8dLJgyAHIhR35VZc2oM/gI1w==" crossorigin="anonymous">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
     <style>
         body, h1, h2, p, ul {
             margin: 0;
@@ -48,9 +48,10 @@
             gap: 20px;
         }
         .stat-group {
-            background: #fff;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
             padding: 20px;
-            border-radius: 5px;
+            margin-bottom: 20px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
             cursor: move;
             flex: 1 1 calc(33% - 40px);
@@ -85,14 +86,30 @@
             background: #45a049;
         }
         .chart-container {
+            height: 300px;
             display: none;
             margin-top: 15px;
             width: 100%;
-            height: 200px;
+        }
+        .chart-container.visible {
+            display: block;
         }
         .chart-container canvas {
             width: 100% !important;
             height: 100% !important;
+        }
+        .stat-toggle {
+            background: var(--primary-color);
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--accent-color);
         }
         body.dark-mode {
             background-color: #121212;
@@ -129,14 +146,19 @@
     </style>
 </head>
 <body>
-<header>
+<div class="dashboard-header">
     <h1>COD Status Bot Admin Dashboard</h1>
     <a href="/admin/logout" class="logout-btn">Logout</a>
-</header>
-<div style="text-align: center; margin: 10px 0;">
-    <label for="theme-toggle">Dark Mode</label>
-    <input type="checkbox" id="theme-toggle" onclick="toggleDarkMode()" onkeydown="handleKeyDown(event)">
 </div>
+
+<div class="theme-toggle">
+    <span>Dark Mode</span>
+    <label class="switch">
+        <input type="checkbox" id="themeToggle">
+        <span class="slider round"></span>
+    </label>
+</div>
+
 <div class="container">
     <div class="stat-group" draggable="true" data-stat-group-id="AccountStatistics">
         <h2><i class="fas fa-user"></i> Account Statistics</h2>
