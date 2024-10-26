@@ -2,6 +2,7 @@ package setcaptchaservice
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -13,7 +14,27 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+func isServiceEnabled(provider string) bool {
+	switch provider {
+	case "ezcaptcha":
+		return os.Getenv("EZCAPTCHA_ENABLED") == "true"
+	case "2captcha":
+		return os.Getenv("TWOCAPTCHA_ENABLED") == "true"
+	default:
+		return false
+	}
+}
+
 func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// Get currently enabled services for the modal description
+	var enabledServices []string
+	if isServiceEnabled("ezcaptcha") {
+		enabledServices = append(enabledServices, "ezcaptcha")
+	}
+	if isServiceEnabled("2captcha") {
+		enabledServices = append(enabledServices, "2captcha")
+	}
+
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseModal,
 		Data: &discordgo.InteractionResponseData{
@@ -24,9 +45,9 @@ func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCrea
 					Components: []discordgo.MessageComponent{
 						discordgo.TextInput{
 							CustomID:    "captcha_provider",
-							Label:       "Captcha Provider (ezcaptcha or 2captcha)",
+							Label:       fmt.Sprintf("Captcha Provider (%s)", strings.Join(enabledServices, " or ")),
 							Style:       discordgo.TextInputShort,
-							Placeholder: "Enter 'ezcaptcha' or '2captcha'",
+							Placeholder: fmt.Sprintf("Enter '%s'", strings.Join(enabledServices, "' or '")),
 							Required:    true,
 						},
 					},
@@ -74,6 +95,12 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if provider != "ezcaptcha" && provider != "2captcha" {
 		logger.Log.Errorf("Invalid captcha provider: %s", provider)
 		respondToInteraction(s, i, "Invalid captcha provider. Please enter 'ezcaptcha' or '2captcha'.")
+		return
+	}
+
+	if !isServiceEnabled(provider) {
+		logger.Log.Errorf("Attempt to use disabled captcha service: %s", provider)
+		respondToInteraction(s, i, fmt.Sprintf("The %s service is currently disabled. Please use an enabled service.", provider))
 		return
 	}
 
