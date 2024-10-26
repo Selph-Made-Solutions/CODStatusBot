@@ -72,20 +72,6 @@ func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreat
 						},
 					},
 				},
-				discordgo.ActionsRow{
-					Components: []discordgo.MessageComponent{
-						discordgo.TextInput{
-							CustomID:    "notification_type",
-							Label:       "Notification Type (channel or dm)",
-							Style:       discordgo.TextInputShort,
-							Placeholder: "Enter 'channel' or 'dm'",
-							Required:    false,
-							MinLength:   0,
-							MaxLength:   7,
-							Value:       userSettings.NotificationType,
-						},
-					},
-				},
 			},
 		},
 	})
