@@ -38,9 +38,15 @@ func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
+	balanceInfo := getBalanceInfo(userID)
+	description := "Here's a detailed list of all your monitored accounts:"
+	if balanceInfo != "" {
+		description += balanceInfo
+	}
+
 	embed := &discordgo.MessageEmbed{
 		Title:       "Your Monitored Accounts",
-		Description: "Here's a detailed list of all your monitored accounts:",
+		Description: description,
 		Color:       0x00ff00,
 		Fields:      make([]*discordgo.MessageEmbedField, 0),
 	}
@@ -109,27 +115,45 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 }
 
 func getBalanceInfo(userID string) string {
-	apiKey, _, err := services.GetUserCaptchaKey(userID)
+	userSettings, err := services.GetUserSettings(userID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error fetching user settings")
+		return ""
+	}
+
+	if !services.IsServiceEnabled(userSettings.PreferredCaptchaProvider) {
+		logger.Log.Infof("Skipping balance check for disabled service: %s", userSettings.PreferredCaptchaProvider)
+		return ""
+	}
+
+	apiKey, balance, err := services.GetUserCaptchaKey(userID)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error getting user captcha key")
 		return ""
 	}
 
-	if apiKey != "" {
-		provider := "ezcaptcha" // Default provider
-		userSettings, err := services.GetUserSettings(userID)
-		if err == nil && userSettings.PreferredCaptchaProvider != "" {
-			provider = userSettings.PreferredCaptchaProvider
-		}
-		_, balance, err := services.ValidateCaptchaKey(apiKey, provider)
-		if err != nil {
-			logger.Log.WithError(err).Error("Error validating captcha key")
-			return ""
-		}
-		return fmt.Sprintf("\nYour current %s balance: %.2f points", provider, balance)
+	if apiKey == "" {
+		return "\nYou are using the bot's default API key. Consider setting up your own key using /setcaptchaservice for unlimited checks."
 	}
 
-	return ""
+	var threshold float64
+	switch userSettings.PreferredCaptchaProvider {
+	case "ezcaptcha":
+		threshold = 250
+	case "2captcha":
+		threshold = 0.25
+	default:
+		threshold = 250
+	}
+
+	balanceMsg := fmt.Sprintf("\nYour current %s balance: %.2f points",
+		userSettings.PreferredCaptchaProvider, balance)
+
+	if balance < threshold {
+		balanceMsg += fmt.Sprintf(" (Warning: Below recommended %.2f points)", threshold)
+	}
+
+	return balanceMsg
 }
 
 func getDisabledEmoji(isDisabled bool) string {
