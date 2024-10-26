@@ -10,17 +10,26 @@ DB_HOST=
 DB_PORT=
 
 ##DO NOT CHANGE
-DB_VAR=?parseTime=true # setting for mysql database connection regarding timezone do not change!
+DB_VAR=
 
-## Captcha Solver Settings
-EZAPPID=
-EZCAPTCHA_CLIENT_KEY=
+## Captcha Service Settings
+EZCAPTCHA_ENABLED=
+TWOCAPTCHA_ENABLED=
+
+## Solver Settings
+MAX_RETRIES=3
+
+## reCaptcha Settings
 RECAPTCHA_SITE_KEY=
 RECAPTCHA_URL=
 SITE_ACTION=
 
-## Solver Settings
-MAX_RETRIES=
+## EZCaptcha Solver Settings
+EZAPPID=
+EZCAPTCHA_CLIENT_KEY=
+
+## 2Captcha Solver Settings
+SOFT_ID=
 
 ## Bot Settings
 COOLDOWN_DURATION=
@@ -41,6 +50,7 @@ REDEEM_CODE_ENDPOINT=
 
 ## Admin Panel Settings
 SESSION_KEY=
+STATIC_DIR=
 ADMIN_PORT=
 ADMIN_USERNAME=
 ADMIN_PASSWORD=
@@ -50,18 +60,18 @@ CHECK_NOW_RATE_LIMIT=
 DEFAULT_RATE_LIMIT=
 
 
-
-
 ## Settings Explained
 #
 # DISCORD_TOKEN is your Discord bot token
-# DEVELOPER_ID is your Discord user id that you'll receive posibley anonymous feedback at
+# DEVELOPER_ID is your Discord user id that you'll receive possibly anonymous feedback at
 # DB_USER is the username for your database
 # DB_PASSWORD is the password for your database
 # DB_NAME is the name of your database
 # DB_HOST is the host of your database
 # DB_PORT is the port number on which your database is running
 # DB_VAR=?parseTime=true # setting for mysql database connection regarding timezone do not change!
+# EZCAPTCHA_ENABLED - Enable/disable the EZCaptcha service (true/false)
+# TWOCAPTCHA_ENABLED - Enable/disable the 2Captcha service (true/false)
 # EZAPPID is the application id set by ezcaptcha to credit dev for tokens spent over time.
 # EZCAPTCHA_CLIENT_KEY is the api key for ezcaptcha
 # RECAPTCHA_SITE_KEY is sitekey for reCaptcha
