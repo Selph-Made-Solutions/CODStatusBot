@@ -9,15 +9,6 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-func createStatusChangeEmbed(account models.Account, newStatus models.Status, ban models.Ban) *discordgo.MessageEmbed {
-	return &discordgo.MessageEmbed{
-		Title:       fmt.Sprintf("%s - %s", account.Title, EmbedTitleFromStatus(newStatus)),
-		Description: getStatusDescription(newStatus, account.Title, ban),
-		Color:       GetColorForStatus(newStatus, account.IsExpiredCookie, account.IsCheckDisabled),
-		Timestamp:   time.Now().Format(time.RFC3339),
-	}
-}
-
 func createTempBanLiftedEmbed(account models.Account) *discordgo.MessageEmbed {
 	return &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%s - Temporary Ban Lifted", account.Title),
