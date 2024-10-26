@@ -171,8 +171,17 @@ func loadEnvironmentVariables() error {
 }
 
 func initializeDatabase() error {
-	if err := database.DB.AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{}); err != nil {
+	if err := database.DB.AutoMigrate(&models.Account{}, &models.CaptchaBalance{}, &models.Ban{}, &models.UserSettings{}); err != nil {
 		return fmt.Errorf("failed to migrate database tables: %w", err)
+	}
+
+	var accounts []models.Account
+	database.DB.Find(&accounts)
+	for _, account := range accounts {
+		if account.LastStatus == models.StatusShadowban {
+			account.IsShadowbanned = true
+			database.DB.Save(&account)
+		}
 	}
 	return nil
 }
