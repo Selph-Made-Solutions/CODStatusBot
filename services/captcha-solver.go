@@ -121,12 +121,12 @@ func (s *EZCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 func (s *TwoCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 	payload := map[string]interface{}{
 		"clientKey": s.APIKey,
-		"softId":    s.SoftID,
 		"task": map[string]interface{}{
 			"type":       "ReCaptchaV2TaskProxyless",
 			"websiteURL": pageURL,
 			"websiteKey": siteKey,
 		},
+		"softId": s.SoftID,
 	}
 
 	resp, err := sendRequest(TwoCaptchaCreateEndpoint, payload)
@@ -249,16 +249,46 @@ func sendRequest(url string, payload interface{}) ([]byte, error) {
 }
 
 func ValidateCaptchaKey(apiKey, provider string) (bool, float64, error) {
-	var url string
 	switch provider {
 	case "ezcaptcha":
-		url = "https://api.ez-captcha.com/getBalance"
+		return validateEZCaptchaKey(apiKey)
 	case "2captcha":
-		url = "https://2captcha.com/getBalance"
+		return validate2CaptchaKey(apiKey)
 	default:
 		return false, 0, errors.New("unsupported captcha provider")
 	}
+}
 
+func validateEZCaptchaKey(apiKey string) (bool, float64, error) {
+	url := "https://api.ez-captcha.com/getBalance"
+	payload := map[string]string{
+		"clientKey": apiKey,
+		"action":    "getBalance",
+	}
+
+	resp, err := sendRequest(url, payload)
+	if err != nil {
+		return false, 0, err
+	}
+
+	var result struct {
+		ErrorId int     `json:"errorId"`
+		Balance float64 `json:"balance"`
+	}
+
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return false, 0, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if result.ErrorId != 0 {
+		return false, 0, nil
+	}
+
+	return true, result.Balance, nil
+}
+
+func validate2CaptchaKey(apiKey string) (bool, float64, error) {
+	url := "https://api.2captcha.com/getBalance"
 	payload := map[string]string{
 		"clientKey": apiKey,
 		"action":    "getBalance",
