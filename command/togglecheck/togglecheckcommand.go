@@ -168,6 +168,7 @@ func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	respondToInteraction(s, i, fmt.Sprintf("Checks for account '%s' have been re-enabled.", account.Title))
 }
 
+// TODO: Reimplement this function
 func showConfirmationButtons(s *discordgo.Session, i *discordgo.InteractionCreate, accountID uint, message string) {
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseUpdateMessage,
