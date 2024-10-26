@@ -155,6 +155,7 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["toggle_check"] = togglecheck.HandleAccountSelection
 	Handlers["feedback_anonymous"] = feedback.HandleFeedbackChoice
 	Handlers["feedback_with_id"] = feedback.HandleFeedbackChoice
+	Handlers["show_interval_modal"] = setcheckinterval.HandleButton
 
 	Handlers["confirm_remove"] = removeaccount.HandleConfirmation
 
