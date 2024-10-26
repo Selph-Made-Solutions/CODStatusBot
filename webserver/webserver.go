@@ -489,6 +489,21 @@ func getAccountAgeRange() (time.Time, time.Time, error) {
 
 func getTotalBansByType(banType models.Status) (int, error) {
 	var count int64
+	if banType == models.StatusShadowban {
+		var shadowbanCount int64
+		var currentlyShadowbannedCount int64
+
+		if err := database.DB.Model(&models.Ban{}).Where("status = ?", banType).Count(&shadowbanCount).Error; err != nil {
+			return 0, err
+		}
+
+		if err := database.DB.Model(&models.Account{}).Where("is_shadowbanned = ?", true).Count(&currentlyShadowbannedCount).Error; err != nil {
+			return 0, err
+		}
+
+		return int(shadowbanCount), nil
+	}
+
 	err := database.DB.Model(&models.Ban{}).Where("status = ?", banType).Count(&count).Error
 	return int(count), err
 }
