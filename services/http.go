@@ -69,9 +69,25 @@ func VerifySSOCookie(ssoCookie string) bool {
 func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models.Status, error) {
 	logger.Log.Info("Starting CheckAccount function")
 
-	_, err := GetUserSettings(userID)
+	userSettings, err := GetUserSettings(userID)
 	if err != nil {
 		return models.StatusUnknown, fmt.Errorf("failed to get user settings: %w", err)
+	}
+
+	if !IsServiceEnabled("ezcaptcha") && !IsServiceEnabled("2captcha") {
+		return models.StatusUnknown, fmt.Errorf("no captcha services are currently enabled")
+	}
+
+	if !IsServiceEnabled(userSettings.PreferredCaptchaProvider) {
+		if IsServiceEnabled("ezcaptcha") {
+			userSettings.PreferredCaptchaProvider = "ezcaptcha"
+			database.DB.Save(&userSettings)
+		} else if IsServiceEnabled("2captcha") {
+			userSettings.PreferredCaptchaProvider = "2captcha"
+			database.DB.Save(&userSettings)
+		} else {
+			return models.StatusUnknown, fmt.Errorf("preferred captcha service %s is disabled and no fallback available", userSettings.PreferredCaptchaProvider)
+		}
 	}
 
 	solver, err := GetCaptchaSolver(userID)
@@ -98,6 +114,7 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 	req, err := http.NewRequest("GET", checkRequest, nil)
 	if err != nil {
 		return models.StatusUnknown, fmt.Errorf("failed to create HTTP request: %w", err)
+
 	}
 
 	headers := GenerateHeaders(ssoCookie)
