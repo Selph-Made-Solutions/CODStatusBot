@@ -8,7 +8,6 @@ import (
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bradselph/CODStatusBot/utils"
-
 	"github.com/bwmarrin/discordgo"
 )
 
