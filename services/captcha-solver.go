@@ -132,9 +132,6 @@ func (s *TwoCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 		},
 	}
 
-	jsonBytes, _ := json.Marshal(payload)
-	logger.Log.Infof("2captcha request payload: %s", string(jsonBytes))
-
 	resp, err := sendRequest(TwoCaptchaCreateEndpoint, payload)
 	if err != nil {
 		return "", err
@@ -146,7 +143,7 @@ func (s *TwoCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 		ErrorId          int    `json:"errorId"`
 		ErrorCode        string `json:"errorCode"`
 		ErrorDescription string `json:"errorDescription"`
-		TaskId           string `json:"taskId"`
+		TaskId           int64  `json:"taskId"`
 	}
 
 	if err := json.Unmarshal(resp, &result); err != nil {
