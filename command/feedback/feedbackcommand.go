@@ -110,7 +110,6 @@ func HandleFeedbackChoice(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		return
 	}
 
-	// Remove the feedback message from temporary storage
 	tempFeedbackStore.Lock()
 	delete(tempFeedbackStore.m, userID)
 	tempFeedbackStore.Unlock()
@@ -128,7 +127,6 @@ func HandleFeedbackChoice(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		return
 	}
 
-	// Respond to user
 	sendResponse(s, i, "Your feedback has been sent to the developer. Thank you for your input!", true)
 }
 
@@ -173,17 +171,4 @@ func getUserID(i *discordgo.InteractionCreate) (string, error) {
 		return i.User.ID, nil
 	}
 	return "", fmt.Errorf("unable to determine user ID")
-}
-
-func cleanupExpiredFeedback() {
-	tempFeedbackStore.Lock()
-	defer tempFeedbackStore.Unlock()
-
-	now := time.Now()
-	for userID, entry := range tempFeedbackStore.m {
-		if now.Sub(entry.timestamp) > feedbackTimeout {
-			delete(tempFeedbackStore.m, userID)
-			logger.Log.WithField("userID", userID).Info("Removed expired feedback entry")
-		}
-	}
 }
