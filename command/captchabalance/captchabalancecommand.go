@@ -53,7 +53,7 @@ func CommandCaptchaBalance(s *discordgo.Session, i *discordgo.InteractionCreate)
 
 	embed := &discordgo.MessageEmbed{
 		Title: "Captcha Service Balance",
-		Color: 0x00ff00, // Green
+		Color: 0x00ff00,
 		Fields: []*discordgo.MessageEmbedField{
 			{
 				Name:   "Current Service",
@@ -66,7 +66,7 @@ func CommandCaptchaBalance(s *discordgo.Session, i *discordgo.InteractionCreate)
 
 	if apiKey == "" {
 		embed.Description = "You are currently using the bot's default API key. Consider setting up your own key using /setcaptchaservice for unlimited checks."
-		embed.Color = 0xFFA500 // Orange for warning
+		embed.Color = 0xFFA500
 	} else {
 		embed.Fields = append(embed.Fields,
 			&discordgo.MessageEmbedField{
@@ -79,12 +79,12 @@ func CommandCaptchaBalance(s *discordgo.Session, i *discordgo.InteractionCreate)
 		if userSettings.PreferredCaptchaProvider == "ezcaptcha" {
 			threshold = 250
 		} else {
-			threshold = 0.25 // 2captcha threshold
+			threshold = 0.25
 		}
 
 		if balance < threshold {
 			embed.Description = fmt.Sprintf("⚠️ Your balance is below the recommended threshold of %.2f points. Please recharge soon to avoid service interruption.", threshold)
-			embed.Color = 0xFFA500 // Orange for warning
+			embed.Color = 0xFFA500
 		}
 	}
 
