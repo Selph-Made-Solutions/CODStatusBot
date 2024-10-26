@@ -2,6 +2,7 @@ package webserver
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 
 	"github.com/bradselph/CODStatusBot/database"
@@ -90,6 +92,39 @@ func init() {
 		HttpOnly: true,
 		Secure:   false,
 	}
+}
+
+func StartAdminDashboard() *http.Server {
+	r := mux.NewRouter()
+	r.HandleFunc("/", HomeHandler)
+	r.HandleFunc("/help", HelpHandler)
+	r.HandleFunc("/terms", TermsHandler)
+	r.HandleFunc("/policy", PolicyHandler)
+	r.HandleFunc("/admin/login", LoginHandler)
+	r.HandleFunc("/admin/logout", LogoutHandler)
+	r.HandleFunc("/admin", AuthMiddleware(DashboardHandler))
+	r.HandleFunc("/admin/stats", AuthMiddleware(StatsHandler))
+	r.HandleFunc("/api/server-count", ServerCountHandler)
+
+	staticDir := os.Getenv("STATIC_DIR")
+	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
+
+	port := os.Getenv("ADMIN_PORT")
+
+	server := &http.Server{
+		Addr:              ":" + port,
+		Handler:           r,
+		ReadHeaderTimeout: 20 * time.Second,
+	}
+
+	go func() {
+		logger.Log.Infof("Admin dashboard starting on port %s", port)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Log.WithError(err).Fatal("Failed to start admin dashboard")
+		}
+	}()
+
+	return server
 }
 
 func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
@@ -283,6 +318,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	stats := GetCachedStats()
+
 	logger.Log.WithField("stats", stats).Info("Retrieved cached stats")
 
 	tmpl, err := template.ParseFiles("templates/dashboard.html")
