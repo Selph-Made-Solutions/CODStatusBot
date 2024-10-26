@@ -48,10 +48,9 @@
             gap: 20px;
         }
         .stat-group {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
+            background: #fff;
             padding: 20px;
-            margin-bottom: 20px;
+            border-radius: 5px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
             cursor: move;
             flex: 1 1 calc(33% - 40px);
@@ -86,30 +85,14 @@
             background: #45a049;
         }
         .chart-container {
-            height: 300px;
             display: none;
             margin-top: 15px;
             width: 100%;
-        }
-        .chart-container.visible {
-            display: block;
+            height: 200px;
         }
         .chart-container canvas {
             width: 100% !important;
             height: 100% !important;
-        }
-        .stat-toggle {
-            background: var(--primary-color);
-            border: none;
-            color: white;
-            padding: 8px 16px;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        .stat-value {
-            font-size: 24px;
-            font-weight: bold;
-            color: var(--accent-color);
         }
         body.dark-mode {
             background-color: #121212;
@@ -146,17 +129,16 @@
     </style>
 </head>
 <body>
-<div class="dashboard-header">
+<header>
     <h1>COD Status Bot Admin Dashboard</h1>
-    <a href="/admin/logout" class="logout-btn">Logout</a>
-</div>
-
-<div class="theme-toggle">
-    <span>Dark Mode</span>
-    <label class="switch">
-        <input type="checkbox" id="themeToggle">
-        <span class="slider round"></span>
-    </label>
+    <nav>
+        <a href="/">Home</a>
+        <a href="/admin/logout">Logout</a>
+    </nav>
+</header>
+<div style="text-align: center; margin: 10px 0;">
+    <label for="theme-toggle">Dark Mode</label>
+    <input type="checkbox" id="theme-toggle" onclick="toggleDarkMode()" onkeydown="handleKeyDown(event)">
 </div>
 
 <div class="container">
