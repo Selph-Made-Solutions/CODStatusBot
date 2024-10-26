@@ -75,6 +75,8 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		updateaccount.HandleModalSubmit(s, i)
 	case customID == "set_check_interval_modal":
 		setcheckinterval.HandleModalSubmit(s, i)
+	case strings.HasPrefix(customID, "set_notifications_modal_"):
+		setnotifications.HandleModalSubmit(s, i)
 	default:
 		logger.Log.WithField("customID", customID).Error("Unknown modal submission")
 	}
