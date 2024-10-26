@@ -359,34 +359,13 @@ func notifyUserOfCheckError(s *discordgo.Session, account models.Account, err er
 			logger.Log.WithError(err).Errorf("Failed to send critical error notification to user %s", account.UserID)
 			return
 		}
-		sendCriticalErrorNotification(s, account, err)
+
+		if updateErr := UpdateNotificationTimestamp(account.UserID, "error"); updateErr != nil {
+			logger.Log.WithError(updateErr).Errorf("Failed to update error notification timestamp for user %s", account.UserID)
+		}
 	}
 }
 
-func sendCriticalErrorNotification(s *discordgo.Session, account models.Account, err error) {
-	channel, err := s.UserChannelCreate(account.UserID)
-	if err != nil {
-		logger.Log.WithError(err).Errorf("Failed to create DM channel for user %s", account.UserID)
-		return
-	}
-
-	embed := &discordgo.MessageEmbed{
-		Title: "Critical Account Check Error",
-		Description: fmt.Sprintf("There was a critical error checking your account '%s'. "+
-			"The bot developer has been notified and will investigate the issue.", account.Title),
-		Color:     0xFF0000, // Red color for critical error
-		Timestamp: time.Now().Format(time.RFC3339),
-	}
-
-	_, err = s.ChannelMessageSendEmbed(channel.ID, embed)
-	if err != nil {
-		logger.Log.WithError(err).Errorf("Failed to send critical error notification to user %s", account.UserID)
-		return
-	}
-	if updateErr := UpdateNotificationTimestamp(account.UserID, "error"); updateErr != nil {
-		logger.Log.WithError(updateErr).Errorf("Failed to update error notification timestamp for user %s", account.UserID)
-	}
-}
 func isCriticalError(err error) bool {
 	criticalErrors := []string{
 		"invalid captcha API key",
