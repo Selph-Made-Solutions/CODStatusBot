@@ -4,6 +4,7 @@ import (
 	"github.com/bradselph/CODStatusBot/command/accountage"
 	"github.com/bradselph/CODStatusBot/command/accountlogs"
 	"github.com/bradselph/CODStatusBot/command/addaccount"
+	"github.com/bradselph/CODStatusBot/command/captchabalance"
 	"github.com/bradselph/CODStatusBot/command/checknow"
 	"github.com/bradselph/CODStatusBot/command/feedback"
 	"github.com/bradselph/CODStatusBot/command/globalannouncement"
@@ -45,6 +46,11 @@ func RegisterCommands(s *discordgo.Session) error {
 		{
 			Name:         "addaccount",
 			Description:  "Add a new account to monitor",
+			DMPermission: BoolPtr(true),
+		},
+		{
+			Name:         "captchabalance",
+			Description:  "Check your captcha service balance",
 			DMPermission: BoolPtr(true),
 		},
 		{
@@ -113,10 +119,10 @@ func RegisterCommands(s *discordgo.Session) error {
 		return err
 	}
 
-	// Command handlers
 	Handlers["globalannouncement"] = globalannouncement.CommandGlobalAnnouncement
 	Handlers["setcaptchaservice"] = setcaptchaservice.CommandSetCaptchaService
 	Handlers["setcheckinterval"] = setcheckinterval.CommandSetCheckInterval
+	Handlers["captchabalance"] = captchabalance.CommandCaptchaBalance
 	Handlers["addaccount"] = addaccount.CommandAddAccount
 	Handlers["helpcookie"] = helpcookie.CommandHelpCookie
 	Handlers["helpapi"] = helpapi.CommandHelpApi
@@ -129,13 +135,11 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["updateaccount"] = updateaccount.CommandUpdateAccount
 	Handlers["togglecheck"] = togglecheck.CommandToggleCheck
 
-	// Command Modal Handlers
 	Handlers["setcaptchaservice_modal"] = setcaptchaservice.HandleModalSubmit
 	Handlers["addaccount_modal"] = addaccount.HandleModalSubmit
 	Handlers["updateaccount_modal"] = updateaccount.HandleModalSubmit
 	Handlers["setcheckinterval_modal"] = setcheckinterval.HandleModalSubmit
 
-	// Command select handlers
 	Handlers["account_age"] = accountage.HandleAccountSelection
 	Handlers["account_logs"] = accountlogs.HandleAccountSelection
 	Handlers["remove_account"] = removeaccount.HandleAccountSelection
@@ -144,16 +148,13 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["feedback_anonymous"] = feedback.HandleFeedbackChoice
 	Handlers["feedback_with_id"] = feedback.HandleFeedbackChoice
 
-	// Confirmation handlers
 	Handlers["confirm_remove"] = removeaccount.HandleConfirmation
 
 	logger.Log.Info("Global commands registered and handlers set up")
 	return nil
 }
 
-// HandleCommand handles incoming commands and checks for announcements
 func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	// Check if the user has seen the announcement
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
@@ -169,11 +170,9 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error getting user settings")
 	} else if !userSettings.HasSeenAnnouncement {
-		// Send the announcement to the user
 		if err := globalannouncement.SendGlobalAnnouncement(s, userID); err != nil {
 			logger.Log.WithError(err).Error("Error sending announcement to user")
 		} else {
-			// Update the user's settings to mark the announcement as seen.
 			userSettings.HasSeenAnnouncement = true
 			if err := database.DB.Save(&userSettings).Error; err != nil {
 				logger.Log.WithError(err).Error("Error updating user settings after sending announcement")
@@ -190,7 +189,6 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 }
 
-// BoolPtr Helper function to create a pointer to a bool
 func BoolPtr(b bool) *bool {
 	return &b
 }
