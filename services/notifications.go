@@ -309,9 +309,14 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 		return
 	}
 
+	if !isServiceEnabled(userSettings.PreferredCaptchaProvider) {
+		logger.Log.Infof("Skipping balance check for disabled service: %s", userSettings.PreferredCaptchaProvider)
+		return
+	}
+
 	var thresholds = map[string]float64{
-		"ezcaptcha": 1000, // EZCaptcha threshold
-		"2captcha":  1.00, // 2captcha threshold (different scale)
+		"ezcaptcha": 250,
+		"2captcha":  0.25,
 	}
 
 	threshold := thresholds[userSettings.PreferredCaptchaProvider]
@@ -373,6 +378,10 @@ func ScheduleBalanceChecks(s *discordgo.Session) {
 		}
 
 		for _, user := range users {
+			if !isServiceEnabled(user.PreferredCaptchaProvider) {
+				continue
+			}
+
 			if user.EZCaptchaAPIKey == "" && user.TwoCaptchaAPIKey == "" {
 				continue
 			}
@@ -420,9 +429,16 @@ func DisableUserCaptcha(s *discordgo.Session, userID string, reason string) erro
 		return err
 	}
 
-	settings.EZCaptchaAPIKey = ""
 	settings.TwoCaptchaAPIKey = ""
-	settings.PreferredCaptchaProvider = "ezcaptcha"
+	if isServiceEnabled("ezcaptcha") {
+		settings.PreferredCaptchaProvider = "ezcaptcha"
+	} else if isServiceEnabled("2captcha") {
+		settings.PreferredCaptchaProvider = "2captcha"
+	} else {
+		settings.PreferredCaptchaProvider = "ezcaptcha"
+	}
+
+	settings.EZCaptchaAPIKey = ""
 	settings.CustomSettings = false
 	settings.CheckInterval = defaultSettings.CheckInterval
 	settings.NotificationInterval = defaultSettings.NotificationInterval
@@ -432,9 +448,12 @@ func DisableUserCaptcha(s *discordgo.Session, userID string, reason string) erro
 	}
 
 	embed := &discordgo.MessageEmbed{
-		Title: "Captcha Service Disabled",
-		Description: fmt.Sprintf("Your captcha service has been disabled. Reason: %s\n"+
-			"The bot will now use default settings and the default captcha provider.", reason),
+		Title: "Captcha Service Configuration Update",
+		Description: fmt.Sprintf("Your captcha service configuration has been updated. Reason: %s\n\n"+
+			"Current available services: %s\n"+
+			"The bot will use default settings for the available service.",
+			reason,
+			getEnabledServicesString()),
 		Color:     0xFF0000,
 		Timestamp: time.Now().Format(time.RFC3339),
 	}
@@ -445,6 +464,20 @@ func DisableUserCaptcha(s *discordgo.Session, userID string, reason string) erro
 	}
 
 	return SendNotification(s, account, embed, "", "captcha_disabled")
+}
+
+func getEnabledServicesString() string {
+	var enabledServices []string
+	if isServiceEnabled("ezcaptcha") {
+		enabledServices = append(enabledServices, "EZCaptcha")
+	}
+	if isServiceEnabled("2captcha") {
+		enabledServices = append(enabledServices, "2Captcha")
+	}
+	if len(enabledServices) == 0 {
+		return "No services currently enabled"
+	}
+	return strings.Join(enabledServices, ", ")
 }
 
 func SendTempBanUpdateNotification(s *discordgo.Session, account models.Account, remainingTime time.Duration) {
