@@ -95,9 +95,9 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 
 	switch settings.PreferredCaptchaProvider {
 	case "2captcha":
-		if !isServiceEnabled("2captcha") {
+		if !IsServiceEnabled("2captcha") {
 			logger.Log.Warn("Attempt to use disabled 2captcha service")
-			if isServiceEnabled("ezcaptcha") {
+			if IsServiceEnabled("ezcaptcha") {
 				settings.PreferredCaptchaProvider = "ezcaptcha"
 				if settings.EZCaptchaAPIKey != "" {
 					isValid, balance, err := ValidateCaptchaKey(settings.EZCaptchaAPIKey, "ezcaptcha")
@@ -124,7 +124,7 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 			return settings.TwoCaptchaAPIKey, balance, nil
 		}
 	case "ezcaptcha":
-		if !isServiceEnabled("ezcaptcha") {
+		if !IsServiceEnabled("ezcaptcha") {
 			return "", 0, fmt.Errorf("ezcaptcha service is currently disabled")
 		}
 		if settings.EZCaptchaAPIKey != "" {
@@ -139,7 +139,7 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 		}
 	}
 
-	if settings.PreferredCaptchaProvider == "ezcaptcha" && isServiceEnabled("ezcaptcha") {
+	if settings.PreferredCaptchaProvider == "ezcaptcha" && IsServiceEnabled("ezcaptcha") {
 		defaultKey := os.Getenv("EZCAPTCHA_CLIENT_KEY")
 		isValid, balance, err := ValidateCaptchaKey(defaultKey, "ezcaptcha")
 		if err != nil {
