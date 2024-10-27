@@ -6,15 +6,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/Discordgo"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bradselph/CODStatusBot/services"
-
-	"github.com/bwmarrin/discordgo"
 )
 
-func CommandAccountAge(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func CommandAccountAge(s *Discordgo.Session, i *Discordgo.InteractionCreate) {
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
@@ -40,32 +39,32 @@ func CommandAccountAge(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	var (
-		components []discordgo.MessageComponent
-		currentRow []discordgo.MessageComponent
+		components []Discordgo.MessageComponent
+		currentRow []Discordgo.MessageComponent
 	)
 
 	for _, account := range accounts {
-		currentRow = append(currentRow, discordgo.Button{
+		currentRow = append(currentRow, Discordgo.Button{
 			Label:    account.Title,
-			Style:    discordgo.PrimaryButton,
+			Style:    Discordgo.PrimaryButton,
 			CustomID: fmt.Sprintf("account_age_%d", account.ID),
 		})
 
 		if len(currentRow) == 5 {
-			components = append(components, discordgo.ActionsRow{Components: currentRow})
-			currentRow = []discordgo.MessageComponent{}
+			components = append(components, Discordgo.ActionsRow{Components: currentRow})
+			currentRow = []Discordgo.MessageComponent{}
 		}
 	}
 
 	if len(currentRow) > 0 {
-		components = append(components, discordgo.ActionsRow{Components: currentRow})
+		components = append(components, Discordgo.ActionsRow{Components: currentRow})
 	}
 
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
+	err := s.InteractionRespond(i.Interaction, &Discordgo.InteractionResponse{
+		Type: Discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &Discordgo.InteractionResponseData{
 			Content:    "Select an account to check its age:",
-			Flags:      discordgo.MessageFlagsEphemeral,
+			Flags:      Discordgo.MessageFlagsEphemeral,
 			Components: components,
 		},
 	})
@@ -74,7 +73,7 @@ func CommandAccountAge(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 }
 
-func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func HandleAccountSelection(s *Discordgo.Session, i *Discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
 	accountID, err := strconv.Atoi(strings.TrimPrefix(customID, "account_age_"))
 	if err != nil {
@@ -118,12 +117,12 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 
 	creationDate := time.Unix(createdEpoch, 0).UTC().Format("January 2, 2006")
 
-	embed := &discordgo.MessageEmbed{
+	embed := &Discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%s - Account Age", account.Title),
 		Description: fmt.Sprintf("The account is %d years, %d months, and %d days old.", years, months, days),
 		Color:       0x00ff00,
 		Timestamp:   time.Now().Format(time.RFC3339),
-		Fields: []*discordgo.MessageEmbedField{
+		Fields: []*Discordgo.MessageEmbedField{
 			{
 				Name:   "Last Status",
 				Value:  string(account.LastStatus),
@@ -145,16 +144,16 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 				Inline: true,
 			},
 		},
-		Footer: &discordgo.MessageEmbedFooter{
+		Footer: &Discordgo.MessageEmbedFooter{
 			Text: "VIP status indicates priority access to Activision Support services",
 		},
 	}
 
-	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseUpdateMessage,
-		Data: &discordgo.InteractionResponseData{
-			Embeds:     []*discordgo.MessageEmbed{embed},
-			Components: []discordgo.MessageComponent{},
+	err = s.InteractionRespond(i.Interaction, &Discordgo.InteractionResponse{
+		Type: Discordgo.InteractionResponseUpdateMessage,
+		Data: &Discordgo.InteractionResponseData{
+			Embeds:     []*Discordgo.MessageEmbed{embed},
+			Components: []Discordgo.MessageComponent{},
 		},
 	})
 	if err != nil {
@@ -163,12 +162,12 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 }
 
-func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
+func respondToInteraction(s *Discordgo.Session, i *Discordgo.InteractionCreate, content string) {
+	err := s.InteractionRespond(i.Interaction, &Discordgo.InteractionResponse{
+		Type: Discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &Discordgo.InteractionResponseData{
 			Content: content,
-			Flags:   discordgo.MessageFlagsEphemeral,
+			Flags:   Discordgo.MessageFlagsEphemeral,
 		},
 	})
 	if err != nil {
