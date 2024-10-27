@@ -6,11 +6,9 @@ import (
 
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/services"
-
-	"github.com/bwmarrin/discordgo"
 )
 
-func CommandHelpApi(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func CommandHelpApi(s *Discordgo.Session, i *Discordgo.InteractionCreate) {
 	logger.Log.Info("Received help command")
 
 	var enabledServices []string
@@ -85,17 +83,17 @@ func CommandHelpApi(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	for partIndex, part := range helpApiGuide {
 		var err error
 		if partIndex == 0 {
-			err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
+			err = s.InteractionRespond(i.Interaction, &Discordgo.InteractionResponse{
+				Type: Discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &Discordgo.InteractionResponseData{
 					Content: part,
-					Flags:   discordgo.MessageFlagsEphemeral,
+					Flags:   Discordgo.MessageFlagsEphemeral,
 				},
 			})
 		} else {
-			_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+			_, err = s.FollowupMessageCreate(i.Interaction, true, &Discordgo.WebhookParams{
 				Content: part,
-				Flags:   discordgo.MessageFlagsEphemeral,
+				Flags:   Discordgo.MessageFlagsEphemeral,
 			})
 		}
 
