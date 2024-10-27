@@ -412,7 +412,6 @@ func getChecksInTimeRange(duration time.Duration) (int, error) {
 	return int(count), err
 }
 
-// TODO ensure TotalBans is not counting duplicates.
 func getTotalBans() (int, error) {
 	var count int64
 	err := database.DB.Model(&models.Ban{}).Count(&count).Error
