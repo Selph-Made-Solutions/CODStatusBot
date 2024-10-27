@@ -151,13 +151,12 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 	account.LastStatusChange = now.Unix()
 	account.IsPermabanned = newStatus == models.StatusPermaban
 	account.IsShadowbanned = newStatus == models.StatusShadowban
+	account.LastSuccessfulCheck = now
 
 	if err := database.DB.Save(&account).Error; err != nil {
 		logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
 		return
 	}
-
-	logger.Log.Infof("Account %s status changed to %s", account.Title, newStatus)
 
 	ban := models.Ban{
 		Account:   account,
@@ -167,10 +166,11 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 
 	if newStatus == models.StatusTempban {
 		ban.TempBanDuration = calculateBanDuration(now)
+		ban.AffectedGames = getAffectedGames(account.SSOCookie)
 	}
 
 	if err := database.DB.Create(&ban).Error; err != nil {
-		logger.Log.WithError(err).Errorf("Failed to create new ban record for account %s", account.Title)
+		logger.Log.WithError(err).Errorf("Failed to create ban record for account %s", account.Title)
 	}
 
 	embed := &discordgo.MessageEmbed{
@@ -178,14 +178,10 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 		Description: getStatusDescription(newStatus, account.Title, ban),
 		Color:       GetColorForStatus(newStatus, account.IsExpiredCookie, account.IsCheckDisabled),
 		Timestamp:   now.Format(time.RFC3339),
+		Fields:      getStatusFields(account, newStatus),
 	}
 
-	notificationType := "status_change"
-	if newStatus == models.StatusPermaban {
-		notificationType = "permaban"
-	} else if newStatus == models.StatusShadowban {
-		notificationType = "shadowban"
-	}
+	notificationType := getNotificationType(newStatus)
 
 	err := SendNotification(s, account, embed, fmt.Sprintf("<@%s>", account.UserID), notificationType)
 	if err != nil {
