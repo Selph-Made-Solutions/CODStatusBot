@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/bradselph/CODStatusBot/discordgo"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/services"
 )
 
-func CommandHelpApi(s *Discordgo.Session, i *Discordgo.InteractionCreate) {
+func CommandHelpApi(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	logger.Log.Info("Received help command")
 
 	var enabledServices []string
@@ -83,17 +84,17 @@ func CommandHelpApi(s *Discordgo.Session, i *Discordgo.InteractionCreate) {
 	for partIndex, part := range helpApiGuide {
 		var err error
 		if partIndex == 0 {
-			err = s.InteractionRespond(i.Interaction, &Discordgo.InteractionResponse{
-				Type: Discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &Discordgo.InteractionResponseData{
+			err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
 					Content: part,
-					Flags:   Discordgo.MessageFlagsEphemeral,
+					Flags:   discordgo.MessageFlagsEphemeral,
 				},
 			})
 		} else {
-			_, err = s.FollowupMessageCreate(i.Interaction, true, &Discordgo.WebhookParams{
+			_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
 				Content: part,
-				Flags:   Discordgo.MessageFlagsEphemeral,
+				Flags:   discordgo.MessageFlagsEphemeral,
 			})
 		}
 
