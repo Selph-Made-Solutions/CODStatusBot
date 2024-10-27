@@ -12,7 +12,7 @@ import (
 	"github.com/bradselph/CODStatusBot/models"
 )
 
-func CommandAccountLogs(s *Discordgo.Session, i *Discordgo.InteractionCreate) {
+func CommandAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
@@ -38,48 +38,48 @@ func CommandAccountLogs(s *Discordgo.Session, i *Discordgo.InteractionCreate) {
 	}
 
 	// Create buttons for each account
-	var components []Discordgo.MessageComponent
-	var currentRow []Discordgo.MessageComponent
+	var components []discordgo.MessageComponent
+	var currentRow []discordgo.MessageComponent
 
 	for _, account := range accounts {
-		currentRow = append(currentRow, Discordgo.Button{
+		currentRow = append(currentRow, discordgo.Button{
 			Label:    account.Title,
-			Style:    Discordgo.PrimaryButton,
+			Style:    discordgo.PrimaryButton,
 			CustomID: fmt.Sprintf("account_logs_%d", account.ID),
 		})
 
 		if len(currentRow) == 5 {
-			components = append(components, Discordgo.ActionsRow{Components: currentRow})
-			currentRow = []Discordgo.MessageComponent{}
+			components = append(components, discordgo.ActionsRow{Components: currentRow})
+			currentRow = []discordgo.MessageComponent{}
 		}
 	}
 
 	// Create View All Logs button
 	if len(currentRow) < 5 {
-		currentRow = append(currentRow, Discordgo.Button{
+		currentRow = append(currentRow, discordgo.Button{
 			Label:    "View All Logs",
-			Style:    Discordgo.SuccessButton,
+			Style:    discordgo.SuccessButton,
 			CustomID: "account_logs_all",
 		})
 	} else {
-		components = append(components, Discordgo.ActionsRow{Components: currentRow})
-		currentRow = []Discordgo.MessageComponent{
-			Discordgo.Button{
+		components = append(components, discordgo.ActionsRow{Components: currentRow})
+		currentRow = []discordgo.MessageComponent{
+			discordgo.Button{
 				Label:    "View All Logs",
-				Style:    Discordgo.SuccessButton,
+				Style:    discordgo.SuccessButton,
 				CustomID: "account_logs_all",
 			},
 		}
 	}
 
 	// Add the last row
-	components = append(components, Discordgo.ActionsRow{Components: currentRow})
+	components = append(components, discordgo.ActionsRow{Components: currentRow})
 
-	err := s.InteractionRespond(i.Interaction, &Discordgo.InteractionResponse{
-		Type: Discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &Discordgo.InteractionResponseData{
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
 			Content:    "Select an account to view its logs, or 'View All Logs' to see logs for all accounts:",
-			Flags:      Discordgo.MessageFlagsEphemeral,
+			Flags:      discordgo.MessageFlagsEphemeral,
 			Components: components,
 		},
 	})
@@ -88,7 +88,7 @@ func CommandAccountLogs(s *Discordgo.Session, i *Discordgo.InteractionCreate) {
 	}
 }
 
-func HandleAccountSelection(s *Discordgo.Session, i *Discordgo.InteractionCreate) {
+func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
 
 	if customID == "account_logs_all" {
@@ -113,11 +113,11 @@ func HandleAccountSelection(s *Discordgo.Session, i *Discordgo.InteractionCreate
 
 	embed := createAccountLogEmbed(account)
 
-	err = s.InteractionRespond(i.Interaction, &Discordgo.InteractionResponse{
-		Type: Discordgo.InteractionResponseUpdateMessage,
-		Data: &Discordgo.InteractionResponseData{
-			Embeds:     []*Discordgo.MessageEmbed{embed},
-			Components: []Discordgo.MessageComponent{},
+	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseUpdateMessage,
+		Data: &discordgo.InteractionResponseData{
+			Embeds:     []*discordgo.MessageEmbed{embed},
+			Components: []discordgo.MessageComponent{},
 		},
 	})
 	if err != nil {
@@ -126,7 +126,7 @@ func HandleAccountSelection(s *Discordgo.Session, i *Discordgo.InteractionCreate
 	}
 }
 
-func handleAllAccountLogs(s *Discordgo.Session, i *Discordgo.InteractionCreate) {
+func handleAllAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
@@ -146,7 +146,7 @@ func handleAllAccountLogs(s *Discordgo.Session, i *Discordgo.InteractionCreate) 
 		return
 	}
 
-	var embeds []*Discordgo.MessageEmbed
+	var embeds []*discordgo.MessageEmbed
 	for _, account := range accounts {
 		embed := createAccountLogEmbed(account)
 		embeds = append(embeds, embed)
@@ -161,18 +161,18 @@ func handleAllAccountLogs(s *Discordgo.Session, i *Discordgo.InteractionCreate) 
 
 		var err error
 		if j == 0 {
-			err = s.InteractionRespond(i.Interaction, &Discordgo.InteractionResponse{
-				Type: Discordgo.InteractionResponseUpdateMessage,
-				Data: &Discordgo.InteractionResponseData{
+			err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseUpdateMessage,
+				Data: &discordgo.InteractionResponseData{
 					Content:    "",
 					Embeds:     embeds[j:end],
-					Components: []Discordgo.MessageComponent{},
+					Components: []discordgo.MessageComponent{},
 				},
 			})
 		} else {
-			_, err = s.FollowupMessageCreate(i.Interaction, true, &Discordgo.WebhookParams{
+			_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
 				Embeds: embeds[j:end],
-				Flags:  Discordgo.MessageFlagsEphemeral,
+				Flags:  discordgo.MessageFlagsEphemeral,
 			})
 		}
 
@@ -182,19 +182,19 @@ func handleAllAccountLogs(s *Discordgo.Session, i *Discordgo.InteractionCreate) 
 	}
 }
 
-func createAccountLogEmbed(account models.Account) *Discordgo.MessageEmbed {
+func createAccountLogEmbed(account models.Account) *discordgo.MessageEmbed {
 	var logs []models.Ban
 	database.DB.Where("account_id = ?", account.ID).Order("created_at desc").Limit(10).Find(&logs)
 
-	embed := &Discordgo.MessageEmbed{
+	embed := &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%s - Account Logs", account.Title),
 		Description: "The last 10 status changes for this account",
 		Color:       0x00ff00,
-		Fields:      make([]*Discordgo.MessageEmbedField, len(logs)),
+		Fields:      make([]*discordgo.MessageEmbedField, len(logs)),
 	}
 
 	for i, log := range logs {
-		embed.Fields[i] = &Discordgo.MessageEmbedField{
+		embed.Fields[i] = &discordgo.MessageEmbedField{
 			Name:   fmt.Sprintf("Status Change %d", i+1),
 			Value:  fmt.Sprintf("Status: %s\nTime: %s", log.Status, log.CreatedAt.Format(time.RFC1123)),
 			Inline: false,
@@ -208,12 +208,12 @@ func createAccountLogEmbed(account models.Account) *Discordgo.MessageEmbed {
 	return embed
 }
 
-func respondToInteraction(s *Discordgo.Session, i *Discordgo.InteractionCreate, content string) {
-	err := s.InteractionRespond(i.Interaction, &Discordgo.InteractionResponse{
-		Type: Discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &Discordgo.InteractionResponseData{
+func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
 			Content: content,
-			Flags:   Discordgo.MessageFlagsEphemeral,
+			Flags:   discordgo.MessageFlagsEphemeral,
 		},
 	})
 	if err != nil {
