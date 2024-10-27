@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bradselph/CODStatusBot/Discordgo"
 	"github.com/bradselph/CODStatusBot/database"
+	"github.com/bradselph/CODStatusBot/discordgo"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bradselph/CODStatusBot/webserver"
