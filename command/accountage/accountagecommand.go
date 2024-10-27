@@ -92,7 +92,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 
 	if !services.VerifySSOCookie(account.SSOCookie) {
-		account.IsExpiredCookie = true // Update account's IsExpiredCookie flag
+		account.IsExpiredCookie = true
 		database.DB.Save(&account)
 		respondToInteraction(s, i, "Invalid SSOCookie. Account's cookie status updated.")
 		return
@@ -103,6 +103,12 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		logger.Log.WithError(err).Errorf("Error checking account age for account %s", account.Title)
 		respondToInteraction(s, i, "There was an error checking the account age.")
 		return
+	}
+
+	isVIP, vipErr := services.CheckVIPStatus(account.SSOCookie)
+	vipStatus := "No"
+	if vipErr == nil && isVIP {
+		vipStatus = "Yes ⭐"
 	}
 
 	account.Created = createdEpoch
@@ -124,10 +130,23 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 				Inline: true,
 			},
 			{
+				Name:   "VIP Status",
+				Value:  vipStatus,
+				Inline: true,
+			},
+			{
 				Name:   "Creation Date",
 				Value:  creationDate,
 				Inline: true,
 			},
+			{
+				Name:   "Account Age",
+				Value:  fmt.Sprintf("%d years, %d months, %d days", years, months, days),
+				Inline: true,
+			},
+		},
+		Footer: &discordgo.MessageEmbedFooter{
+			Text: "VIP status indicates priority access to Activision Support services",
 		},
 	}
 
