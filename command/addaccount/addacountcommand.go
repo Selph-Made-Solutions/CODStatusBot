@@ -14,7 +14,7 @@ import (
 	"github.com/bradselph/CODStatusBot/services"
 	"github.com/bradselph/CODStatusBot/utils"
 
-	"github.com/bwmarrin/discordgo"
+	"github.com/bwmarrin/Discordgo"
 )
 
 func sanitizeInput(input string) string {
@@ -49,7 +49,7 @@ func getMaxAccounts(hasCustomKey bool) int {
 	return defaultMax
 }
 
-func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func CommandAddAccount(s *Discordgo.Session, i *Discordgo.InteractionCreate) {
 	userID := getUserID(i)
 	if userID == "" {
 		logger.Log.Error("Failed to get user ID")
@@ -120,14 +120,14 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	showAddAccountModal(s, i)
 }
 
-func showAddAccountModal(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseModal,
-		Data: &discordgo.InteractionResponseData{
+func showAddAccountModal(s *Discordgo.Session, i *Discordgo.InteractionCreate) {
+	err := s.InteractionRespond(i.Interaction, &Discordgo.InteractionResponse{
+		Type: Discordgo.InteractionResponseModal,
+		Data: &Discordgo.InteractionResponseData{
 			CustomID: "add_account_modal",
 			Title:    "Add New Account",
-			Components: []discordgo.MessageComponent{
-				discordgo.ActionsRow{
+			Components: []Discordgo.MessageComponent{
+				Discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
 						discordgo.TextInput{
 							CustomID:    "account_title",
