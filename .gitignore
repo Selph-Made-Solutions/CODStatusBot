@@ -3,5 +3,5 @@
 *.exe
 /.idea
 /logs
-/Discordgo
+/discordgo
 /Other
