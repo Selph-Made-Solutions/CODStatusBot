@@ -1,9 +1,9 @@
 module github.com/bradselph/CODStatusBot
 
+
 go 1.23.2
 
 require (
-	github.com/bwmarrin/discordgo v0.28.1
 	github.com/didip/tollbooth v4.0.2+incompatible
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/sessions v1.4.0
