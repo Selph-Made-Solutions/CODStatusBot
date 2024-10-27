@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/discordgo"
 	"github.com/bradselph/CODStatusBot/logger"
-
-	"github.com/bwmarrin/Discordgo"
+	"github.com/bwmarrin/discordgo"
 )
 
 var tempFeedbackStore = struct {
@@ -24,7 +24,7 @@ type feedbackEntry struct {
 
 const feedbackTimeout = 5 * time.Minute
 
-func CommandFeedback(s *Discordgo.Session, i *Discordgo.InteractionCreate) {
+func CommandFeedback(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	feedbackMessage := i.ApplicationCommandData().Options[0].StringValue()
 	developerID := os.Getenv("DEVELOPER_ID")
 	if developerID == "" {
@@ -49,22 +49,22 @@ func CommandFeedback(s *Discordgo.Session, i *Discordgo.InteractionCreate) {
 
 	logger.Log.WithField("userID", userID).Info("Stored feedback message")
 
-	err = s.InteractionRespond(i.Interaction, &Discordgo.InteractionResponse{
-		Type: Discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &Discordgo.InteractionResponseData{
+	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
 			Content: "Do you want to send this feedback anonymously?",
-			Flags:   Discordgo.MessageFlagsEphemeral,
-			Components: []Discordgo.MessageComponent{
-				Discordgo.ActionsRow{
-					Components: []Discordgo.MessageComponent{
-						Discordgo.Button{
+			Flags:   discordgo.MessageFlagsEphemeral,
+			Components: []discordgo.MessageComponent{
+				discordgo.ActionsRow{
+					Components: []discordgo.MessageComponent{
+						discordgo.Button{
 							Label:    "Send Anonymously",
-							Style:    Discordgo.PrimaryButton,
+							Style:    discordgo.PrimaryButton,
 							CustomID: fmt.Sprintf("feedback_anonymous_%s", userID),
 						},
-						Discordgo.Button{
+						discordgo.Button{
 							Label:    "Send with ID",
-							Style:    Discordgo.SecondaryButton,
+							Style:    discordgo.SecondaryButton,
 							CustomID: fmt.Sprintf("feedback_with_id_%s", userID),
 						},
 					},
@@ -79,7 +79,7 @@ func CommandFeedback(s *Discordgo.Session, i *Discordgo.InteractionCreate) {
 	}
 }
 
-func HandleFeedbackChoice(s *Discordgo.Session, i *Discordgo.InteractionCreate) {
+func HandleFeedbackChoice(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
 	parts := strings.SplitN(customID, "_", 3)
 	if len(parts) != 3 {
@@ -130,7 +130,7 @@ func HandleFeedbackChoice(s *Discordgo.Session, i *Discordgo.InteractionCreate) 
 	sendResponse(s, i, "Your feedback has been sent to the developer. Thank you for your input!", true)
 }
 
-func sendFeedbackToDeveloper(s *Discordgo.Session, feedback string) error {
+func sendFeedbackToDeveloper(s *discordgo.Session, feedback string) error {
 	developerID := os.Getenv("DEVELOPER_ID")
 	channel, err := s.UserChannelCreate(developerID)
 	if err != nil {
@@ -145,7 +145,7 @@ func sendFeedbackToDeveloper(s *Discordgo.Session, feedback string) error {
 	return nil
 }
 
-func sendResponse(s *Discordgo.Session, i *Discordgo.InteractionCreate, content string, ephemeral bool) {
+func sendResponse(s *discordgo.Session, i *discordgo.InteractionCreate, content string, ephemeral bool) {
 	flags := discordgo.MessageFlags(0)
 	if ephemeral {
 		flags = discordgo.MessageFlagsEphemeral
