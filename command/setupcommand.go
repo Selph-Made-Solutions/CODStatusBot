@@ -36,7 +36,7 @@ func RegisterCommands(s *discordgo.Session) error {
 		},
 		{
 			Name:         "setcaptchaservice",
-			Description:  "Set your Captcha API key",
+			Description:  "Set your Captcha service provider and API key (EZCaptcha/2Captcha)",
 			DMPermission: BoolPtr(true),
 		},
 		{
@@ -71,22 +71,22 @@ func RegisterCommands(s *discordgo.Session) error {
 		},
 		{
 			Name:         "accountage",
-			Description:  "Check the age of an account",
+			Description:  "Check the age and VIP status of an account",
 			DMPermission: BoolPtr(true),
 		},
 		{
 			Name:         "accountlogs",
-			Description:  "View the logs for an account",
+			Description:  "View the status logs for an account",
 			DMPermission: BoolPtr(true),
 		},
 		{
 			Name:         "checknow",
-			Description:  "Check All accounts Now (rate limited for default API key)",
+			Description:  "Check account status now (rate limited for default API key)",
 			DMPermission: BoolPtr(true),
 		},
 		{
 			Name:         "listaccounts",
-			Description:  "List all your monitored accounts",
+			Description:  "List all your monitored accounts with status and VIP info",
 			DMPermission: BoolPtr(true),
 		},
 		{
@@ -145,8 +145,8 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["set_notifications_modal"] = setnotifications.HandleModalSubmit
 	Handlers["setcaptchaservice_modal"] = setcaptchaservice.HandleModalSubmit
 	Handlers["addaccount_modal"] = addaccount.HandleModalSubmit
-	Handlers["updateaccount_modal"] = updateaccount.HandleModalSubmit
-	Handlers["setcheckinterval_modal"] = setcheckinterval.HandleModalSubmit
+	Handlers["update_account_modal"] = updateaccount.HandleModalSubmit
+	Handlers["set_check_interval_modal"] = setcheckinterval.HandleModalSubmit
 
 	Handlers["account_age"] = accountage.HandleAccountSelection
 	Handlers["account_logs"] = accountlogs.HandleAccountSelection
@@ -158,6 +158,8 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["show_interval_modal"] = setcheckinterval.HandleButton
 
 	Handlers["confirm_remove"] = removeaccount.HandleConfirmation
+	Handlers["confirm_reenable"] = togglecheck.HandleConfirmation
+	Handlers["cancel_reenable"] = togglecheck.HandleConfirmation
 
 	logger.Log.Info("Global commands registered and handlers set up")
 	return nil
