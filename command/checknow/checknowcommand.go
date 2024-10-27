@@ -9,11 +9,10 @@ import (
 	"time"
 
 	"github.com/bradselph/CODStatusBot/database"
+	"github.com/bradselph/CODStatusBot/discordgo"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bradselph/CODStatusBot/services"
-
-	"github.com/bwmarrin/Discordgo"
 )
 
 var (
@@ -32,7 +31,7 @@ func init() {
 	rateLimit = time.Duration(rateLimitSeconds) * time.Second
 }
 
-func CommandCheckNow(s *Discordgo.Session, i *Discordgo.InteractionCreate) {
+func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	userID, err := getUserID(i)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to get user ID")
@@ -99,7 +98,7 @@ func CommandCheckNow(s *Discordgo.Session, i *Discordgo.InteractionCreate) {
 	showAccountButtons(s, i, accounts)
 }
 
-func showAccountButtons(s *Discordgo.Session, i *Discordgo.InteractionCreate, accounts []models.Account) {
+func showAccountButtons(s *discordgo.Session, i *discordgo.InteractionCreate, accounts []models.Account) {
 	userID, err := getUserID(i)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to get user ID")
