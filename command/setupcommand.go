@@ -20,15 +20,15 @@ import (
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
-	"github.com/bwmarrin/discordgo"
+	"github.com/bwmarrin/Discordgo"
 )
 
-var Handlers = map[string]func(*discordgo.Session, *discordgo.InteractionCreate){}
+var Handlers = map[string]func(*Discordgo.Session, *Discordgo.InteractionCreate){}
 
-func RegisterCommands(s *discordgo.Session) error {
+func RegisterCommands(s *Discordgo.Session) error {
 	logger.Log.Info("Registering global commands")
 
-	commands := []*discordgo.ApplicationCommand{
+	commands := []*Discordgo.ApplicationCommand{
 		{
 			Name:         "globalannouncement",
 			Description:  "Send a global announcement to all users (Admin only)",
@@ -103,9 +103,9 @@ func RegisterCommands(s *discordgo.Session) error {
 			Name:         "feedback",
 			Description:  "Send anonymous feedback to the bot developer",
 			DMPermission: BoolPtr(true),
-			Options: []*discordgo.ApplicationCommandOption{
+			Options: []*Discordgo.ApplicationCommandOption{
 				{
-					Type:        discordgo.ApplicationCommandOptionString,
+					Type:        Discordgo.ApplicationCommandOptionString,
 					Name:        "message",
 					Description: "Your feedback or suggestion",
 					Required:    true,
@@ -165,7 +165,7 @@ func RegisterCommands(s *discordgo.Session) error {
 	return nil
 }
 
-func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func HandleCommand(s *Discordgo.Session, i *Discordgo.InteractionCreate) {
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
