@@ -57,13 +57,20 @@ func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		creationDate := time.Unix(account.Created, 0).Format("2006-01-02")
 		lastCheckTime := time.Unix(account.LastCheck, 0).Format("2006-01-02 15:04:05")
 
+		isVIP, err := services.CheckVIPStatus(account.SSOCookie)
+		vipStatus := "❌"
+		if err == nil && isVIP {
+			vipStatus = "⭐"
+		}
+
 		fieldValue := fmt.Sprintf("Status: %s\n"+
+			"VIP Status: %s\n"+
 			"Checks: %s\n"+
 			"Notification Type: %s\n"+
 			"Cookie Expires: %s\n"+
 			"Created: %s\n"+
 			"Last Checked: %s",
-			account.LastStatus, checkStatus, account.NotificationType,
+			account.LastStatus, vipStatus, checkStatus, account.NotificationType,
 			cookieExpiration, creationDate, lastCheckTime)
 
 		if account.IsCheckDisabled {
