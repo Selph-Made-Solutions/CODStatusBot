@@ -2,31 +2,37 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
     <title>COD Status Bot Admin Dashboard</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" integrity="sha512-iBBXm8fW90+nuLcSKlbmrPcLa0OT92xO1BIsZ+ywDWZCvqsWgccV3gFoRBv0z+8dLJgyAHIhR35VZc2oM/gI1w==" crossorigin="anonymous">
+    <link crossorigin="anonymous" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
+          integrity="sha512-iBBXm8fW90+nuLcSKlbmrPcLa0OT92xO1BIsZ+ywDWZCvqsWgccV3gFoRBv0z+8dLJgyAHIhR35VZc2oM/gI1w=="
+          rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
     <style>
         body, h1, h2, p, ul {
             margin: 0;
             padding: 0;
         }
+
         body {
             font-family: Arial, sans-serif;
             background-color: #f4f4f4;
             color: #333;
         }
+
         header {
             background: #35424a;
             color: #ffffff;
             padding: 10px 0;
             position: relative;
         }
+
         header h1 {
             margin: 0;
             text-align: center;
             font-size: 2em;
         }
+
         .logout-btn {
             position: absolute;
             right: 20px;
@@ -37,9 +43,11 @@
             text-decoration: none;
             border-radius: 5px;
         }
+
         .logout-btn:hover {
             background-color: #cf3e17;
         }
+
         .container {
             width: 90%;
             margin: 20px auto;
@@ -47,16 +55,18 @@
             flex-wrap: wrap;
             gap: 20px;
         }
+
         .stat-group {
             background: #fff;
             padding: 20px;
             border-radius: 5px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
             cursor: move;
             flex: 1 1 calc(33% - 40px);
             min-width: 300px;
             position: relative;
         }
+
         .stat-group h2 {
             color: #35424a;
             margin-top: 0;
@@ -65,10 +75,12 @@
             border-bottom: 2px solid #4CAF50;
             padding-bottom: 5px;
         }
+
         .stat-item {
             margin-bottom: 10px;
             font-size: 1.1em;
         }
+
         .toggle-chart-btn {
             position: absolute;
             top: 20px;
@@ -81,47 +93,59 @@
             border-radius: 3px;
             font-size: 0.9em;
         }
+
         .toggle-chart-btn:hover {
             background: #45a049;
         }
+
         .chart-container {
             display: none;
             margin-top: 15px;
             width: 100%;
             height: 200px;
         }
+
         .chart-container canvas {
             width: 100% !important;
             height: 100% !important;
         }
+
         body.dark-mode {
             background-color: #121212;
             color: #ffffff;
         }
+
         body.dark-mode header {
             background: #1e1e1e;
         }
+
         body.dark-mode .stat-group {
             background-color: #1e1e1e;
             color: #ffffff;
         }
+
         body.dark-mode .stat-group h2 {
             color: #ffffff;
             border-bottom-color: #4CAF50;
         }
+
         body.dark-mode .toggle-chart-btn {
             background: #e8491d;
         }
+
         body.dark-mode .toggle-chart-btn:hover {
             background: #cf3e17;
         }
+
         .dragging {
             opacity: 0.5;
         }
+
         @media (max-width: 768px) {
             .container {
                 width: 95%;
             }
+
             .stat-group {
                 flex: 1 1 100%;
             }
@@ -138,11 +162,11 @@
 </header>
 <div style="text-align: center; margin: 10px 0;">
     <label for="theme-toggle">Dark Mode</label>
-    <input type="checkbox" id="theme-toggle" onclick="toggleDarkMode()" onkeydown="handleKeyDown(event)">
+    <input id="theme-toggle" onclick="toggleDarkMode()" onkeydown="handleKeyDown(event)" type="checkbox">
 </div>
 
 <div class="container">
-    <div class="stat-group" draggable="true" data-stat-group-id="AccountStatistics">
+    <div class="stat-group" data-stat-group-id="AccountStatistics" draggable="true">
         <h2><i class="fas fa-user"></i> Account Statistics</h2>
         <button class="toggle-chart-btn" onclick="toggleStatChart(this)">Show Chart</button>
         <div class="stat-item">Total Accounts: <span id="totalAccounts">{{.TotalAccounts}}</span></div>
@@ -153,43 +177,47 @@
             <canvas id="accountChart"></canvas>
         </div>
     </div>
-    <div class="stat-group" draggable="true" data-stat-group-id="UserStatistics">
+    <div class="stat-group" data-stat-group-id="UserStatistics" draggable="true">
         <h2><i class="fas fa-users"></i> User Statistics</h2>
         <button class="toggle-chart-btn" onclick="toggleStatChart(this)">Show Chart</button>
         <div class="stat-item">Total Users: <span id="totalUsers">{{.TotalUsers}}</span></div>
-        <div class="stat-item">Users with Custom API Key: <span id="usersWithCustomAPIKey">{{.UsersWithCustomAPIKey}}</span></div>
-        <div class="stat-item">Average Accounts per User: <span id="averageAccountsPerUser">{{printf "%.2f" .AverageAccountsPerUser}}</span></div>
+        <div class="stat-item">Users with Custom API Key: <span
+                id="usersWithCustomAPIKey">{{.UsersWithCustomAPIKey}}</span></div>
+        <div class="stat-item">Average Accounts per User: <span id="averageAccountsPerUser">{{printf "%.2f" .AverageAccountsPerUser}}</span>
+        </div>
         <div class="chart-container">
             <canvas id="userChart"></canvas>
         </div>
     </div>
-    <div class="stat-group" draggable="true" data-stat-group-id="CheckStatistics">
+    <div class="stat-group" data-stat-group-id="CheckStatistics" draggable="true">
         <h2><i class="fas fa-check"></i> Check Statistics</h2>
         <button class="toggle-chart-btn" onclick="toggleStatChart(this)">Show Chart</button>
         <div class="stat-item">Checks Last Hour: <span id="checksLastHour">{{.ChecksLastHour}}</span></div>
         <div class="stat-item">Checks Last 24 Hours: <span id="checksLast24Hours">{{.ChecksLast24Hours}}</span></div>
-        <div class="stat-item">Average Checks per Day: <span id="averageChecksPerDay">{{printf "%.2f" .AverageChecksPerDay}}</span></div>
+        <div class="stat-item">Average Checks per Day: <span id="averageChecksPerDay">{{printf "%.2f" .AverageChecksPerDay}}</span>
+        </div>
         <div class="chart-container">
             <canvas id="checkChart"></canvas>
         </div>
     </div>
-    <div class="stat-group" draggable="true" data-stat-group-id="BanStatistics">
+    <div class="stat-group" data-stat-group-id="BanStatistics" draggable="true">
         <h2><i class="fas fa-ban"></i> Ban Statistics</h2>
         <button class="toggle-chart-btn" onclick="toggleStatChart(this)">Show Chart</button>
         <div class="stat-item">Total Bans: <span id="totalBans">{{.TotalBans}}</span></div>
         <div class="stat-item">Recent Bans (24h): <span id="recentBans">{{.RecentBans}}</span></div>
-        <div class="stat-item">Shadowbanned: <span id="shadowBannedAccounts">{{.ShadowBannedAccounts}}</span> </div>
+        <div class="stat-item">Shadowbanned: <span id="shadowBannedAccounts">{{.ShadowBannedAccounts}}</span></div>
         <div class="stat-item">Total Temporary Bans: <span id="totalTempbans">{{.TotalTempbans}}</span></div>
         <div class="stat-item">Total Perma Bans: <span id="permaBannedAccounts">{{.PermaBannedAccounts}}</span></div>
         <div class="chart-container">
             <canvas id="banChart"></canvas>
         </div>
     </div>
-    <div class="stat-group" draggable="true" data-stat-group-id="NotificationStatistics">
+    <div class="stat-group" data-stat-group-id="NotificationStatistics" draggable="true">
         <h2><i class="fas fa-bell"></i> Notification Statistics</h2>
         <button class="toggle-chart-btn" onclick="toggleStatChart(this)">Show Chart</button>
         <div class="stat-item">Total Notifications: <span id="totalNotifications">{{.TotalNotifications}}</span></div>
-        <div class="stat-item">Recent Notifications (24h): <span id="recentNotifications">{{.RecentNotifications}}</span></div>
+        <div class="stat-item">Recent Notifications (24h): <span
+                id="recentNotifications">{{.RecentNotifications}}</span></div>
         <div class="chart-container">
             <canvas id="notificationChart"></canvas>
         </div>
@@ -286,7 +314,7 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
-                    y: { beginAtZero: true }
+                    y: {beginAtZero: true}
                 },
                 plugins: {
                     legend: {
@@ -317,7 +345,7 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
-                    y: { beginAtZero: true }
+                    y: {beginAtZero: true}
                 },
                 plugins: {
                     legend: {
@@ -348,7 +376,7 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
-                    y: { beginAtZero: true }
+                    y: {beginAtZero: true}
                 },
                 plugins: {
                     legend: {
@@ -379,7 +407,7 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
-                    y: { beginAtZero: true }
+                    y: {beginAtZero: true}
                 },
                 plugins: {
                     legend: {
@@ -410,7 +438,7 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
-                    y: { beginAtZero: true }
+                    y: {beginAtZero: true}
                 },
                 plugins: {
                     legend: {
@@ -454,6 +482,7 @@
             notificationChart.update();
         }
     }
+
     function toggleStatChart(button) {
         const chartContainer = button.parentElement.querySelector('.chart-container');
         const statGroupId = button.parentElement.getAttribute('data-stat-group-id');
