@@ -12,16 +12,16 @@ import (
 
 	"github.com/bradselph/CODStatusBot/bot"
 	"github.com/bradselph/CODStatusBot/database"
+	"github.com/bradselph/CODStatusBot/discordgo"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bradselph/CODStatusBot/services"
 	"github.com/bradselph/CODStatusBot/webserver"
 
-	"github.com/bwmarrin/Discordgo"
 	"github.com/joho/godotenv"
 )
 
-var discord *Discordgo.Session
+var discord *discordgo.Session
 
 func main() {
 	defer func() {
@@ -188,7 +188,7 @@ func initializeDatabase() error {
 	return nil
 }
 
-func startPeriodicTasks(ctx context.Context, s *Discordgo.Session) {
+func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 	go func() {
 		for {
 			select {
