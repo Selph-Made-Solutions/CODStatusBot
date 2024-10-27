@@ -58,6 +58,8 @@ ADMIN_PASSWORD=
 ## Rate Limiting
 CHECK_NOW_RATE_LIMIT=
 DEFAULT_RATE_LIMIT=
+DEFAULT_USER_MAXACCOUNTS=
+PREM_USER_MAXACCOUNTS=
 
 
 ## Settings Explained
@@ -97,3 +99,5 @@ DEFAULT_RATE_LIMIT=
 # ADMIN_PASSWORD is the password for the admin panel.
 # CHECK_NOW_RATE_LIMIT is Rate limit for the check now command 36000 (in seconds)
 # DEFAULT_RATE_LIMIT is Default rate limit for regular account checks 15 (in minutes)
+# DEFAULT_USER_MAXACCOUNTS is Default max accounts for regular users
+# PREM_USER_MAXACCOUNTS is Max accounts for premium users
