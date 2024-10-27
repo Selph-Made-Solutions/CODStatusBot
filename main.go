@@ -159,6 +159,8 @@ func loadEnvironmentVariables() error {
 		"ADMIN_PASSWORD",
 		"CHECK_NOW_RATE_LIMIT",
 		"DEFAULT_RATE_LIMIT",
+		"DEFAULT_USER_MAXACCOUNTS",
+		"PREM_USER_MAXACCOUNTS",
 	}
 
 	for _, envVar := range requiredEnvVars {
