@@ -4,7 +4,9 @@
 
 ## Introduction
 
-COD Status Bot is a Discord bot designed to help you monitor your Activision accounts for shadowbans or permanent bans in Call of Duty games. The bot periodically checks the status of your accounts and notifies you of any changes. Now serving 300+ Discord servers, our bot has been optimized for performance and scalability.
+COD Status Bot is a Discord bot designed to help you monitor your Activision accounts for shadowbans or permanent bans
+in Call of Duty games. The bot periodically checks the status of your accounts and notifies you of any changes. Now
+serving 300+ Discord servers, our bot has been optimized for performance and scalability.
 
 ## Features
 
@@ -21,7 +23,8 @@ COD Status Bot is a Discord bot designed to help you monitor your Activision acc
 
 ## Getting Started
 
-1. Invite the bot to your Discord server using the provided [Invite Link](https://discord.com/oauth2/authorize?client_id=1211857854324015124).
+1. Invite the bot to your Discord server using the
+   provided [Invite Link](https://discord.com/oauth2/authorize?client_id=1211857854324015124).
 2. Once the bot joins your server, it will automatically register the necessary commands.
 3. Set up your EZ-Captcha API key for full functionality and customized check intervals.
 4. Use the `/addaccount` command to start monitoring your first account.
@@ -41,13 +44,15 @@ Activision. Users have two options:
 3. Once registered, you'll receive your API key
 4. Use the `/setcaptchaservice` command to set your API key in the bot
 
-By using your own API key, you can customize the check interval for your accounts and enjoy unlimited use of the service.
+By using your own API key, you can customize the check interval for your accounts and enjoy unlimited use of the
+service.
 
 ## Commands
 
 ### /addaccount
 
 Add a new account to be monitored by the bot. You'll need to provide:
+
 - Account Title: A name to identify the account
 - SSO Cookie: The Single Sign-On cookie associated with your Activision account
 
@@ -73,11 +78,13 @@ Check the age of a specific account. This displays the account's creation date a
 
 ### /checknow
 
-Immediately check the status of all your accounts or a specific account. This command is rate-limited for users without a personal API key.
+Immediately check the status of all your accounts or a specific account. This command is rate-limited for users without
+a personal API key.
 
 ### /setcheckinterval
 
 Set your preferences for:
+
 - Check Interval: How often the bot checks your accounts (in minutes)
 - Notification Interval: How often you receive status updates (in hours)
 - Notification Type: Choose between channel or DM notifications
@@ -111,7 +118,8 @@ The bot will send notifications:
 - If an SSO cookie becomes invalid or is about to expire
 - 24 hours before an SSO cookie is set to expire
 
-Notifications will be sent to the channel where the account was added or to your DMs, depending on your preference set with `/setcheckinterval`.
+Notifications will be sent to the channel where the account was added or to your DMs, depending on your preference set
+with `/setcheckinterval`.
 
 ## SSO Cookie
 
@@ -166,7 +174,8 @@ If you encounter any issues or have questions:
 
 ## Disclaimer
 
-This bot is not affiliated with or endorsed by Activision. Use it at your own risk. The developers are not responsible for any consequences resulting from the use of this bot.
+This bot is not affiliated with or endorsed by Activision. Use it at your own risk. The developers are not responsible
+for any consequences resulting from the use of this bot.
 
 ## Contributing
 
@@ -177,27 +186,32 @@ We welcome contributions to the COD Status Bot! If you'd like to contribute:
 3. Commit your changes with clear, descriptive commit messages.
 4. Push your branch and submit a pull request.
 
-Please ensure your code adheres to the existing style and passes all tests. For major changes, please open an issue first to discuss what you would like to change.
+Please ensure your code adheres to the existing style and passes all tests. For major changes, please open an issue
+first to discuss what you would like to change.
 
 ## License
 
 This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). This means:
 
 - You can use, modify, and distribute this software freely.
-- If you modify the software and use it to provide a service over a network, you must make your modified source code available to users of that service.
+- If you modify the software and use it to provide a service over a network, you must make your modified source code
+  available to users of that service.
 - Any modifications or larger works must also be licensed under AGPL-3.0.
 
-For more details, see the [LICENSE](LICENSE) file in the repository or visit [GNU AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.en.html).
+For more details, see the [LICENSE](LICENSE) file in the repository or
+visit [GNU AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.en.html).
 
 ## Open Source
 
-This project is open source and available on GitHub. We believe in the power of community-driven development and welcome contributions from developers around the world. By making this bot open source, we aim to:
+This project is open source and available on GitHub. We believe in the power of community-driven development and welcome
+contributions from developers around the world. By making this bot open source, we aim to:
 
 - Encourage collaboration and improvement of the bot's features.
 - Provide transparency in how the bot operates.
 - Enable the community to adapt the bot for their specific needs.
 
-You can find the full source code, contribute to the project, or report issues at our [GitHub repository](https://github.com/bradselph/CODStatusBot).
+You can find the full source code, contribute to the project, or report issues at
+our [GitHub repository](https://github.com/bradselph/CODStatusBot).
 
-
-Thank you for using COD Status Bot! We're committed to providing a reliable and efficient service to our growing community of users across 300+ Discord servers.
+Thank you for using COD Status Bot! We're committed to providing a reliable and efficient service to our growing
+community of users across 300+ Discord servers.
