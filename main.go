@@ -17,11 +17,11 @@ import (
 	"github.com/bradselph/CODStatusBot/services"
 	"github.com/bradselph/CODStatusBot/webserver"
 
-	"github.com/bwmarrin/discordgo"
+	"github.com/bwmarrin/Discordgo"
 	"github.com/joho/godotenv"
 )
 
-var discord *discordgo.Session
+var discord *Discordgo.Session
 
 func main() {
 	defer func() {
@@ -188,7 +188,7 @@ func initializeDatabase() error {
 	return nil
 }
 
-func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
+func startPeriodicTasks(ctx context.Context, s *Discordgo.Session) {
 	go func() {
 		for {
 			select {
