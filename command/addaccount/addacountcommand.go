@@ -67,7 +67,6 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	})
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding with modal")
-
 	}
 }
 
@@ -131,14 +130,10 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	var existingAccount models.Account
-	result := database.DB.Where("user_id = ?", userID).First(&existingAccount)
-
-	notificationType := "channel"
-	if result.Error == nil {
-		notificationType = existingAccount.NotificationType
-	} else if i.User != nil {
-		notificationType = "dm"
+	isVIP, vipErr := services.CheckVIPStatus(ssoCookie)
+	vipStatus := "Regular Account"
+	if vipErr == nil && isVIP {
+		vipStatus = "VIP Account ⭐"
 	}
 
 	account := models.Account{
@@ -147,25 +142,39 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		SSOCookie:           ssoCookie,
 		SSOCookieExpiration: expirationTimestamp,
 		ChannelID:           channelID,
-		NotificationType:    notificationType,
+		NotificationType:    userSettings.NotificationType,
 	}
 
-	result = database.DB.Create(&account)
+	result := database.DB.Create(&account)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error creating account")
 		respondToInteraction(s, i, "Error creating account. Please try again.")
 		return
 	}
 
-	logger.Log.Infof("Account added successfully. ID: %d, Title: %s, UserID: %s", account.ID, account.Title, account.UserID)
-
 	formattedExpiration := services.FormatExpirationTime(expirationTimestamp)
 	embed := &discordgo.MessageEmbed{
 		Title:       "Account Added Successfully",
-		Description: fmt.Sprintf("Account '%s' has been added to monitoring. SSO cookie will expire in %s", account.Title, formattedExpiration),
-		Color:       0x00FF00, // Green color for success
-		Timestamp:   time.Now().Format(time.RFC3339),
+		Description: fmt.Sprintf("Account '%s' has been added to monitoring.", account.Title),
+		Color:       0x00ff00,
+		Fields: []*discordgo.MessageEmbedField{
+			{
+				Name:   "Account Type",
+				Value:  vipStatus,
+				Inline: true,
+			},
+			{
+				Name:   "Cookie Expiration",
+				Value:  formattedExpiration,
+				Inline: true,
+			},
+		},
+		Timestamp: time.Now().Format(time.RFC3339),
+		Footer: &discordgo.MessageEmbedFooter{
+			Text: "Use /listaccounts to view all your monitored accounts",
+		},
 	}
+
 	err = services.SendNotification(s, account, embed, "", "account_added")
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to send account added notification")
