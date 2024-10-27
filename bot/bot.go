@@ -18,12 +18,11 @@ import (
 	"github.com/bradselph/CODStatusBot/command/togglecheck"
 	"github.com/bradselph/CODStatusBot/command/updateaccount"
 	"github.com/bradselph/CODStatusBot/logger"
-	"github.com/bwmarrin/discordgo"
 )
 
-var discord *discordgo.Session
+var discord *Discordgo.Session
 
-func StartBot() (*discordgo.Session, error) {
+func StartBot() (*Discordgo.Session, error) {
 	envToken := os.Getenv("DISCORD_TOKEN")
 	if envToken == "" {
 		err := errors.New("DISCORD_TOKEN environment variable not set")
@@ -32,7 +31,7 @@ func StartBot() (*discordgo.Session, error) {
 	}
 
 	var err error
-	discord, err = discordgo.New("Bot " + envToken)
+	discord, err = Discordgo.New("Bot " + envToken)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +49,7 @@ func StartBot() (*discordgo.Session, error) {
 	command.RegisterCommands(discord)
 	logger.Log.Info("Registering global commands")
 
-	discord.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	discord.AddHandler(func(s *Discordgo.Session, i *Discordgo.InteractionCreate) {
 		switch i.Type {
 		case discordgo.InteractionApplicationCommand:
 			command.HandleCommand(s, i)
