@@ -1,16 +1,7 @@
 .env
-/.idea
-/logs/*.txt
-*.exe
-/Pages
-/donutupload
-/ignored
-/vendor
-/templates/01-login
-/taskid check
-/nextcaptcha
-/capsolverguides
-/Discordgo
-/capsolverguides
-JSON RESPONSE EXAMPLES.md
 *.md
+*.exe
+/.idea
+/logs
+/Discordgo
+/Other
