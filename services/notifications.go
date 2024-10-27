@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/Discordgo"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bradselph/CODStatusBot/webserver"
-	"github.com/bwmarrin/discordgo"
 	"github.com/patrickmn/go-cache"
 )
 
@@ -23,7 +23,7 @@ var (
 	adminNotificationCache     = cache.New(5*time.Minute, 10*time.Minute)
 )
 
-func NotifyAdmin(s *discordgo.Session, message string) {
+func NotifyAdmin(s *Discordgo.Session, message string) {
 	adminID := os.Getenv("DEVELOPER_ID")
 	if adminID == "" {
 		logger.Log.Error("DEVELOPER_ID not set in environment variables")
@@ -36,7 +36,7 @@ func NotifyAdmin(s *discordgo.Session, message string) {
 		return
 	}
 
-	embed := &discordgo.MessageEmbed{
+	embed := &Discordgo.MessageEmbed{
 		Title:       "Admin Notification",
 		Description: message,
 		Color:       0xFF0000,
@@ -60,7 +60,7 @@ func GetCooldownDuration(userSettings models.UserSettings, notificationType stri
 	}
 }
 
-func GetNotificationChannel(s *discordgo.Session, account models.Account, userSettings models.UserSettings) (string, error) {
+func GetNotificationChannel(s *Discordgo.Session, account models.Account, userSettings models.UserSettings) (string, error) {
 	if userSettings.NotificationType == "dm" {
 		channel, err := s.UserChannelCreate(account.UserID)
 		if err != nil {
@@ -84,7 +84,7 @@ func FormatDuration(d time.Duration) string {
 	return fmt.Sprintf("%dm", minutes)
 }
 
-func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64) {
+func CheckAndNotifyBalance(s *Discordgo.Session, userID string, balance float64) {
 	userSettings, err := GetUserSettings(userID)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to get user settings for balance check: %s", userID)
@@ -107,12 +107,12 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 
 	threshold := thresholds[userSettings.PreferredCaptchaProvider]
 	if balance < threshold {
-		embed := &discordgo.MessageEmbed{
+		embed := &Discordgo.MessageEmbed{
 			Title: fmt.Sprintf("Low %s Balance Alert", userSettings.PreferredCaptchaProvider),
 			Description: fmt.Sprintf("Your %s balance is currently %.2f points, which is below the recommended threshold of %.2f points.",
 				userSettings.PreferredCaptchaProvider, balance, threshold),
 			Color: 0xFFA500,
-			Fields: []*discordgo.MessageEmbedField{
+			Fields: []*Discordgo.MessageEmbedField{
 				{
 					Name: "Action Required",
 					Value: fmt.Sprintf("Please recharge your %s balance to ensure uninterrupted service for your account checks.",
@@ -152,7 +152,7 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 	}
 }
 
-func ScheduleBalanceChecks(s *discordgo.Session) {
+func ScheduleBalanceChecks(s *Discordgo.Session) {
 	ticker := time.NewTicker(6 * time.Hour)
 	defer ticker.Stop()
 
@@ -209,7 +209,7 @@ func ScheduleBalanceChecks(s *discordgo.Session) {
 	}
 }
 
-func DisableUserCaptcha(s *discordgo.Session, userID string, reason string) error {
+func DisableUserCaptcha(s *Discordgo.Session, userID string, reason string) error {
 	var settings models.UserSettings
 	if err := database.DB.Where("user_id = ?", userID).First(&settings).Error; err != nil {
 		return err
@@ -233,7 +233,7 @@ func DisableUserCaptcha(s *discordgo.Session, userID string, reason string) erro
 		return err
 	}
 
-	embed := &discordgo.MessageEmbed{
+	embed := &Discordgo.MessageEmbed{
 		Title: "Captcha Service Configuration Update",
 		Description: fmt.Sprintf("Your captcha service configuration has been updated. Reason: %s\n\n"+
 			"Current available services: %s\n"+
@@ -266,7 +266,7 @@ func getEnabledServicesString() string {
 	return strings.Join(enabledServices, ", ")
 }
 
-func SendNotification(s *discordgo.Session, account models.Account, embed *discordgo.MessageEmbed, content, notificationType string) error {
+func SendNotification(s *Discordgo.Session, account models.Account, embed *Discordgo.MessageEmbed, content, notificationType string) error {
 	if account.IsCheckDisabled {
 		logger.Log.Infof("Skipping notification for disabled account %s", account.Title)
 		return nil
@@ -304,7 +304,7 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 		return fmt.Errorf("failed to get notification channel: %w", err)
 	}
 
-	_, err = s.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
+	_, err = s.ChannelMessageSendComplex(channelID, &Discordgo.MessageSend{
 		Embed:   embed,
 		Content: content,
 	})
@@ -327,7 +327,7 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 	return nil
 }
 
-func NotifyAdminWithCooldown(s *discordgo.Session, message string, cooldownDuration time.Duration) {
+func NotifyAdminWithCooldown(s *Discordgo.Session, message string, cooldownDuration time.Duration) {
 	webserver.NotificationMutex.Lock()
 	defer webserver.NotificationMutex.Unlock()
 
@@ -342,7 +342,7 @@ func NotifyAdminWithCooldown(s *discordgo.Session, message string, cooldownDurat
 	}
 }
 
-func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
+func SendGlobalAnnouncement(s *Discordgo.Session, userID string) error {
 	var userSettings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings)
 	if result.Error != nil {
@@ -375,7 +375,7 @@ func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 	return nil
 }
 
-func SendAnnouncementToAllUsers(s *discordgo.Session) error {
+func SendAnnouncementToAllUsers(s *Discordgo.Session) error {
 	var users []models.UserSettings
 	if err := database.DB.Find(&users).Error; err != nil {
 		logger.Log.WithError(err).Error("Error fetching all users")
@@ -391,8 +391,8 @@ func SendAnnouncementToAllUsers(s *discordgo.Session) error {
 	return nil
 }
 
-func NotifyUserAboutDisabledAccount(s *discordgo.Session, account models.Account, reason string) {
-	embed := &discordgo.MessageEmbed{
+func NotifyUserAboutDisabledAccount(s *Discordgo.Session, account models.Account, reason string) {
+	embed := &Discordgo.MessageEmbed{
 		Title: "Account Disabled",
 		Description: fmt.Sprintf("Your account '%s' has been disabled. Reason: %s\n\n"+
 			"To re-enable monitoring, please address the issue and use the /togglecheck command to re-enable your account.", account.Title, reason),
@@ -406,7 +406,7 @@ func NotifyUserAboutDisabledAccount(s *discordgo.Session, account models.Account
 	}
 }
 
-func NotifyCookieExpiringSoon(s *discordgo.Session, accounts []models.Account) error {
+func NotifyCookieExpiringSoon(s *Discordgo.Session, accounts []models.Account) error {
 	if len(accounts) == 0 {
 		return nil
 	}
@@ -414,7 +414,7 @@ func NotifyCookieExpiringSoon(s *discordgo.Session, accounts []models.Account) e
 	userID := accounts[0].UserID
 	logger.Log.Infof("Sending cookie expiration warning for user %s", userID)
 
-	var embedFields []*discordgo.MessageEmbedField
+	var embedFields []*Discordgo.MessageEmbedField
 
 	for _, account := range accounts {
 		timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
@@ -422,14 +422,14 @@ func NotifyCookieExpiringSoon(s *discordgo.Session, accounts []models.Account) e
 			logger.Log.WithError(err).Errorf("Error checking SSO cookie expiration for account %s", account.Title)
 			continue
 		}
-		embedFields = append(embedFields, &discordgo.MessageEmbedField{
+		embedFields = append(embedFields, &Discordgo.MessageEmbedField{
 			Name:   account.Title,
 			Value:  fmt.Sprintf("Cookie expires in %s", FormatDuration(timeUntilExpiration)),
 			Inline: false,
 		})
 	}
 
-	embed := &discordgo.MessageEmbed{
+	embed := &Discordgo.MessageEmbed{
 		Title:       "SSO Cookie Expiration Warning",
 		Description: "The following accounts have SSO cookies that will expire soon:",
 		Color:       0xFFA500,
@@ -485,19 +485,19 @@ func UpdateNotificationTimestamp(userID string, notificationType string) error {
 	return database.DB.Save(&settings).Error
 }
 
-func sendConsolidatedCookieExpirationWarning(s *discordgo.Session, userID string, expiringAccounts []models.Account, userSettings models.UserSettings) {
-	var embedFields []*discordgo.MessageEmbedField
+func sendConsolidatedCookieExpirationWarning(s *Discordgo.Session, userID string, expiringAccounts []models.Account, userSettings models.UserSettings) {
+	var embedFields []*Discordgo.MessageEmbedField
 
 	for _, account := range expiringAccounts {
 		timeUntilExpiration, _ := CheckSSOCookieExpiration(account.SSOCookieExpiration)
-		embedFields = append(embedFields, &discordgo.MessageEmbedField{
+		embedFields = append(embedFields, &Discordgo.MessageEmbedField{
 			Name:   account.Title,
 			Value:  fmt.Sprintf("Cookie expires in %s", FormatDuration(timeUntilExpiration)),
 			Inline: false,
 		})
 	}
 
-	embed := &discordgo.MessageEmbed{
+	embed := &Discordgo.MessageEmbed{
 		Title:       "SSO Cookie Expiration Warning",
 		Description: "The following accounts have SSO cookies that will expire soon:",
 		Color:       0xFFA500, // Orange color for warning
@@ -516,7 +516,7 @@ func sendConsolidatedCookieExpirationWarning(s *discordgo.Session, userID string
 	}
 }
 
-func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettings models.UserSettings, accounts []models.Account) {
+func SendConsolidatedDailyUpdate(s *Discordgo.Session, userID string, userSettings models.UserSettings, accounts []models.Account) {
 	if len(accounts) == 0 {
 		return
 	}
@@ -527,36 +527,60 @@ func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettin
 		return
 	}
 
-	var embedFields []*discordgo.MessageEmbedField
-
+	accountsByStatus := make(map[models.Status][]models.Account)
 	for _, account := range accounts {
-		var description string
-		if account.IsExpiredCookie {
-			description = "SSO cookie has expired. Please update using /updateaccount command."
-		} else {
-			timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
-			if err != nil {
-				description = "Error checking SSO cookie expiration. Please check manually."
-			} else if timeUntilExpiration > 0 {
-				description = fmt.Sprintf("Status: %s. Cookie expires in %s.", account.LastStatus, FormatExpirationTime(account.SSOCookieExpiration))
-			} else {
-				description = "SSO cookie has expired. Please update using /updateaccount command."
-			}
-		}
-
-		embedFields = append(embedFields, &discordgo.MessageEmbedField{
-			Name:   account.Title,
-			Value:  description,
-			Inline: false,
-		})
+		accountsByStatus[account.LastStatus] = append(accountsByStatus[account.LastStatus], account)
 	}
 
-	embed := &discordgo.MessageEmbed{
-		Title:       fmt.Sprintf("%.2f Hour Update - Multiple Accounts", userSettings.NotificationInterval),
-		Description: "Here's an update on your monitored accounts:",
+	var embedFields []*Discordgo.MessageEmbedField
+
+	embedFields = append(embedFields, &Discordgo.MessageEmbedField{
+		Name: "Summary",
+		Value: fmt.Sprintf("Total Accounts: %d\nGood Standing: %d\nBanned: %d\nUnder Review: %d",
+			len(accounts),
+			len(accountsByStatus[models.StatusGood]),
+			len(accountsByStatus[models.StatusPermaban])+len(accountsByStatus[models.StatusTempban]),
+			len(accountsByStatus[models.StatusShadowban])),
+		Inline: false,
+	})
+
+	for status, statusAccounts := range accountsByStatus {
+		var description strings.Builder
+		for _, account := range statusAccounts {
+			if account.IsExpiredCookie {
+				description.WriteString(fmt.Sprintf("📛 %s: Cookie expired\n", account.Title))
+				continue
+			}
+
+			timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
+			if err != nil {
+				description.WriteString(fmt.Sprintf("❌ %s: Error checking expiration\n", account.Title))
+				continue
+			}
+
+			icon := getStatusIcon(status)
+			description.WriteString(fmt.Sprintf("%s %s: %s\n", icon, account.Title,
+				formatAccountStatus(account, status, timeUntilExpiration)))
+		}
+
+		if description.Len() > 0 {
+			embedFields = append(embedFields, &Discordgo.MessageEmbedField{
+				Name:   fmt.Sprintf("%s Accounts", strings.Title(string(status))),
+				Value:  description.String(),
+				Inline: false,
+			})
+		}
+	}
+
+	embed := &Discordgo.MessageEmbed{
+		Title:       fmt.Sprintf("%.2f Hour Update - Account Status Report", userSettings.NotificationInterval),
+		Description: "Here's a consolidated update on your monitored accounts:",
 		Color:       0x00ff00,
 		Fields:      embedFields,
 		Timestamp:   time.Now().Format(time.RFC3339),
+		Footer: &Discordgo.MessageEmbedFooter{
+			Text: "Use /checknow to check any account immediately",
+		},
 	}
 
 	err = SendNotification(s, accounts[0], embed, "", "daily_update")
@@ -568,9 +592,11 @@ func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettin
 			logger.Log.WithError(err).Errorf("Failed to update LastDailyUpdateNotification for user %s", userID)
 		}
 	}
+
+	checkAccountsNeedingAttention(s, accounts, userSettings)
 }
 
-func notifyUserOfCheckError(s *discordgo.Session, account models.Account, err error) {
+func notifyUserOfCheckError(s *Discordgo.Session, account models.Account, err error) {
 	canSend, checkErr := CheckNotificationCooldown(account.UserID, "error", time.Hour)
 	if checkErr != nil {
 		logger.Log.WithError(checkErr).Errorf("Failed to check error notification cooldown for user %s", account.UserID)
@@ -590,7 +616,7 @@ func notifyUserOfCheckError(s *discordgo.Session, account models.Account, err er
 			return
 		}
 
-		embed := &discordgo.MessageEmbed{
+		embed := &Discordgo.MessageEmbed{
 			Title: "Critical Account Check Error",
 			Description: fmt.Sprintf("There was a critical error checking your account '%s'. "+
 				"The bot developer has been notified and will investigate the issue.", account.Title),
@@ -623,4 +649,76 @@ func isCriticalError(err error) bool {
 		}
 	}
 	return false
+}
+
+// TODO: change emojies to custom application emojis
+func getStatusIcon(status models.Status) string {
+	switch status {
+	case models.StatusGood:
+		return "✅"
+	case models.StatusPermaban:
+		return "🚫"
+	case models.StatusShadowban:
+		return "👁️"
+	case models.StatusTempban:
+		return "⏳"
+	default:
+		return "❓"
+	}
+}
+
+func formatAccountStatus(account models.Account, status models.Status, timeUntilExpiration time.Duration) string {
+	switch status {
+	case models.StatusGood:
+		return fmt.Sprintf("Good standing (Expires in %s)", FormatDuration(timeUntilExpiration))
+	case models.StatusPermaban:
+		return "Permanently banned"
+	case models.StatusShadowban:
+		return "Under review"
+	case models.StatusTempban:
+		return fmt.Sprintf("Temporarily banned (%s remaining)", account.TempBanDuration)
+	default:
+		return "Unknown status"
+	}
+}
+
+func getNotificationType(status models.Status) string {
+	switch status {
+	case models.StatusPermaban:
+		return "permaban"
+	case models.StatusShadowban:
+		return "shadowban"
+	case models.StatusTempban:
+		return "tempban"
+	default:
+		return "status_change"
+	}
+}
+
+func checkAccountsNeedingAttention(s *Discordgo.Session, accounts []models.Account, userSettings models.UserSettings) {
+	var expiringAccounts []models.Account
+	var errorAccounts []models.Account
+
+	for _, account := range accounts {
+		if !account.IsExpiredCookie {
+			timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
+			if err != nil {
+				errorAccounts = append(errorAccounts, account)
+			} else if timeUntilExpiration <= time.Duration(cookieExpirationWarning)*time.Hour {
+				expiringAccounts = append(expiringAccounts, account)
+			}
+		}
+
+		if account.ConsecutiveErrors >= maxConsecutiveErrors {
+			errorAccounts = append(errorAccounts, account)
+		}
+	}
+
+	if len(expiringAccounts) > 0 {
+		NotifyCookieExpiringSoon(s, expiringAccounts)
+	}
+
+	if len(errorAccounts) > 0 {
+		notifyAccountErrors(s, errorAccounts, userSettings)
+	}
 }
