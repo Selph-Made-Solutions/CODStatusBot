@@ -253,7 +253,7 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 
 	embed := &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%s - %s", account.Title, EmbedTitleFromStatus(newStatus)),
-		Description: getStatusDescription(newStatus, account.Title, ban),
+		Description: GetStatusDescription(newStatus, account.Title, ban),
 		Color:       GetColorForStatus(newStatus, account.IsExpiredCookie, account.IsCheckDisabled),
 		Timestamp:   now.Format(time.RFC3339),
 		Fields:      getStatusFields(account, newStatus),
