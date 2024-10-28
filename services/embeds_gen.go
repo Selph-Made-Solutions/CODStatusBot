@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bradselph/CODStatusBot/discordgo"
 	"github.com/bradselph/CODStatusBot/models"
+	"github.com/bwmarrin/discordgo"
 )
 
 func createTempBanLiftedEmbed(account models.Account) *discordgo.MessageEmbed {
