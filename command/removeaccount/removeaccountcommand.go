@@ -183,6 +183,7 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	}
 }
 
+/*
 func getUserID(i *discordgo.InteractionCreate) (string, error) {
 	if i.Member != nil && i.Member.User != nil {
 		return i.Member.User.ID, nil
@@ -192,3 +193,4 @@ func getUserID(i *discordgo.InteractionCreate) (string, error) {
 	}
 	return "", fmt.Errorf("unable to determine user ID")
 }
+*/
