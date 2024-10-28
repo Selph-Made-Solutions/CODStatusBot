@@ -422,6 +422,10 @@ func CheckAccountWithContext(ctx context.Context, ssoCookie string, userID strin
 		return models.StatusInvalidCookie, fmt.Errorf("empty SSO cookie")
 	}
 
+	if err := ctx.Err(); err != nil {
+		return models.StatusUnknown, fmt.Errorf("context cancelled before starting: %w", err)
+	}
+
 	userSettings, err := GetUserSettings(userID)
 	if err != nil {
 		return models.StatusUnknown, fmt.Errorf("failed to get user settings: %w", err)
@@ -448,21 +452,20 @@ func CheckAccountWithContext(ctx context.Context, ssoCookie string, userID strin
 		return models.StatusUnknown, fmt.Errorf("failed to create captcha solver: %w", err)
 	}
 
-	var gRecaptchaResponse string
-	select {
-	case <-ctx.Done():
-		return models.StatusUnknown, fmt.Errorf("context cancelled while solving captcha")
-	default:
-		gRecaptchaResponse, err = solver.SolveReCaptchaV2(recaptchaSiteKey, recaptchaURL)
-		if err != nil {
-			if strings.Contains(err.Error(), "insufficient balance") {
-				if err := DisableUserCaptcha(nil, userID, "Insufficient balance"); err != nil {
-					logger.Log.WithError(err).Error("Failed to disable user captcha service")
-				}
-				return models.StatusUnknown, fmt.Errorf("insufficient captcha balance")
+	// Directly solve the captcha
+	gRecaptchaResponse, err := solver.SolveReCaptchaV2(recaptchaSiteKey, recaptchaURL)
+	if err != nil {
+		if strings.Contains(err.Error(), "insufficient balance") {
+			if err := DisableUserCaptcha(nil, userID, "Insufficient balance"); err != nil {
+				logger.Log.WithError(err).Error("Failed to disable user captcha service")
 			}
-			return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %w", err)
+			return models.StatusUnknown, fmt.Errorf("insufficient captcha balance")
 		}
+		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %w", err)
+	}
+
+	if err := ctx.Err(); err != nil {
+		return models.StatusUnknown, fmt.Errorf("context cancelled after solving captcha: %w", err)
 	}
 
 	logger.Log.Info("Successfully received reCAPTCHA response")
