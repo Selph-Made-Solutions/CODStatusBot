@@ -216,16 +216,36 @@ func processUserAccountBatch(s *discordgo.Session, userID string, accounts []mod
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-
-	defer cancel()
+	var wg sync.WaitGroup
+	errorChan := make(chan error, len(accountsToUpdate))
 
 	for _, account := range accountsToUpdate {
-		checkSemaphore <- struct{}{}
+		wg.Add(1)
 		go func(acc models.Account) {
+			defer wg.Done()
+
+			checkSemaphore <- struct{}{}
 			defer func() { <-checkSemaphore }()
-			processAccountCheck(ctx, s, acc, userSettings)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+			defer cancel()
+
+			logger.Log.WithFields(logrus.Fields{
+				"account": acc.Title,
+				"userId":  acc.UserID,
+			}).Info("Starting account check")
+
+			if err := processAccountCheck(ctx, s, acc, userSettings); err != nil {
+				errorChan <- fmt.Errorf("error checking account %s: %w", acc.Title, err)
+			}
 		}(account)
+	}
+
+	wg.Wait()
+	close(errorChan)
+
+	for err := range errorChan {
+		logger.Log.Error(err)
 	}
 
 	if len(dailyUpdateAccounts) > 0 {
@@ -266,40 +286,46 @@ func notifyUserOfServiceIssue(s *discordgo.Session, userID string, err error) {
 	}
 }
 
-func processAccountCheck(ctx context.Context, s *discordgo.Session, account models.Account, userSettings models.UserSettings) {
-	logger.Log.WithFields(logrus.Fields{
-		"account": account.Title,
-		"userId":  account.UserID,
-	}).Info("Starting account check")
-
+func processAccountCheck(ctx context.Context, s *discordgo.Session, account models.Account, userSettings models.UserSettings) error {
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
-		err := checkAccountWithContext(ctx, s, account, userSettings)
-		if err != nil {
-			if ctx.Err() != nil {
+		select {
+		case <-ctx.Done():
+			logger.Log.WithFields(logrus.Fields{
+				"account": account.Title,
+				"attempt": attempt,
+				"error":   ctx.Err(),
+			}).Info("Account check cancelled by context")
+			return fmt.Errorf("context cancelled during attempt %d: %w", attempt, ctx.Err())
+		default:
+			status, err := CheckAccountWithContext(ctx, account.SSOCookie, account.UserID, "")
+			if err != nil {
+				if attempt == maxRetryAttempts {
+					handleCheckFailure(s, account, err)
+					return err
+				}
 				logger.Log.WithFields(logrus.Fields{
 					"account": account.Title,
 					"attempt": attempt,
 					"error":   err,
-				}).Info("Account check cancelled by context")
-				return
+				}).Info("Retrying account check after error")
+				time.Sleep(retryDelay)
+				continue
 			}
 
-			if attempt == maxRetryAttempts {
-				handleCheckFailure(s, account, err)
-				return
+			DBMutex.Lock()
+			account.LastStatus = status
+			account.LastCheck = time.Now().Unix()
+			account.ConsecutiveErrors = 0
+			if err := database.DB.Save(&account).Error; err != nil {
+				DBMutex.Unlock()
+				return fmt.Errorf("failed to update account status: %w", err)
 			}
+			DBMutex.Unlock()
 
-			logger.Log.WithFields(logrus.Fields{
-				"account": account.Title,
-				"attempt": attempt,
-				"error":   err,
-			}).Info("Retrying account check after error")
-
-			time.Sleep(retryDelay)
-			continue
+			return nil
 		}
-		return
 	}
+	return fmt.Errorf("max retries exceeded for account %s", account.Title)
 }
 
 func checkAccountWithContext(ctx context.Context, s *discordgo.Session, account models.Account, userSettings models.UserSettings) error {
