@@ -1,7 +1,6 @@
 package services
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,7 +35,9 @@ func VerifySSOCookie(ssoCookie string) bool {
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 60 * time.Second,
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error sending verification request")
@@ -59,7 +60,7 @@ func VerifySSOCookie(ssoCookie string) bool {
 		logger.Log.WithError(err).Error("Error reading verification response body")
 		return false
 	}
-	if len(body) == 0 { // Check if the response body is empty
+	if len(body) == 0 {
 		logger.Log.Error("Invalid SSOCookie, response body is empty")
 		return false
 	}
@@ -87,7 +88,7 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 			userSettings.PreferredCaptchaProvider = "2captcha"
 			database.DB.Save(&userSettings)
 		} else {
-			return models.StatusUnknown, fmt.Errorf("preferred captcha service %s is disabled and no fallback available", userSettings.PreferredCaptchaProvider)
+			return models.StatusUnknown, fmt.Errorf("no captcha services are currently enabled")
 		}
 	}
 
@@ -115,7 +116,6 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 	req, err := http.NewRequest("GET", checkRequest, nil)
 	if err != nil {
 		return models.StatusUnknown, fmt.Errorf("failed to create HTTP request: %w", err)
-
 	}
 
 	headers := GenerateHeaders(ssoCookie)
@@ -265,17 +265,14 @@ func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 60 * time.Second,
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, 0, 0, 0, errors.New("failed to send HTTP request to check account age")
 	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-
-		}
-	}(resp.Body)
+	defer resp.Body.Close()
 
 	var data struct {
 		Created string `json:"created"`
@@ -292,11 +289,9 @@ func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 		return 0, 0, 0, 0, errors.New("failed to parse created date in check account age request")
 	}
 
-	// Convert to UTC and get epoch timestamp
 	createdUTC := created.UTC()
 	createdEpoch := createdUTC.Unix()
 
-	// Calculate age
 	now := time.Now().UTC()
 	age := now.Sub(createdUTC)
 	years := int(age.Hours() / 24 / 365.25)
@@ -325,12 +320,7 @@ func CheckVIPStatus(ssoCookie string) (bool, error) {
 		return false, fmt.Errorf("failed to send HTTP request to check VIP status: %w", err)
 	}
 
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			logger.Log.Errorf("Failed to close response body: %v", err)
-		}
-	}(resp.Body)
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return false, fmt.Errorf("invalid response status code: %d", resp.StatusCode)
@@ -415,6 +405,7 @@ func RedeemCode(ssoCookie, code string) (string, error) {
 }
 */
 
+/*
 func CheckAccountWithContext(ctx context.Context, ssoCookie string, userID string, captchaAPIKey string) (models.Status, error) {
 	logger.Log.Info("Starting CheckAccountWithContext function")
 
@@ -573,3 +564,4 @@ func CheckAccountWithContext(ctx context.Context, ssoCookie string, userID strin
 
 	return models.StatusUnknown, nil
 }
+*/
