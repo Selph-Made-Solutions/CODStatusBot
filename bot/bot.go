@@ -11,6 +11,7 @@ import (
 	"github.com/bradselph/CODStatusBot/command/addaccount"
 	"github.com/bradselph/CODStatusBot/command/checknow"
 	"github.com/bradselph/CODStatusBot/command/feedback"
+	"github.com/bradselph/CODStatusBot/command/globalannouncement"
 	"github.com/bradselph/CODStatusBot/command/listaccounts"
 	"github.com/bradselph/CODStatusBot/command/removeaccount"
 	"github.com/bradselph/CODStatusBot/command/setcaptchaservice"
@@ -78,6 +79,8 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		updateaccount.HandleModalSubmit(s, i)
 	case customID == "set_check_interval_modal":
 		setcheckinterval.HandleModalSubmit(s, i)
+	case customID == "global_announcement_modal":
+		globalannouncement.HandleModalSubmit(s, i)
 	default:
 		logger.Log.WithField("customID", customID).Error("Unknown modal submission")
 	}
