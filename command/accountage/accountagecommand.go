@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/bradselph/CODStatusBot/database"
-	"github.com/bradselph/CODStatusBot/discordgo"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bradselph/CODStatusBot/services"
+	"github.com/bwmarrin/discordgo"
 )
 
 func CommandAccountAge(s *discordgo.Session, i *discordgo.InteractionCreate) {
