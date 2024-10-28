@@ -354,6 +354,7 @@ func CheckVIPStatus(ssoCookie string) (bool, error) {
 	return data.VIP, nil
 }
 
+/*
 func RedeemCode(ssoCookie, code string) (string, error) {
 	logger.Log.Infof("Attempting to redeem code: %s", code)
 
@@ -412,6 +413,7 @@ func RedeemCode(ssoCookie, code string) (string, error) {
 	logger.Log.Warnf("Unexpected response body: %s", bodyStr)
 	return "", fmt.Errorf("failed to redeem code: unexpected response")
 }
+*/
 
 func CheckAccountWithContext(ctx context.Context, ssoCookie string, userID string, captchaAPIKey string) (models.Status, error) {
 	logger.Log.Info("Starting CheckAccountWithContext function")
