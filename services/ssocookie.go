@@ -12,10 +12,8 @@ import (
 )
 
 func DecodeSSOCookie(encodedStr string) (int64, error) {
-	// Remove any potential whitespace or newline characters
 	encodedStr = strings.TrimSpace(encodedStr)
 
-	// Add padding if necessary
 	if len(encodedStr)%4 != 0 {
 		encodedStr += strings.Repeat("=", 4-len(encodedStr)%4)
 	}
@@ -41,12 +39,10 @@ func DecodeSSOCookie(encodedStr string) (int64, error) {
 		return 0, fmt.Errorf("failed to parse expiration timestamp: %w", err)
 	}
 
-	// Convert milliseconds to seconds if necessary
 	if len(expirationStr) > 10 {
 		expirationTimestamp /= 1000
 	}
 
-	// Check if the timestamp is in the past
 	if expirationTimestamp < time.Now().Unix() {
 		return 0, errors.New("SSO cookie has already expired")
 	}
