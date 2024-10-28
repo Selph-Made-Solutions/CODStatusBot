@@ -26,9 +26,10 @@ type NotificationConfig struct {
 const (
 	maxRetryAttempts    = 3
 	retryDelay          = 5 * time.Second
-	maxConcurrentChecks = 5
 	errorCooldownPeriod = 15 * time.Minute
-	checkTimeout        = 30 * time.Second
+	//checkTimeout        = 30 * time.Second
+	//maxConcurrentChecks = 5
+
 )
 
 const (
@@ -38,8 +39,6 @@ const (
 	userErrorNotificationCooldown = 24 * time.Hour
 	balanceNotificationInterval   = 24 * time.Hour
 )
-
-var checkSemaphore = make(chan struct{}, maxConcurrentChecks)
 
 var (
 	checkInterval               float64
@@ -137,9 +136,47 @@ func CheckAccounts(s *discordgo.Session) {
 	}
 
 	for userID, userAccounts := range accountsByUser {
-		go func(uid string, accounts []models.Account) {
-			processUserAccountBatch(s, uid, accounts)
-		}(userID, userAccounts)
+		processUserAccounts(s, userID, userAccounts)
+	}
+}
+
+func processUserAccounts(s *discordgo.Session, userID string, accounts []models.Account) {
+	userSettings, err := GetUserSettings(userID)
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
+		return
+	}
+
+	for _, account := range accounts {
+		if !shouldCheckAccount(account, userSettings, time.Now()) {
+			continue
+		}
+
+		CheckSingleAccount(s, account, "")
+
+		time.Sleep(time.Second * 2)
+	}
+
+	var dailyUpdateAccounts []models.Account
+	var expiringAccounts []models.Account
+	now := time.Now()
+
+	for _, account := range accounts {
+		if shouldIncludeInDailyUpdate(account, userSettings, now) {
+			dailyUpdateAccounts = append(dailyUpdateAccounts, account)
+		}
+
+		if shouldCheckExpiration(account, now) {
+			expiringAccounts = append(expiringAccounts, account)
+		}
+	}
+
+	if len(dailyUpdateAccounts) > 0 {
+		SendConsolidatedDailyUpdate(s, userID, userSettings, dailyUpdateAccounts)
+	}
+
+	if len(expiringAccounts) > 0 {
+		NotifyCookieExpiringSoon(s, expiringAccounts)
 	}
 }
 
