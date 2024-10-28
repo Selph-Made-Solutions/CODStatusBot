@@ -154,6 +154,7 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 	return "", 0, fmt.Errorf("no valid API key found for provider %s", settings.PreferredCaptchaProvider)
 }
 
+/*
 func SetUserCaptchaKey(userID string, apiKey string, provider string) error {
 	if !isValidUserID(userID) {
 		logger.Log.Error("Invalid userID provided")
@@ -193,7 +194,6 @@ func SetUserCaptchaKey(userID string, apiKey string, provider string) error {
 
 		logger.Log.Infof("Setting %s key for user %s", provider, userID)
 	} else {
-		// Reset to default settings when API key is removed
 		settings.EZCaptchaAPIKey = ""
 		settings.TwoCaptchaAPIKey = ""
 		settings.PreferredCaptchaProvider = "ezcaptcha"
@@ -213,6 +213,7 @@ func SetUserCaptchaKey(userID string, apiKey string, provider string) error {
 	logger.Log.Infof("Successfully updated captcha key and settings for user %s", userID)
 	return nil
 }
+*/
 
 func GetCaptchaSolver(userID string) (CaptchaSolver, error) {
 	settings, err := GetUserSettings(userID)
@@ -228,8 +229,8 @@ func GetCaptchaSolver(userID string) (CaptchaSolver, error) {
 	return NewCaptchaSolver(apiKey, settings.PreferredCaptchaProvider)
 }
 
+/*
 func isValidUserID(userID string) bool {
-	// Check if userID consists of only digits (Discord user IDs are numeric).
 	if len(userID) < 17 || len(userID) > 20 {
 		return false
 	}
@@ -240,6 +241,7 @@ func isValidUserID(userID string) bool {
 	}
 	return true
 }
+*/
 
 func GetDefaultSettings() (models.UserSettings, error) {
 	return defaultSettings, nil
@@ -270,44 +272,43 @@ func RemoveCaptchaKey(userID string) error {
 	return nil
 }
 
-func UpdateUserSettings(userID string, newSettings models.UserSettings) error {
-	var settings models.UserSettings
-	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
-	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error updating user settings")
-		return result.Error
-	}
-
-	// User can only update settings if they have a valid API key.
-	if settings.EZCaptchaAPIKey != "" || settings.TwoCaptchaAPIKey != "" {
-		if newSettings.CheckInterval != 0 {
-			settings.CheckInterval = newSettings.CheckInterval
+/*
+	func UpdateUserSettings(userID string, newSettings models.UserSettings) error {
+		var settings models.UserSettings
+		result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
+		if result.Error != nil {
+			logger.Log.WithError(result.Error).Error("Error updating user settings")
+			return result.Error
 		}
-		if newSettings.NotificationInterval != 0 {
-			settings.NotificationInterval = newSettings.NotificationInterval
+
+		if settings.EZCaptchaAPIKey != "" || settings.TwoCaptchaAPIKey != "" {
+			if newSettings.CheckInterval != 0 {
+				settings.CheckInterval = newSettings.CheckInterval
+			}
+			if newSettings.NotificationInterval != 0 {
+				settings.NotificationInterval = newSettings.NotificationInterval
+			}
+			if newSettings.CooldownDuration != 0 {
+				settings.CooldownDuration = newSettings.CooldownDuration
+			}
+			if newSettings.StatusChangeCooldown != 0 {
+				settings.StatusChangeCooldown = newSettings.StatusChangeCooldown
+			}
 		}
-		if newSettings.CooldownDuration != 0 {
-			settings.CooldownDuration = newSettings.CooldownDuration
+
+		if newSettings.NotificationType != "" {
+			settings.NotificationType = newSettings.NotificationType
 		}
-		if newSettings.StatusChangeCooldown != 0 {
-			settings.StatusChangeCooldown = newSettings.StatusChangeCooldown
+
+		if err := database.DB.Save(&settings).Error; err != nil {
+			logger.Log.WithError(err).Error("Error updating user settings")
+			return err
 		}
+
+		logger.Log.Infof("Updated settings for user: %s", userID)
+		return nil
 	}
-
-	// Allow updating notification type regardless of API key
-	if newSettings.NotificationType != "" {
-		settings.NotificationType = newSettings.NotificationType
-	}
-
-	if err := database.DB.Save(&settings).Error; err != nil {
-		logger.Log.WithError(err).Error("Error updating user settings")
-		return err
-	}
-
-	logger.Log.Infof("Updated settings for user: %s", userID)
-	return nil
-}
-
+*/
 func CheckCaptchaKeyValidity(captchaKey string) (bool, float64, error) {
 	url := "https://api.ez-captcha.com/getBalance"
 	payload := map[string]string{
@@ -352,10 +353,12 @@ func CheckCaptchaKeyValidity(captchaKey string) (bool, float64, error) {
 	return true, result.Balance, nil
 }
 
+/*
 func ValidateEZCaptchaKey(apiKey string) (bool, float64, error) {
 	return CheckCaptchaKeyValidity(apiKey)
 }
-
+*/
+/*
 func ValidateTwoCaptchaKey(apiKey string) (bool, float64, error) {
 	return CheckCaptchaKeyValidity(apiKey)
 	//	client := api2captcha.NewClient(apiKey)
@@ -365,3 +368,4 @@ func ValidateTwoCaptchaKey(apiKey string) (bool, float64, error) {
 	//	}
 	//	return true, balance, nil
 }
+*/
