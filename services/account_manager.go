@@ -267,31 +267,38 @@ func notifyUserOfServiceIssue(s *discordgo.Session, userID string, err error) {
 }
 
 func processAccountCheck(ctx context.Context, s *discordgo.Session, account models.Account, userSettings models.UserSettings) {
+	logger.Log.WithFields(logrus.Fields{
+		"account": account.Title,
+		"userId":  account.UserID,
+	}).Info("Starting account check")
+
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
-		select {
-		case <-ctx.Done():
-			logger.Log.WithFields(logrus.Fields{
-				"account": account.Title,
-				"attempt": attempt,
-				"error":   ctx.Err(),
-			}).Warn("Account check cancelled")
-			return
-		default:
-			if err := checkAccountWithContext(ctx, s, account, userSettings); err != nil {
-				if attempt == maxRetryAttempts {
-					handleCheckFailure(s, account, err)
-					return
-				}
+		err := checkAccountWithContext(ctx, s, account, userSettings)
+		if err != nil {
+			if ctx.Err() != nil {
 				logger.Log.WithFields(logrus.Fields{
 					"account": account.Title,
 					"attempt": attempt,
 					"error":   err,
-				}).Info("Retrying account check")
-				time.Sleep(retryDelay)
-				continue
+				}).Info("Account check cancelled by context")
+				return
 			}
-			return
+
+			if attempt == maxRetryAttempts {
+				handleCheckFailure(s, account, err)
+				return
+			}
+
+			logger.Log.WithFields(logrus.Fields{
+				"account": account.Title,
+				"attempt": attempt,
+				"error":   err,
+			}).Info("Retrying account check after error")
+
+			time.Sleep(retryDelay)
+			continue
 		}
+		return
 	}
 }
 
