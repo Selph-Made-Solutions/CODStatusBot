@@ -140,6 +140,7 @@ func CheckAccounts(s *discordgo.Session) {
 	}
 }
 
+/*
 func processUserAccounts(s *discordgo.Session, userID string, accounts []models.Account) {
 	userSettings, err := GetUserSettings(userID)
 	if err != nil {
@@ -147,12 +148,20 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 		return
 	}
 
+	if err := validateUserCaptchaService(userID, userSettings); err != nil {
+		logger.Log.WithError(err).Errorf("Captcha service validation failed for user %s", userID)
+		notifyUserOfServiceIssue(s, userID, err)
+		return
+	}
+
 	for _, account := range accounts {
-		if !shouldCheckAccount(account, userSettings, time.Now()) {
+		if !shouldCheckAccount(account, userSettings) {
 			continue
 		}
 
-		CheckSingleAccount(s, account, "")
+		if err := processAccountCheck(s, account, userSettings); err != nil {
+			logger.Log.WithError(err).Errorf("Error checking account %s: %v", account.Title, err)
+		}
 
 		time.Sleep(time.Second * 2)
 	}
@@ -179,7 +188,7 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 		NotifyCookieExpiringSoon(s, expiringAccounts)
 	}
 }
-
+*/
 /*
 func checkAccountAfterTempBan(s *discordgo.Session, account models.Account) {
 	result, err := CheckAccount(account.SSOCookie, account.UserID, "")
