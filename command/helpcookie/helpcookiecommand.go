@@ -3,7 +3,7 @@ package helpcookie
 import (
 	"github.com/bradselph/CODStatusBot/logger"
 
-	"github.com/bradselph/CODStatusBot/discordgo"
+	"github.com/bwmarrin/discordgo"
 )
 
 func CommandHelpCookie(s *discordgo.Session, i *discordgo.InteractionCreate) {
