@@ -9,6 +9,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+/*
 func createTempBanLiftedEmbed(account models.Account) *discordgo.MessageEmbed {
 	return &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%s - Temporary Ban Lifted", account.Title),
@@ -17,7 +18,8 @@ func createTempBanLiftedEmbed(account models.Account) *discordgo.MessageEmbed {
 		Timestamp:   time.Now().Format(time.RFC3339),
 	}
 }
-
+*/
+/*
 func createTempBanEscalatedEmbed(account models.Account) *discordgo.MessageEmbed {
 	return &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%s - Temporary Ban Escalated", account.Title),
@@ -26,7 +28,8 @@ func createTempBanEscalatedEmbed(account models.Account) *discordgo.MessageEmbed
 		Timestamp:   time.Now().Format(time.RFC3339),
 	}
 }
-
+*/
+/*
 func createTempBanStillActiveEmbed(account models.Account, status models.Status) *discordgo.MessageEmbed {
 	return &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%s - Temporary Ban Update", account.Title),
@@ -35,6 +38,7 @@ func createTempBanStillActiveEmbed(account models.Account, status models.Status)
 		Timestamp:   time.Now().Format(time.RFC3339),
 	}
 }
+*/
 
 func createAnnouncementEmbed() *discordgo.MessageEmbed {
 	return &discordgo.MessageEmbed{
