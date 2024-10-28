@@ -9,7 +9,7 @@ import (
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bradselph/CODStatusBot/services"
 
-	"github.com/bradselph/CODStatusBot/discordgo"
+	"github.com/bwmarrin/discordgo"
 )
 
 func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
