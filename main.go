@@ -12,11 +12,11 @@ import (
 
 	"github.com/bradselph/CODStatusBot/bot"
 	"github.com/bradselph/CODStatusBot/database"
-	"github.com/bradselph/CODStatusBot/discordgo"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bradselph/CODStatusBot/services"
 	"github.com/bradselph/CODStatusBot/webserver"
+	"github.com/bwmarrin/discordgo"
 
 	"github.com/joho/godotenv"
 )
