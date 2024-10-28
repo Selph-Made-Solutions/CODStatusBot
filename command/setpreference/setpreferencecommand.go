@@ -2,9 +2,9 @@ package setpreference
 
 import (
 	"github.com/bradselph/CODStatusBot/database"
-	"github.com/bradselph/CODStatusBot/discordgo"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
+	"github.com/bwmarrin/discordgo"
 )
 
 func CommandSetPreference(s *discordgo.Session, i *discordgo.InteractionCreate) {
