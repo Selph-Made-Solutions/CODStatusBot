@@ -1,7 +1,9 @@
 package services
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -9,9 +11,9 @@ import (
 	"time"
 
 	"github.com/bradselph/CODStatusBot/database"
-	"github.com/bradselph/CODStatusBot/discordgo"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
+	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
 )
 
@@ -228,97 +230,240 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 	}
 }
 
-func CheckAccounts(s *discordgo.Session) {
-	logger.Log.Info("Starting periodic account check")
-	var accounts []models.Account
-	if err := database.DB.Find(&accounts).Error; err != nil {
-		logger.Log.WithError(err).Error("Failed to fetch accounts from the database")
-		return
+func getAffectedGames(ssoCookie string) string {
+	req, err := http.NewRequest("GET", checkURL, nil)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to create request for affected games")
+		return "All Games"
 	}
 
-	accountsByUser := make(map[string][]models.Account)
-	for _, account := range accounts {
-		accountsByUser[account.UserID] = append(accountsByUser[account.UserID], account)
+	headers := GenerateHeaders(ssoCookie)
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 
-	for userID, userAccounts := range accountsByUser {
-		go func(uid string, accounts []models.Account) {
-			userSettings, err := GetUserSettings(uid)
-			if err != nil {
-				logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", uid)
-				return
-			}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
 
-			var accountsToUpdate []models.Account
-			var dailyUpdateAccounts []models.Account
-			now := time.Now()
+	resp, err := client.Do(req)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to get affected games")
+		return "All Games"
+	}
+	defer resp.Body.Close()
 
-			for _, account := range accounts {
-				checkInterval := time.Duration(userSettings.CheckInterval) * time.Minute
-				lastCheck := time.Unix(account.LastCheck, 0)
+	var data struct {
+		Bans []struct {
+			AffectedTitles []string `json:"affectedTitles"`
+		} `json:"bans"`
+	}
 
-				if now.Sub(lastCheck) < checkInterval {
-					logger.Log.Infof("Skipping check for account %s (not due yet)", account.Title)
-					continue
-				}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		logger.Log.WithError(err).Error("Failed to decode affected games response")
+		return "All Games"
+	}
 
-				if account.IsCheckDisabled {
-					logger.Log.Infof("Skipping check for disabled account: %s", account.Title)
-					continue
-				}
+	affectedGames := make(map[string]bool)
+	for _, ban := range data.Bans {
+		for _, title := range ban.AffectedTitles {
+			affectedGames[title] = true
+		}
+	}
 
-				accountsToUpdate = append(accountsToUpdate, account)
+	var games []string
+	for game := range affectedGames {
+		games = append(games, game)
+	}
 
-				if now.Sub(time.Unix(account.LastNotification, 0)).Hours() >= userSettings.NotificationInterval {
-					dailyUpdateAccounts = append(dailyUpdateAccounts, account)
-				}
-			}
+	if len(games) == 0 {
+		return "All Games"
+	}
 
-			for _, account := range accountsToUpdate {
-				var captchaAPIKey string
-				if userSettings.PreferredCaptchaProvider == "2captcha" {
-					captchaAPIKey = userSettings.TwoCaptchaAPIKey
-				} else {
-					captchaAPIKey = userSettings.EZCaptchaAPIKey
-				}
-				status, err := CheckAccount(account.SSOCookie, account.UserID, captchaAPIKey)
+	return strings.Join(games, ", ")
+}
+
+func getStatusFields(account models.Account, status models.Status) []*discordgo.MessageEmbedField {
+	fields := []*discordgo.MessageEmbedField{
+		{
+			Name:   "Account Status",
+			Value:  string(status),
+			Inline: true,
+		},
+		{
+			Name:   "Last Checked",
+			Value:  time.Unix(account.LastCheck, 0).Format(time.RFC1123),
+			Inline: true,
+		},
+	}
+
+	if !account.IsExpiredCookie {
+		timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
+		if err == nil {
+			fields = append(fields, &discordgo.MessageEmbedField{
+				Name:   "Cookie Expires",
+				Value:  FormatDuration(timeUntilExpiration),
+				Inline: true,
+			})
+		}
+	}
+
+	if isVIP, err := CheckVIPStatus(account.SSOCookie); err == nil {
+		vipStatus := "No"
+		if isVIP {
+			vipStatus = "Yes ⭐"
+		}
+		fields = append(fields, &discordgo.MessageEmbedField{
+			Name:   "VIP Status",
+			Value:  vipStatus,
+			Inline: true,
+		})
+	}
+
+	if account.Created > 0 {
+		creationDate := time.Unix(account.Created, 0)
+		accountAge := time.Since(creationDate)
+		years := int(accountAge.Hours() / 24 / 365)
+		months := int(accountAge.Hours()/24/30.44) % 12
+		fields = append(fields, &discordgo.MessageEmbedField{
+			Name:   "Account Age",
+			Value:  fmt.Sprintf("%d years, %d months", years, months),
+			Inline: true,
+		})
+	}
+
+	switch status {
+	case models.StatusPermaban:
+		fields = append(fields, &discordgo.MessageEmbedField{
+			Name:   "Ban Type",
+			Value:  "Permanent",
+			Inline: true,
+		})
+
+	case models.StatusTempban:
+		var latestBan models.Ban
+		if err := database.DB.Where("account_id = ?", account.ID).
+			Order("created_at DESC").
+			First(&latestBan).Error; err == nil {
+
+			fields = append(fields, &discordgo.MessageEmbedField{
+				Name:   "Ban Duration",
+				Value:  latestBan.TempBanDuration,
+				Inline: true,
+			})
+		}
+
+	case models.StatusShadowban:
+		fields = append(fields, &discordgo.MessageEmbedField{
+			Name:   "Review Status",
+			Value:  "Account Under Review",
+			Inline: true,
+		})
+	}
+
+	if account.ConsecutiveErrors > 0 {
+		fields = append(fields, &discordgo.MessageEmbedField{
+			Name:   "Check Errors",
+			Value:  fmt.Sprintf("%d consecutive errors", account.ConsecutiveErrors),
+			Inline: true,
+		})
+	}
+
+	return fields
+}
+
+/*
+	 func CheckAccounts(s *discordgo.Session) {
+		logger.Log.Info("Starting periodic account check")
+		var accounts []models.Account
+		if err := database.DB.Find(&accounts).Error; err != nil {
+			logger.Log.WithError(err).Error("Failed to fetch accounts from the database")
+			return
+		}
+
+		accountsByUser := make(map[string][]models.Account)
+		for _, account := range accounts {
+			accountsByUser[account.UserID] = append(accountsByUser[account.UserID], account)
+		}
+
+		for userID, userAccounts := range accountsByUser {
+			go func(uid string, accounts []models.Account) {
+				userSettings, err := GetUserSettings(uid)
 				if err != nil {
-					logger.Log.WithError(err).Errorf("Error checking account %s", account.Title)
-					NotifyAdminWithCooldown(s, fmt.Sprintf("Error checking account %s: %v", account.Title, err), 5*time.Minute)
-					continue
+					logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", uid)
+					return
 				}
 
-				previousStatus := account.LastStatus
-				account.LastStatus = status
-				account.LastCheck = now.Unix()
-				if err := database.DB.Save(&account).Error; err != nil {
-					logger.Log.WithError(err).Errorf("Failed to update account %s after check", account.Title)
-					continue
+				var accountsToUpdate []models.Account
+				var dailyUpdateAccounts []models.Account
+				now := time.Now()
+
+				for _, account := range accounts {
+					checkInterval := time.Duration(userSettings.CheckInterval) * time.Minute
+					lastCheck := time.Unix(account.LastCheck, 0)
+
+					if now.Sub(lastCheck) < checkInterval {
+						logger.Log.Infof("Skipping check for account %s (not due yet)", account.Title)
+						continue
+					}
+
+					if account.IsCheckDisabled {
+						logger.Log.Infof("Skipping check for disabled account: %s", account.Title)
+						continue
+					}
+
+					accountsToUpdate = append(accountsToUpdate, account)
+
+					if now.Sub(time.Unix(account.LastNotification, 0)).Hours() >= userSettings.NotificationInterval {
+						dailyUpdateAccounts = append(dailyUpdateAccounts, account)
+					}
 				}
 
-				if previousStatus != status {
-					HandleStatusChange(s, account, status, userSettings)
-				}
+				for _, account := range accountsToUpdate {
+					var captchaAPIKey string
+					if userSettings.PreferredCaptchaProvider == "2captcha" {
+						captchaAPIKey = userSettings.TwoCaptchaAPIKey
+					} else {
+						captchaAPIKey = userSettings.EZCaptchaAPIKey
+					}
+					status, err := CheckAccount(account.SSOCookie, account.UserID, captchaAPIKey)
+					if err != nil {
+						logger.Log.WithError(err).Errorf("Error checking account %s", account.Title)
+						NotifyAdminWithCooldown(s, fmt.Sprintf("Error checking account %s: %v", account.Title, err), 5*time.Minute)
+						continue
+					}
 
-				// Check for cookie expiration
-				if !account.IsExpiredCookie {
-					timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
-					if err == nil && timeUntilExpiration > 0 && timeUntilExpiration <= time.Duration(cookieExpirationWarning)*time.Hour {
-						if err := NotifyCookieExpiringSoon(s, []models.Account{account}); err != nil {
-							logger.Log.WithError(err).Errorf("Failed to send cookie expiration notification for account %s", account.Title)
+					previousStatus := account.LastStatus
+					account.LastStatus = status
+					account.LastCheck = now.Unix()
+					if err := database.DB.Save(&account).Error; err != nil {
+						logger.Log.WithError(err).Errorf("Failed to update account %s after check", account.Title)
+						continue
+					}
+
+					if previousStatus != status {
+						HandleStatusChange(s, account, status, userSettings)
+					}
+
+					// Check for cookie expiration
+					if !account.IsExpiredCookie {
+						timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
+						if err == nil && timeUntilExpiration > 0 && timeUntilExpiration <= time.Duration(cookieExpirationWarning)*time.Hour {
+							if err := NotifyCookieExpiringSoon(s, []models.Account{account}); err != nil {
+								logger.Log.WithError(err).Errorf("Failed to send cookie expiration notification for account %s", account.Title)
+							}
 						}
 					}
 				}
-			}
 
-			if len(dailyUpdateAccounts) > 0 {
-				SendConsolidatedDailyUpdate(s, userID, userSettings, dailyUpdateAccounts)
-			}
+				if len(dailyUpdateAccounts) > 0 {
+					SendConsolidatedDailyUpdate(s, userID, userSettings, dailyUpdateAccounts)
+				}
 
-		}(userID, userAccounts)
+			}(userID, userAccounts)
+		}
 	}
-}
-
+*/
 func CheckAndSendNotifications(s *discordgo.Session, userID string) {
 	var userSettings models.UserSettings
 	if err := database.DB.Where("user_id = ?", userID).First(&userSettings).Error; err != nil {
@@ -661,12 +806,17 @@ func getChannelForAnnouncement(s *discordgo.Session, userID string, userSettings
 	return account.ChannelID, nil
 }
 
-func calculateBanDuration(banEndTime time.Time) string {
-	duration := time.Until(banEndTime)
+func calculateBanDuration(endTime time.Time) string {
+	duration := time.Until(endTime)
 	if duration < 0 {
-		duration = 0
+		return "Expired"
 	}
+
 	days := int(duration.Hours()) / 24
 	hours := int(duration.Hours()) % 24
-	return fmt.Sprintf("%d days, %d hours", days, hours)
+
+	if days > 0 {
+		return fmt.Sprintf("%d days, %d hours", days, hours)
+	}
+	return fmt.Sprintf("%d hours", hours)
 }
