@@ -82,3 +82,13 @@ const (
 	EZCaptcha  CaptchaProvider = "ezcaptcha"
 	TwoCaptcha CaptchaProvider = "2captcha"
 )
+
+type RewardCode struct {
+	gorm.Model
+	Code        string    `gorm:"uniqueIndex"` // The actual reward code
+	Description string    // Description of what the code rewards
+	ExpiresAt   time.Time // When the code expires
+	SingleUse   bool      // Whether the code can only be used once
+	UsedBy      []string  `gorm:"type:json"` // List of user IDs who have used this code
+	Active      bool      // Whether the code is still active
+}
