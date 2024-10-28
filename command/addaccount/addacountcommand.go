@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
@@ -16,15 +15,16 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-func sanitizeInput(input string) string {
-	return strings.Map(func(r rune) rune {
-		if unicode.IsLetter(r) || unicode.IsNumber(r) || r == ' ' || r == '-' || r == '_' {
-			return r
-		}
-		return -1
-	}, input)
-}
-
+/*
+	func sanitizeInput(input string) string {
+		return strings.Map(func(r rune) rune {
+			if unicode.IsLetter(r) || unicode.IsNumber(r) || r == ' ' || r == '-' || r == '_' {
+				return r
+			}
+			return -1
+		}, input)
+	}
+*/
 var (
 	rateLimiter = make(map[string]time.Time)
 	rateLimit   = 5 * time.Minute
