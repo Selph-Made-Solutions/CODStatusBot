@@ -15,7 +15,6 @@ import (
 )
 
 func CommandGlobalAnnouncement(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	// Check if the user is the developer
 	developerID := os.Getenv("DEVELOPER_ID")
 	if developerID == "" {
 		logger.Log.Error("DEVELOPER_ID not set in environment variables")
@@ -40,7 +39,6 @@ func CommandGlobalAnnouncement(s *discordgo.Session, i *discordgo.InteractionCre
 		return
 	}
 
-	// Send the announcement to all users
 	successCount, failCount, err := SendAnnouncementToAllUsers(s)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error occurred while sending global announcement")
