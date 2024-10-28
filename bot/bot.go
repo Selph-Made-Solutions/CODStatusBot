@@ -11,6 +11,7 @@ import (
 	"github.com/bradselph/CODStatusBot/command/addaccount"
 	"github.com/bradselph/CODStatusBot/command/checknow"
 	"github.com/bradselph/CODStatusBot/command/feedback"
+	"github.com/bradselph/CODStatusBot/command/listaccounts"
 	"github.com/bradselph/CODStatusBot/command/removeaccount"
 	"github.com/bradselph/CODStatusBot/command/setcaptchaservice"
 	"github.com/bradselph/CODStatusBot/command/setcheckinterval"
@@ -85,6 +86,8 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
 	switch {
+	case customID == "listaccounts":
+		listaccounts.CommandListAccounts(s, i)
 	case strings.HasPrefix(customID, "feedback_"):
 		feedback.HandleFeedbackChoice(s, i)
 	case strings.HasPrefix(customID, "account_age_"):
