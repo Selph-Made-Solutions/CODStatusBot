@@ -676,7 +676,13 @@ func formatAccountStatus(account models.Account, status models.Status, timeUntil
 	case models.StatusShadowban:
 		return "Under review"
 	case models.StatusTempban:
-		return fmt.Sprintf("Temporarily banned (%s remaining)", account.TempBanDuration)
+		var latestBan models.Ban
+		if err := database.DB.Where("account_id = ?", account.ID).
+			Order("created_at DESC").
+			First(&latestBan).Error; err == nil {
+			return fmt.Sprintf("Temporarily banned (%s remaining)", latestBan.TempBanDuration)
+		}
+		return "Temporarily banned (duration unknown)"
 	default:
 		return "Unknown status"
 	}
@@ -720,5 +726,47 @@ func checkAccountsNeedingAttention(s *discordgo.Session, accounts []models.Accou
 
 	if len(errorAccounts) > 0 {
 		notifyAccountErrors(s, errorAccounts, userSettings)
+	}
+}
+
+func notifyAccountErrors(s *discordgo.Session, errorAccounts []models.Account, userSettings models.UserSettings) {
+	if len(errorAccounts) == 0 {
+		return
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title:       "Account Check Errors",
+		Description: "The following accounts have encountered errors during status checks:",
+		Color:       0xFF0000,
+		Fields:      make([]*discordgo.MessageEmbedField, 0),
+		Timestamp:   time.Now().Format(time.RFC3339),
+	}
+
+	for _, account := range errorAccounts {
+		var errorDescription string
+		if account.IsCheckDisabled {
+			errorDescription = fmt.Sprintf("Checks disabled - Reason: %s", account.DisabledReason)
+		} else if account.ConsecutiveErrors >= maxConsecutiveErrors {
+			errorDescription = fmt.Sprintf("Multiple check failures - Last error time: %s",
+				account.LastErrorTime.Format("2006-01-02 15:04:05"))
+		} else {
+			errorDescription = "Unknown error"
+		}
+
+		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+			Name:   account.Title,
+			Value:  errorDescription,
+			Inline: false,
+		})
+	}
+
+	err := SendNotification(s, errorAccounts[0], embed, "", "error")
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to send account errors notification")
+	}
+
+	userSettings.LastErrorNotification = time.Now()
+	if err = database.DB.Save(&userSettings).Error; err != nil {
+		logger.Log.WithError(err).Error("Failed to update LastErrorNotification timestamp")
 	}
 }

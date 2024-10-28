@@ -9,10 +9,9 @@ import (
 	"time"
 
 	"github.com/bradselph/CODStatusBot/database"
+	"github.com/bradselph/CODStatusBot/discordgo"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
-
-	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
 )
 
@@ -23,12 +22,22 @@ type NotificationConfig struct {
 }
 
 const (
+	maxRetryAttempts    = 3
+	retryDelay          = 5 * time.Second
+	maxConcurrentChecks = 5
+	errorCooldownPeriod = 15 * time.Minute
+	checkTimeout        = 30 * time.Second
+)
+
+const (
 	maxConsecutiveErrors          = 5
 	balanceNotificationThreshold  = 1000
 	maxUserErrorNotifications     = 3
 	userErrorNotificationCooldown = 24 * time.Hour
 	balanceNotificationInterval   = 24 * time.Hour
 )
+
+var checkSemaphore = make(chan struct{}, maxConcurrentChecks)
 
 var (
 	checkInterval               float64
@@ -111,6 +120,27 @@ func GetEnvIntRaw(key string, fallback int) int {
 		logger.Log.WithError(err).Errorf("Failed to parse %s, using fallback value", key)
 	}
 	return fallback
+}
+
+func CheckAccounts(s *discordgo.Session) {
+	logger.Log.Info("Starting periodic account check")
+
+	var accounts []models.Account
+	if err := database.DB.Find(&accounts).Error; err != nil {
+		logger.Log.WithError(err).Error("Failed to fetch accounts from database")
+		return
+	}
+
+	accountsByUser := make(map[string][]models.Account)
+	for _, account := range accounts {
+		accountsByUser[account.UserID] = append(accountsByUser[account.UserID], account)
+	}
+
+	for userID, userAccounts := range accountsByUser {
+		go func(uid string, accounts []models.Account) {
+			processUserAccountBatch(s, uid, accounts)
+		}(userID, userAccounts)
+	}
 }
 
 func checkAccountAfterTempBan(s *discordgo.Session, account models.Account) {

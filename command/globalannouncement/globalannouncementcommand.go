@@ -10,7 +10,7 @@ import (
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 
-	"github.com/bwmarrin/discordgo"
+	"github.com/bradselph/CODStatusBot/discordgo"
 	"gorm.io/gorm"
 )
 

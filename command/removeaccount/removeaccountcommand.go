@@ -9,7 +9,7 @@ import (
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 
-	"github.com/bwmarrin/discordgo"
+	"github.com/bradselph/CODStatusBot/discordgo"
 )
 
 func CommandRemoveAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {

@@ -5,10 +5,10 @@ import (
 	"strings"
 
 	"github.com/bradselph/CODStatusBot/database"
+	"github.com/bradselph/CODStatusBot/discordgo"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bradselph/CODStatusBot/utils"
-	"github.com/bwmarrin/discordgo"
 )
 
 func CommandSetNotifications(s *discordgo.Session, i *discordgo.InteractionCreate) {

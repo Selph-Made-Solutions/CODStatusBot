@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/discordgo"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/services"
-	"github.com/bwmarrin/discordgo"
 )
 
 func CommandCheckCaptchaBalance(s *discordgo.Session, i *discordgo.InteractionCreate) {
