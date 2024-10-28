@@ -143,6 +143,7 @@ func CheckAccounts(s *discordgo.Session) {
 	}
 }
 
+/*
 func checkAccountAfterTempBan(s *discordgo.Session, account models.Account) {
 	result, err := CheckAccount(account.SSOCookie, account.UserID, "")
 	if err != nil {
@@ -165,6 +166,7 @@ func checkAccountAfterTempBan(s *discordgo.Session, account models.Account) {
 		logger.Log.WithError(err).Errorf("Failed to send temporary ban update message for account %s", account.Title)
 	}
 }
+*/
 
 func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus models.Status, userSettings models.UserSettings) {
 	DBMutex.Lock()
@@ -370,6 +372,7 @@ func getStatusFields(account models.Account, status models.Status) []*discordgo.
 	return fields
 }
 
+/*
 func CheckAndSendNotifications(s *discordgo.Session, userID string) {
 	var userSettings models.UserSettings
 	if err := database.DB.Where("user_id = ?", userID).First(&userSettings).Error; err != nil {
@@ -404,7 +407,8 @@ func CheckAndSendNotifications(s *discordgo.Session, userID string) {
 		}
 	}
 }
-
+*/
+/*
 func CheckAndNotifyCookieExpiration(s *discordgo.Session, account models.Account) error {
 	timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
 	if err != nil {
@@ -417,7 +421,8 @@ func CheckAndNotifyCookieExpiration(s *discordgo.Session, account models.Account
 
 	return nil
 }
-
+*/
+/*
 func checkCookieExpirations(s *discordgo.Session, userID string, userSettings models.UserSettings) {
 	var accounts []models.Account
 	if err := database.DB.Where("user_id = ?", userID).Find(&accounts).Error; err != nil {
@@ -440,7 +445,8 @@ func checkCookieExpirations(s *discordgo.Session, userID string, userSettings mo
 		sendConsolidatedCookieExpirationWarning(s, userID, expiringAccounts, userSettings)
 	}
 }
-
+*/
+/*
 func processUserAccounts(s *discordgo.Session, userID string, accounts []models.Account) {
 	captchaAPIKey, balance, err := GetUserCaptchaKey(userID)
 	if err != nil {
@@ -505,7 +511,8 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 
 	CheckAndNotifyBalance(s, userID, balance)
 }
-
+*/
+/*
 func handlePermabannedAccount(s *discordgo.Session, account models.Account) {
 	embed := &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%s - Permanent Ban Status", account.Title),
@@ -531,7 +538,7 @@ func handlePermabannedAccount(s *discordgo.Session, account models.Account) {
 		}
 	}
 }
-
+*/
 func CheckSingleAccount(s *discordgo.Session, account models.Account, captchaAPIKey string) {
 	logger.Log.Infof("Checking account: %s", account.Title)
 
