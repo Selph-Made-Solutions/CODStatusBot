@@ -23,6 +23,25 @@ var (
 	adminNotificationCache     = cache.New(5*time.Minute, 10*time.Minute)
 )
 
+type NotificationLimiter struct {
+	sync.RWMutex
+	notifications map[string]*NotificationState
+	cleanupTicker *time.Ticker
+}
+
+type NotificationState struct {
+	Count     int
+	LastReset time.Time
+	LastSent  time.Time
+}
+
+var (
+	globalLimiter           = NewNotificationLimiter()
+	maxNotificationsPerHour = 4
+	maxNotificationsPerDay  = 10
+	minNotificationInterval = 5 * time.Minute
+)
+
 func NotifyAdmin(s *discordgo.Session, message string) {
 	adminID := os.Getenv("DEVELOPER_ID")
 	if adminID == "" {
@@ -102,7 +121,7 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 
 	var thresholds = map[string]float64{
 		"ezcaptcha": 250,
-		"2captcha":  0.25,
+		"2captcha":  0.50,
 	}
 
 	threshold := thresholds[userSettings.PreferredCaptchaProvider]
@@ -266,7 +285,74 @@ func getEnabledServicesString() string {
 	return strings.Join(enabledServices, ", ")
 }
 
+func NewNotificationLimiter() *NotificationLimiter {
+	nl := &NotificationLimiter{
+		notifications: make(map[string]*NotificationState),
+		cleanupTicker: time.NewTicker(1 * time.Hour),
+	}
+
+	go nl.cleanup()
+	return nl
+}
+
+func (nl *NotificationLimiter) cleanup() {
+	for range nl.cleanupTicker.C {
+		nl.Lock()
+		now := time.Now()
+		for userID, state := range nl.notifications {
+			if now.Sub(state.LastSent) > 24*time.Hour {
+				delete(nl.notifications, userID)
+			}
+		}
+		nl.Unlock()
+	}
+}
+
+func (nl *NotificationLimiter) CanSendNotification(userID string) bool {
+	nl.Lock()
+	defer nl.Unlock()
+
+	now := time.Now()
+	state, exists := nl.notifications[userID]
+
+	if !exists {
+		nl.notifications[userID] = &NotificationState{
+			Count:     1,
+			LastReset: now,
+			LastSent:  now,
+		}
+		return true
+	}
+
+	if now.Sub(state.LastReset) >= 24*time.Hour {
+		state.Count = 0
+		state.LastReset = now
+	}
+
+	if now.Sub(state.LastSent) < minNotificationInterval {
+		return false
+	}
+
+	hourlyCount := 0
+	if now.Sub(state.LastSent) < time.Hour {
+		hourlyCount = state.Count
+	}
+
+	if hourlyCount >= maxNotificationsPerHour || state.Count >= maxNotificationsPerDay {
+		return false
+	}
+
+	state.Count++
+	state.LastSent = now
+	return true
+}
+
 func SendNotification(s *discordgo.Session, account models.Account, embed *discordgo.MessageEmbed, content, notificationType string) error {
+	if !globalLimiter.CanSendNotification(account.UserID) {
+		logger.Log.Infof("Notification suppressed due to rate limiting for user %s", account.UserID)
+		return nil
+	}
+
 	if account.IsCheckDisabled {
 		logger.Log.Infof("Skipping notification for disabled account %s", account.Title)
 		return nil
@@ -485,37 +571,38 @@ func UpdateNotificationTimestamp(userID string, notificationType string) error {
 	return database.DB.Save(&settings).Error
 }
 
-func sendConsolidatedCookieExpirationWarning(s *discordgo.Session, userID string, expiringAccounts []models.Account, userSettings models.UserSettings) {
-	var embedFields []*discordgo.MessageEmbedField
+/*
+	func sendConsolidatedCookieExpirationWarning(s *discordgo.Session, userID string, expiringAccounts []models.Account, userSettings models.UserSettings) {
+		var embedFields []*discordgo.MessageEmbedField
 
-	for _, account := range expiringAccounts {
-		timeUntilExpiration, _ := CheckSSOCookieExpiration(account.SSOCookieExpiration)
-		embedFields = append(embedFields, &discordgo.MessageEmbedField{
-			Name:   account.Title,
-			Value:  fmt.Sprintf("Cookie expires in %s", FormatDuration(timeUntilExpiration)),
-			Inline: false,
-		})
-	}
+		for _, account := range expiringAccounts {
+			timeUntilExpiration, _ := CheckSSOCookieExpiration(account.SSOCookieExpiration)
+			embedFields = append(embedFields, &discordgo.MessageEmbedField{
+				Name:   account.Title,
+				Value:  fmt.Sprintf("Cookie expires in %s", FormatDuration(timeUntilExpiration)),
+				Inline: false,
+			})
+		}
 
-	embed := &discordgo.MessageEmbed{
-		Title:       "SSO Cookie Expiration Warning",
-		Description: "The following accounts have SSO cookies that will expire soon:",
-		Color:       0xFFA500, // Orange color for warning
-		Fields:      embedFields,
-		Timestamp:   time.Now().Format(time.RFC3339),
-	}
+		embed := &discordgo.MessageEmbed{
+			Title:       "SSO Cookie Expiration Warning",
+			Description: "The following accounts have SSO cookies that will expire soon:",
+			Color:       0xFFA500, // Orange color for warning
+			Fields:      embedFields,
+			Timestamp:   time.Now().Format(time.RFC3339),
+		}
 
-	err := SendNotification(s, expiringAccounts[0], embed, "", "cookie_expiring_soon")
-	if err != nil {
-		logger.Log.WithError(err).Errorf("Failed to send consolidated cookie expiration warning for user %s", userID)
-	} else {
-		userSettings.LastCookieExpirationWarning = time.Now()
-		if err := database.DB.Save(&userSettings).Error; err != nil {
-			logger.Log.WithError(err).Errorf("Failed to update LastCookieExpirationWarning for user %s", userID)
+		err := SendNotification(s, expiringAccounts[0], embed, "", "cookie_expiring_soon")
+		if err != nil {
+			logger.Log.WithError(err).Errorf("Failed to send consolidated cookie expiration warning for user %s", userID)
+		} else {
+			userSettings.LastCookieExpirationWarning = time.Now()
+			if err := database.DB.Save(&userSettings).Error; err != nil {
+				logger.Log.WithError(err).Errorf("Failed to update LastCookieExpirationWarning for user %s", userID)
+			}
 		}
 	}
-}
-
+*/
 func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettings models.UserSettings, accounts []models.Account) {
 	if len(accounts) == 0 {
 		return
