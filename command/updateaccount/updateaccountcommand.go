@@ -12,7 +12,7 @@ import (
 	"github.com/bradselph/CODStatusBot/services"
 	"github.com/bradselph/CODStatusBot/utils"
 
-	"github.com/bradselph/CODStatusBot/discordgo"
+	"github.com/bwmarrin/discordgo"
 )
 
 func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
