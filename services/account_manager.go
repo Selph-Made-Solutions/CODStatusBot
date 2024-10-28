@@ -21,12 +21,14 @@ type RateLimiter struct {
 	rates  map[string]time.Duration
 }
 
+/*
 func NewRateLimiter() *RateLimiter {
 	return &RateLimiter{
 		limits: make(map[string]time.Time),
 		rates:  make(map[string]time.Duration),
 	}
 }
+*/
 
 func (r *RateLimiter) Allow(key string, rate time.Duration) bool {
 	r.Lock()
@@ -50,6 +52,7 @@ func isChannelError(err error) bool {
 		strings.Contains(err.Error(), "Missing Permissions")
 }
 
+/*
 func sendNotification(s *discordgo.Session, account models.Account, embed *discordgo.MessageEmbed, content, notificationType string) error {
 	if account.IsCheckDisabled {
 		return nil
@@ -90,6 +93,7 @@ func sendNotification(s *discordgo.Session, account models.Account, embed *disco
 	updateNotificationTimestamp(account.UserID, notificationType)
 	return nil
 }
+*/
 
 func updateNotificationTimestamp(userID string, notificationType string) {
 	var settings models.UserSettings
@@ -152,6 +156,7 @@ func getNotificationChannel(s *discordgo.Session, account models.Account, userSe
 	return account.ChannelID, nil
 }
 
+/*
 func handleChannelError(s *discordgo.Session, account models.Account, err error) {
 	logger.Log.WithError(err).Errorf("Channel error for account %s", account.Title)
 
@@ -175,6 +180,7 @@ func handleChannelError(s *discordgo.Session, account models.Account, err error)
 		logger.Log.WithError(err).Error("Failed to send DM about channel error")
 	}
 }
+*/
 
 func processUserAccountBatch(s *discordgo.Session, userID string, accounts []models.Account) {
 	userSettings, err := GetUserSettings(userID)
