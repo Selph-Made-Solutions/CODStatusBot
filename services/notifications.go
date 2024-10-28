@@ -444,7 +444,7 @@ func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 			return err
 		}
 
-		announcementEmbed := createAnnouncementEmbed()
+		announcementEmbed := CreateAnnouncementEmbed()
 
 		_, err = s.ChannelMessageSendEmbed(channelID, announcementEmbed)
 		if err != nil {
