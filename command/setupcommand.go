@@ -86,7 +86,7 @@ func RegisterCommands(s *discordgo.Session) error {
 		},
 		{
 			Name:         "listaccounts",
-			Description:  "List all your monitored accounts with status and VIP info",
+			Description:  "List all your monitored accounts with status and last checked time",
 			DMPermission: BoolPtr(true),
 		},
 		{
