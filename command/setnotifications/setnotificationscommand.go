@@ -30,19 +30,18 @@ func CommandSetNotifications(s *discordgo.Session, i *discordgo.InteractionCreat
 		Type: discordgo.InteractionResponseModal,
 		Data: &discordgo.InteractionResponseData{
 			CustomID: fmt.Sprintf("set_notifications_modal_%s", userID),
-			Title:    "Set Notification Preferences",
+			Title:    "Set Notification Preferences <:questioncircle:1300205396430028801>",
 			Components: []discordgo.MessageComponent{
 				discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
 						discordgo.TextInput{
-							CustomID:    "notification_type",
-							Label:       "Notification Type (channel or dm)",
-							Style:       discordgo.TextInputShort,
-							Placeholder: "Enter 'channel' or 'dm'",
-							Required:    true,
-							MinLength:   2,
-							MaxLength:   7,
-							Value:       userSettings.NotificationType,
+							CustomID:  "notification_type",
+							Label:     "Notification Type (channel or dm)",
+							Style:     discordgo.TextInputShort,
+							Required:  true,
+							MinLength: 2,
+							MaxLength: 7,
+							Value:     userSettings.NotificationType,
 						},
 					},
 				},
@@ -116,9 +115,43 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	logger.Log.Infof("Updated notification preferences for user %s to %s", userID, notificationType)
-	message := fmt.Sprintf("Your notification preferences have been updated. You will now receive notifications via %s.", notificationType)
-	respondToInteraction(s, i, message)
+	embed := &discordgo.MessageEmbed{
+		Title: "Notification Settings Updated <:checkcircle:1300205379606810726>",
+		Description: fmt.Sprintf("Your notification settings have been updated successfully!\n\n"+
+			"You will now receive notifications via %s",
+			formatNotificationType(notificationType)),
+		Color: 0x00ff00,
+		Fields: []*discordgo.MessageEmbedField{
+			{
+				Name:   "Accounts Updated <:infocircle:1300205389387796560>",
+				Value:  fmt.Sprintf("%d accounts have been updated with the new settings", result.RowsAffected),
+				Inline: false,
+			},
+		},
+	}
+
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Embeds: []*discordgo.MessageEmbed{embed},
+			Flags:  discordgo.MessageFlagsEphemeral,
+		},
+	})
+
+	if err != nil {
+		logger.Log.WithError(err).Error("Error sending success message")
+	}
+}
+
+func formatNotificationType(notificationType string) string {
+	switch notificationType {
+	case "channel":
+		return "channel messages <:infocircle:1300205389387796560>"
+	case "dm":
+		return "direct messages <:bancircle:1300205366252142664>"
+	default:
+		return notificationType
+	}
 }
 
 func getUserID(i *discordgo.InteractionCreate) string {
@@ -126,33 +159,19 @@ func getUserID(i *discordgo.InteractionCreate) string {
 		return i.Member.User.ID
 	}
 	if i.User != nil {
-
 		return i.User.ID
 	}
-	logger.Log.Error("Interaction doesn't have Member or User")
 	return ""
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
-	var err error
-	if i.Type == discordgo.InteractionMessageComponent {
-		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseUpdateMessage,
-			Data: &discordgo.InteractionResponseData{
-				Content:    message,
-				Components: []discordgo.MessageComponent{},
-				Flags:      discordgo.MessageFlagsEphemeral,
-			},
-		})
-	} else {
-		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: message,
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
-	}
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: message,
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
+	})
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction")
 	}
