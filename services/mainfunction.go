@@ -90,11 +90,9 @@ func init() {
 
 func GetEnvFloat(key string, fallback float64) float64 {
 	value := GetEnvFloatRaw(key, fallback)
-	// Convert hours to minutes for certain settings
 	if key == "CHECK_INTERVAL" || key == "SLEEP_DURATION" || key == "DEFAULT_RATE_LIMIT" {
 		return value
 	}
-	// All other values are in hours, so we don't need to convert them
 	return value
 }
 
@@ -372,98 +370,6 @@ func getStatusFields(account models.Account, status models.Status) []*discordgo.
 	return fields
 }
 
-/*
-	 func CheckAccounts(s *discordgo.Session) {
-		logger.Log.Info("Starting periodic account check")
-		var accounts []models.Account
-		if err := database.DB.Find(&accounts).Error; err != nil {
-			logger.Log.WithError(err).Error("Failed to fetch accounts from the database")
-			return
-		}
-
-		accountsByUser := make(map[string][]models.Account)
-		for _, account := range accounts {
-			accountsByUser[account.UserID] = append(accountsByUser[account.UserID], account)
-		}
-
-		for userID, userAccounts := range accountsByUser {
-			go func(uid string, accounts []models.Account) {
-				userSettings, err := GetUserSettings(uid)
-				if err != nil {
-					logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", uid)
-					return
-				}
-
-				var accountsToUpdate []models.Account
-				var dailyUpdateAccounts []models.Account
-				now := time.Now()
-
-				for _, account := range accounts {
-					checkInterval := time.Duration(userSettings.CheckInterval) * time.Minute
-					lastCheck := time.Unix(account.LastCheck, 0)
-
-					if now.Sub(lastCheck) < checkInterval {
-						logger.Log.Infof("Skipping check for account %s (not due yet)", account.Title)
-						continue
-					}
-
-					if account.IsCheckDisabled {
-						logger.Log.Infof("Skipping check for disabled account: %s", account.Title)
-						continue
-					}
-
-					accountsToUpdate = append(accountsToUpdate, account)
-
-					if now.Sub(time.Unix(account.LastNotification, 0)).Hours() >= userSettings.NotificationInterval {
-						dailyUpdateAccounts = append(dailyUpdateAccounts, account)
-					}
-				}
-
-				for _, account := range accountsToUpdate {
-					var captchaAPIKey string
-					if userSettings.PreferredCaptchaProvider == "2captcha" {
-						captchaAPIKey = userSettings.TwoCaptchaAPIKey
-					} else {
-						captchaAPIKey = userSettings.EZCaptchaAPIKey
-					}
-					status, err := CheckAccount(account.SSOCookie, account.UserID, captchaAPIKey)
-					if err != nil {
-						logger.Log.WithError(err).Errorf("Error checking account %s", account.Title)
-						NotifyAdminWithCooldown(s, fmt.Sprintf("Error checking account %s: %v", account.Title, err), 5*time.Minute)
-						continue
-					}
-
-					previousStatus := account.LastStatus
-					account.LastStatus = status
-					account.LastCheck = now.Unix()
-					if err := database.DB.Save(&account).Error; err != nil {
-						logger.Log.WithError(err).Errorf("Failed to update account %s after check", account.Title)
-						continue
-					}
-
-					if previousStatus != status {
-						HandleStatusChange(s, account, status, userSettings)
-					}
-
-					// Check for cookie expiration
-					if !account.IsExpiredCookie {
-						timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
-						if err == nil && timeUntilExpiration > 0 && timeUntilExpiration <= time.Duration(cookieExpirationWarning)*time.Hour {
-							if err := NotifyCookieExpiringSoon(s, []models.Account{account}); err != nil {
-								logger.Log.WithError(err).Errorf("Failed to send cookie expiration notification for account %s", account.Title)
-							}
-						}
-					}
-				}
-
-				if len(dailyUpdateAccounts) > 0 {
-					SendConsolidatedDailyUpdate(s, userID, userSettings, dailyUpdateAccounts)
-				}
-
-			}(userID, userAccounts)
-		}
-	}
-*/
 func CheckAndSendNotifications(s *discordgo.Session, userID string) {
 	var userSettings models.UserSettings
 	if err := database.DB.Where("user_id = ?", userID).First(&userSettings).Error; err != nil {
