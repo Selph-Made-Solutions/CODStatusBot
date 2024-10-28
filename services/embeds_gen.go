@@ -40,7 +40,7 @@ func createTempBanStillActiveEmbed(account models.Account, status models.Status)
 }
 */
 
-func createAnnouncementEmbed() *discordgo.MessageEmbed {
+func CreateAnnouncementEmbed() *discordgo.MessageEmbed {
 	return &discordgo.MessageEmbed{
 		Title:       "Important Update: Changes to COD Status Bot",
 		Description: "Due to high demand, we've reached our limit of free EZCaptcha tokens. To ensure continued functionality, we're introducing some changes:",
@@ -115,7 +115,7 @@ func EmbedTitleFromStatus(status models.Status) string {
 	}
 }
 
-func getStatusDescription(status models.Status, accountTitle string, ban models.Ban) string {
+func GetStatusDescription(status models.Status, accountTitle string, ban models.Ban) string {
 	affectedGames := strings.Split(ban.AffectedGames, ",")
 	gamesList := strings.Join(affectedGames, ", ")
 
