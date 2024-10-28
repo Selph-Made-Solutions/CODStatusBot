@@ -67,6 +67,8 @@ func StartBot() (*discordgo.Session, error) {
 func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.ModalSubmitData().CustomID
 	switch {
+	case strings.HasPrefix(customID, "set_notifications_modal_"):
+		setnotifications.HandleModalSubmit(s, i)
 	case customID == "set_captcha_service_modal":
 		setcaptchaservice.HandleModalSubmit(s, i)
 	case customID == "add_account_modal":
@@ -75,8 +77,6 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		updateaccount.HandleModalSubmit(s, i)
 	case customID == "set_check_interval_modal":
 		setcheckinterval.HandleModalSubmit(s, i)
-	case strings.HasPrefix(customID, "set_notifications_modal_"):
-		setnotifications.HandleModalSubmit(s, i)
 	default:
 		logger.Log.WithField("customID", customID).Error("Unknown modal submission")
 	}
