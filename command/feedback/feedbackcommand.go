@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bradselph/CODStatusBot/discordgo"
 	"github.com/bradselph/CODStatusBot/logger"
+	"github.com/bwmarrin/discordgo"
 )
 
 var tempFeedbackStore = struct {
