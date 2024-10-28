@@ -1,7 +1,6 @@
 package services
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -12,7 +11,6 @@ import (
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bwmarrin/discordgo"
-	"github.com/sirupsen/logrus"
 )
 
 type RateLimiter struct {
@@ -182,6 +180,55 @@ func handleChannelError(s *discordgo.Session, account models.Account, err error)
 }
 */
 
+func processUserAccounts(s *discordgo.Session, userID string, accounts []models.Account) {
+	userSettings, err := GetUserSettings(userID)
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
+		return
+	}
+
+	if err := validateUserCaptchaService(userID, userSettings); err != nil {
+		logger.Log.WithError(err).Errorf("Captcha service validation failed for user %s", userID)
+		notifyUserOfServiceIssue(s, userID, err)
+		return
+	}
+
+	for _, account := range accounts {
+		if !shouldCheckAccount(account, userSettings, time.Now()) {
+			continue
+		}
+
+		if err := processAccountCheck(s, account, userSettings); err != nil {
+			logger.Log.WithError(err).Errorf("Error checking account %s: %v", account.Title, err)
+		}
+
+		time.Sleep(time.Second * 2)
+	}
+
+	var dailyUpdateAccounts []models.Account
+	var expiringAccounts []models.Account
+	now := time.Now()
+
+	for _, account := range accounts {
+		if shouldIncludeInDailyUpdate(account, userSettings, now) {
+			dailyUpdateAccounts = append(dailyUpdateAccounts, account)
+		}
+
+		if shouldCheckExpiration(account, now) {
+			expiringAccounts = append(expiringAccounts, account)
+		}
+	}
+
+	if len(dailyUpdateAccounts) > 0 {
+		SendConsolidatedDailyUpdate(s, userID, userSettings, dailyUpdateAccounts)
+	}
+
+	if len(expiringAccounts) > 0 {
+		NotifyCookieExpiringSoon(s, expiringAccounts)
+	}
+}
+
+/*
 func processUserAccountBatch(s *discordgo.Session, userID string, accounts []models.Account) {
 	userSettings, err := GetUserSettings(userID)
 	if err != nil {
@@ -256,6 +303,7 @@ func processUserAccountBatch(s *discordgo.Session, userID string, accounts []mod
 		NotifyCookieExpiringSoon(s, expiringAccounts)
 	}
 }
+*/
 
 func notifyUserOfServiceIssue(s *discordgo.Session, userID string, err error) {
 	channel, err := s.UserChannelCreate(userID)
@@ -286,48 +334,39 @@ func notifyUserOfServiceIssue(s *discordgo.Session, userID string, err error) {
 	}
 }
 
-func processAccountCheck(ctx context.Context, s *discordgo.Session, account models.Account, userSettings models.UserSettings) error {
+func processAccountCheck(s *discordgo.Session, account models.Account, userSettings models.UserSettings) error {
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
-		select {
-		case <-ctx.Done():
-			logger.Log.WithFields(logrus.Fields{
-				"account": account.Title,
-				"attempt": attempt,
-				"error":   ctx.Err(),
-			}).Info("Account check cancelled by context")
-			return fmt.Errorf("context cancelled during attempt %d: %w", attempt, ctx.Err())
-		default:
-			status, err := CheckAccountWithContext(ctx, account.SSOCookie, account.UserID, "")
-			if err != nil {
-				if attempt == maxRetryAttempts {
-					handleCheckFailure(s, account, err)
-					return err
-				}
-				logger.Log.WithFields(logrus.Fields{
-					"account": account.Title,
-					"attempt": attempt,
-					"error":   err,
-				}).Info("Retrying account check after error")
-				time.Sleep(retryDelay)
-				continue
+		status, err := CheckAccount(account.SSOCookie, account.UserID, "")
+		if err != nil {
+			if attempt == maxRetryAttempts {
+				handleCheckFailure(s, account, err)
+				return err
 			}
-
-			DBMutex.Lock()
-			account.LastStatus = status
-			account.LastCheck = time.Now().Unix()
-			account.ConsecutiveErrors = 0
-			if err := database.DB.Save(&account).Error; err != nil {
-				DBMutex.Unlock()
-				return fmt.Errorf("failed to update account status: %w", err)
-			}
-			DBMutex.Unlock()
-
-			return nil
+			logger.Log.Infof("Retrying account check after error (attempt %d/%d): %v", attempt, maxRetryAttempts, err)
+			time.Sleep(retryDelay)
+			continue
 		}
+
+		DBMutex.Lock()
+		account.LastStatus = status
+		account.LastCheck = time.Now().Unix()
+		account.ConsecutiveErrors = 0
+		if err := database.DB.Save(&account).Error; err != nil {
+			DBMutex.Unlock()
+			return fmt.Errorf("failed to update account status: %w", err)
+		}
+		DBMutex.Unlock()
+
+		if account.LastStatus != status {
+			HandleStatusChange(s, account, status, userSettings)
+		}
+
+		return nil
 	}
 	return fmt.Errorf("max retries exceeded for account %s", account.Title)
 }
 
+/*
 func checkAccountWithContext(ctx context.Context, s *discordgo.Session, account models.Account, userSettings models.UserSettings) error {
 	captchaAPIKey, err := getCaptchaKeyForUser(userSettings)
 	if err != nil {
@@ -358,6 +397,7 @@ func checkAccountWithContext(ctx context.Context, s *discordgo.Session, account 
 
 	return nil
 }
+*/
 
 func handleCheckFailure(s *discordgo.Session, account models.Account, err error) {
 	DBMutex.Lock()
