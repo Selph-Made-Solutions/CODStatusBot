@@ -365,7 +365,7 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 
 	config, ok := notificationConfigs[notificationType]
 	if !ok {
-		return fmt.Errorf("unknown notification type: %s (account: %s, user: %s)", notificationType, account.Title, account.UserID)
+		return fmt.Errorf("unknown notification type: %s", notificationType)
 	}
 
 	userNotificationMutex.Lock()
@@ -394,6 +394,7 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 		Embed:   embed,
 		Content: content,
 	})
+
 	if err != nil {
 		if strings.Contains(err.Error(), "Missing Access") || strings.Contains(err.Error(), "Unknown Channel") {
 			logger.Log.Warnf("Bot might have been removed from the channel or server for user %s", account.UserID)
