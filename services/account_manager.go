@@ -12,6 +12,7 @@ import (
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bwmarrin/discordgo"
+	"github.com/sirupsen/logrus"
 )
 
 type RateLimiter struct {
@@ -263,7 +264,11 @@ func processAccountCheck(ctx context.Context, s *discordgo.Session, account mode
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		select {
 		case <-ctx.Done():
-			logger.Log.Warnf("Context cancelled while checking account %s", account.Title)
+			logger.Log.WithFields(logrus.Fields{
+				"account": account.Title,
+				"attempt": attempt,
+				"error":   ctx.Err(),
+			}).Warn("Account check cancelled")
 			return
 		default:
 			if err := checkAccountWithContext(ctx, s, account, userSettings); err != nil {
@@ -271,6 +276,11 @@ func processAccountCheck(ctx context.Context, s *discordgo.Session, account mode
 					handleCheckFailure(s, account, err)
 					return
 				}
+				logger.Log.WithFields(logrus.Fields{
+					"account": account.Title,
+					"attempt": attempt,
+					"error":   err,
+				}).Info("Retrying account check")
 				time.Sleep(retryDelay)
 				continue
 			}
