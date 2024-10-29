@@ -10,7 +10,6 @@ import (
 	"github.com/bradselph/CODStatusBot/command/accountlogs"
 	"github.com/bradselph/CODStatusBot/command/addaccount"
 	"github.com/bradselph/CODStatusBot/command/checknow"
-	"github.com/bradselph/CODStatusBot/command/claimreward"
 	"github.com/bradselph/CODStatusBot/command/feedback"
 	"github.com/bradselph/CODStatusBot/command/globalannouncement"
 	"github.com/bradselph/CODStatusBot/command/listaccounts"
@@ -70,8 +69,8 @@ func StartBot() (*discordgo.Session, error) {
 func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.ModalSubmitData().CustomID
 	switch {
-	case customID == "claim_reward_modal":
-		claimreward.HandleModalSubmit(s, i)
+	//case customID == "claim_reward_modal":
+	//	claimreward.HandleModalSubmit(s, i)
 	case strings.HasPrefix(customID, "set_notifications_modal_"):
 		setnotifications.HandleModalSubmit(s, i)
 	case customID == "set_captcha_service_modal":
@@ -92,10 +91,10 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
 	switch {
-	case customID == "claim_reward_manual" || strings.HasPrefix(customID, "claim_reward_preset_"):
-		claimreward.HandleRewardChoice(s, i)
-	case strings.HasPrefix(customID, "claim_account_") || strings.HasPrefix(customID, "claim_all_"):
-		claimreward.HandleClaimSelection(s, i)
+	//case customID == "claim_reward_manual" || strings.HasPrefix(customID, "claim_reward_preset_"):
+	//	claimreward.HandleRewardChoice(s, i)
+	//case strings.HasPrefix(customID, "claim_account_") || strings.HasPrefix(customID, "claim_all_"):
+	//	claimreward.HandleClaimSelection(s, i)
 	case customID == "listaccounts":
 		listaccounts.CommandListAccounts(s, i)
 	case strings.HasPrefix(customID, "feedback_"):
