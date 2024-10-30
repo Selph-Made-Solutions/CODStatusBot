@@ -32,7 +32,7 @@ var (
 
 func getMaxAccounts(hasCustomKey bool) int {
 	if hasCustomKey {
-		premiumMax, err := strconv.Atoi(os.Getenv("PREMIUM_USER_MAXACCOUNTS"))
+		premiumMax, err := strconv.Atoi(os.Getenv("PREM_USER_MAXACCOUNTS"))
 		if err != nil || premiumMax <= 0 {
 			logger.Log.WithError(err).Info("Using default premium max accounts value")
 			return 25
@@ -43,7 +43,7 @@ func getMaxAccounts(hasCustomKey bool) int {
 	defaultMax, err := strconv.Atoi(os.Getenv("DEFAULT_USER_MAXACCOUNTS"))
 	if err != nil || defaultMax <= 0 {
 		logger.Log.WithError(err).Info("Using default max accounts value")
-		return 10
+		return 5
 	}
 	return defaultMax
 }
