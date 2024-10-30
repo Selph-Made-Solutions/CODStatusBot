@@ -59,6 +59,7 @@ func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		Color:       0x00ff00,
 		Fields:      make([]*discordgo.MessageEmbedField, 0),
 	}
+	//TODO: Replace or remove emojis
 
 	for _, account := range accounts {
 		checkStatus := getCheckStatus(account.IsCheckDisabled)
