@@ -32,7 +32,7 @@ func RegisterCommands(s *discordgo.Session) error {
 		{
 			Name:         "globalannouncement",
 			Description:  "Send a global announcement to all users (Admin only)",
-			DMPermission: BoolPtr(false),
+			DMPermission: BoolPtr(true),
 		},
 		{
 			Name:         "setcaptchaservice",
