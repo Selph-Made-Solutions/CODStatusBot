@@ -65,8 +65,10 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		return
 	}
 
-	var components []discordgo.MessageComponent
-	var currentRow []discordgo.MessageComponent
+	var (
+		components []discordgo.MessageComponent
+		currentRow []discordgo.MessageComponent
+	)
 
 	for _, account := range accounts {
 		label := account.Title
