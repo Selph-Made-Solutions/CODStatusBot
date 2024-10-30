@@ -619,7 +619,7 @@ func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettin
 			len(accountsByStatus[models.StatusShadowban])),
 		Inline: false,
 	})
-
+	//TODO: remove or change thee emojis
 	for status, statusAccounts := range accountsByStatus {
 		var description strings.Builder
 		for _, account := range statusAccounts {
@@ -731,7 +731,7 @@ func isCriticalError(err error) bool {
 	return false
 }
 
-// TODO: change emojies to custom application emojis
+// TODO: change emojies to custom application emojis or remove them
 func getStatusIcon(status models.Status) string {
 	switch status {
 	case models.StatusGood:
