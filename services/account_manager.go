@@ -35,7 +35,6 @@ func (r *RateLimiter) Allow(key string, rate time.Duration) bool {
 	return true
 }
 
-// TODO: what is this for and why is it not used?
 func isChannelError(err error) bool {
 	return strings.Contains(err.Error(), "Missing Access") ||
 		strings.Contains(err.Error(), "Unknown Channel") ||
@@ -219,8 +218,12 @@ func handleCheckFailure(s *discordgo.Session, account models.Account, err error)
 	account.ConsecutiveErrors++
 	account.LastErrorTime = time.Now()
 
-	if shouldDisableAccount(account, err) {
-		disableAccount(s, account, getDisableReason(err))
+	if account.ConsecutiveErrors >= maxConsecutiveErrors || isChannelError(err) {
+		disableReason := "Too many consecutive errors"
+		if isChannelError(err) {
+			disableReason = "Bot removed from server/channel"
+		}
+		disableAccount(s, account, disableReason)
 		return
 	}
 
