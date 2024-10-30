@@ -61,8 +61,8 @@ func RegisterCommands(s *discordgo.Session) error {
 		},
 		{
 			Name:         "helpapi",
-			Description:  "Get help on using the bot and setting up your API key",
 			DMPermission: BoolPtr(true),
+			Description:  " Get help on using the bot and setting up your API key",
 		},
 		{
 			Name:         "helpcookie",
