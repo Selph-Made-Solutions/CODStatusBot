@@ -9,37 +9,6 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-/*
-func createTempBanLiftedEmbed(account models.Account) *discordgo.MessageEmbed {
-	return &discordgo.MessageEmbed{
-		Title:       fmt.Sprintf("%s - Temporary Ban Lifted", account.Title),
-		Description: fmt.Sprintf("The temporary ban for account %s has been lifted. The account is now in good standing.", account.Title),
-		Color:       GetColorForStatus(models.StatusGood, false, account.IsCheckDisabled),
-		Timestamp:   time.Now().Format(time.RFC3339),
-	}
-}
-*/
-/*
-func createTempBanEscalatedEmbed(account models.Account) *discordgo.MessageEmbed {
-	return &discordgo.MessageEmbed{
-		Title:       fmt.Sprintf("%s - Temporary Ban Escalated", account.Title),
-		Description: fmt.Sprintf("The temporary ban for account %s has been escalated to a permanent ban.", account.Title),
-		Color:       GetColorForStatus(models.StatusPermaban, false, account.IsCheckDisabled),
-		Timestamp:   time.Now().Format(time.RFC3339),
-	}
-}
-*/
-/*
-func createTempBanStillActiveEmbed(account models.Account, status models.Status) *discordgo.MessageEmbed {
-	return &discordgo.MessageEmbed{
-		Title:       fmt.Sprintf("%s - Temporary Ban Update", account.Title),
-		Description: fmt.Sprintf("The temporary ban for account %s is still in effect. Current status: %s", account.Title, status),
-		Color:       GetColorForStatus(status, false, account.IsCheckDisabled),
-		Timestamp:   time.Now().Format(time.RFC3339),
-	}
-}
-*/
-
 func CreateAnnouncementEmbed() *discordgo.MessageEmbed {
 	return &discordgo.MessageEmbed{
 		Title:       "Important Update: Changes to COD Status Bot",
