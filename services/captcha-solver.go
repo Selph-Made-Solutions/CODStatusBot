@@ -140,7 +140,7 @@ func (s *TwoCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 		"clientKey": s.APIKey,
 		"softId":    s.SoftID,
 		"task": map[string]interface{}{
-			"type":        "RecaptchaV2TaskProxyless",
+			"type":        "ReCaptchaV2TaskProxyless",
 			"websiteURL":  pageURL,
 			"websiteKey":  siteKey,
 			"isInvisible": false,
