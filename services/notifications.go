@@ -13,6 +13,7 @@ import (
 	"github.com/bradselph/CODStatusBot/webserver"
 	"github.com/bwmarrin/discordgo"
 	"github.com/patrickmn/go-cache"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -397,17 +398,25 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 
 	channelID, err := GetNotificationChannel(s, account, userSettings)
 	if err != nil {
+		logger.Log.WithError(err).WithFields(logrus.Fields{
+			"accountID": account.ID,
+			"userID":    account.UserID,
+			"type":      notificationType,
+		}).Error("Failed to get notification channel")
+
 		channel, dmErr := s.UserChannelCreate(account.UserID)
 		if dmErr != nil {
-			return fmt.Errorf("failed to send notification: %w", err)
+			return fmt.Errorf("all notification channels failed: %w", err)
 		}
 		channelID = channel.ID
-	}
 
-	_, err = s.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
-		Embed:   embed,
-		Content: content,
-	})
+		if account.ChannelID != channelID {
+			account.ChannelID = channelID
+			if dbErr := database.DB.Save(&account).Error; dbErr != nil {
+				logger.Log.WithError(dbErr).Error("Failed to update account channel to DM")
+			}
+		}
+	}
 
 	if err != nil {
 		if strings.Contains(err.Error(), "Missing Access") || strings.Contains(err.Error(), "Unknown Channel") {
