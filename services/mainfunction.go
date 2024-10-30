@@ -814,12 +814,7 @@ func getChannelForAnnouncement(s *discordgo.Session, userID string, userSettings
 	if userSettings.NotificationType == "dm" {
 		channel, err := s.UserChannelCreate(userID)
 		if err != nil {
-			logger.Log.WithError(err).Error("Error creating DM channel for global announcement")
-			var account models.Account
-			if err := database.DB.Where("user_id = ?", userID).Order("updated_at DESC").First(&account).Error; err != nil {
-				return "", fmt.Errorf("failed to get any valid channel: %w", err)
-			}
-			return account.ChannelID, nil
+			return "", fmt.Errorf("failed to create DM channel: %w", err)
 		}
 		return channel.ID, nil
 	}
@@ -828,7 +823,7 @@ func getChannelForAnnouncement(s *discordgo.Session, userID string, userSettings
 	if err := database.DB.Where("user_id = ?", userID).Order("updated_at DESC").First(&account).Error; err != nil {
 		channel, err := s.UserChannelCreate(userID)
 		if err != nil {
-			return "", fmt.Errorf("failed to get any valid channel: %w", err)
+			return "", fmt.Errorf("both channel lookup and DM creation failed", err)
 		}
 		return channel.ID, nil
 	}
