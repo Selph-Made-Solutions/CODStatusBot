@@ -398,14 +398,20 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 	if err != nil {
 		if strings.Contains(err.Error(), "Missing Access") || strings.Contains(err.Error(), "Unknown Channel") {
 			logger.Log.Warnf("Bot might have been removed from channel for account %s", account.Title)
-			account.IsCheckDisabled = true
-			account.DisabledReason = "Bot removed from channel"
-			if err := database.DB.Save(&account).Error; err != nil {
-				logger.Log.WithError(err).Error("Failed to update account disabled status")
+			channel, err := s.UserChannelCreate(account.UserID)
+			if err != nil {
+				return fmt.Errorf("failed to create fallback DM channel: %w", err)
 			}
-			return fmt.Errorf("bot removed from channel: %w", err)
+			_, err = s.ChannelMessageSendComplex(channel.ID, &discordgo.MessageSend{
+				Embed:   embed,
+				Content: content,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to send notification via fallback DM: %w", err)
+			}
+		} else {
+			return fmt.Errorf("failed to send notification: %w", err)
 		}
-		return fmt.Errorf("failed to send notification: %w", err)
 	}
 
 	logger.Log.Infof("%s notification sent to user %s", notificationType, account.UserID)
