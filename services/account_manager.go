@@ -464,11 +464,18 @@ func notifyUserOfError(s *discordgo.Session, account models.Account, err error) 
 
 func shouldCheckAccount(account models.Account, userSettings models.UserSettings, now time.Time) bool {
 	if account.IsCheckDisabled {
+		logger.Log.Debugf("Account %s is disabled, skipping check", account.Title)
 		return false
 	}
 
 	if account.IsPermabanned {
-		return time.Unix(account.LastCookieCheck, 0).Add(time.Duration(cookieCheckIntervalPermaban) * time.Hour).Before(now)
+		nextCheck := time.Unix(account.LastCookieCheck, 0).Add(time.Duration(cookieCheckIntervalPermaban) * time.Hour)
+		if nextCheck.After(now) {
+			logger.Log.Debugf("Account %s is permabanned, skipping check until %s", account.Title, nextCheck)
+			return false
+		}
+		// Only check permabanned accounts for cookie validity
+		return true
 	}
 
 	checkInterval := time.Duration(userSettings.CheckInterval) * time.Minute
