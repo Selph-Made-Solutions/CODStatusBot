@@ -19,15 +19,6 @@ type RateLimiter struct {
 	rates  map[string]time.Duration
 }
 
-/*
-func NewRateLimiter() *RateLimiter {
-	return &RateLimiter{
-		limits: make(map[string]time.Time),
-		rates:  make(map[string]time.Duration),
-	}
-}
-*/
-
 func (r *RateLimiter) Allow(key string, rate time.Duration) bool {
 	r.Lock()
 	defer r.Unlock()
@@ -44,54 +35,12 @@ func (r *RateLimiter) Allow(key string, rate time.Duration) bool {
 	return true
 }
 
+// TODO: what is this for and why is it not used?
 func isChannelError(err error) bool {
 	return strings.Contains(err.Error(), "Missing Access") ||
 		strings.Contains(err.Error(), "Unknown Channel") ||
 		strings.Contains(err.Error(), "Missing Permissions")
 }
-
-/*
-func sendNotification(s *discordgo.Session, account models.Account, embed *discordgo.MessageEmbed, content, notificationType string) error {
-	if account.IsCheckDisabled {
-		return nil
-	}
-
-	userSettings, err := GetUserSettings(account.UserID)
-	if err != nil {
-		return fmt.Errorf("failed to get user settings: %w", err)
-	}
-
-	config, ok := notificationConfigs[notificationType]
-	if !ok {
-		return fmt.Errorf("unknown notification type: %s", notificationType)
-	}
-
-	if !checkNotificationCooldown(account.UserID, notificationType, config.Cooldown) {
-		return nil
-	}
-
-	channelID, err := getNotificationChannel(s, account, userSettings)
-	if err != nil {
-		return fmt.Errorf("failed to get notification channel: %w", err)
-	}
-
-	_, err = s.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
-		Embed:   embed,
-		Content: content,
-	})
-
-	if err != nil {
-		if isChannelError(err) {
-			handleChannelError(s, account, err)
-			return err
-		}
-		return fmt.Errorf("failed to send notification: %w", err)
-	}
-
-	updateNotificationTimestamp(account.UserID, notificationType)
-	return nil
-}
-*/
 
 func updateNotificationTimestamp(userID string, notificationType string) {
 	var settings models.UserSettings
@@ -154,32 +103,6 @@ func getNotificationChannel(s *discordgo.Session, account models.Account, userSe
 	return account.ChannelID, nil
 }
 
-/*
-func handleChannelError(s *discordgo.Session, account models.Account, err error) {
-	logger.Log.WithError(err).Errorf("Channel error for account %s", account.Title)
-
-	channel, err := s.UserChannelCreate(account.UserID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to create DM channel")
-		return
-	}
-
-	embed := &discordgo.MessageEmbed{
-		Title: "Channel Access Error",
-		Description: fmt.Sprintf("The bot has lost access to the channel for account '%s'. "+
-			"Please ensure the bot has proper permissions or set a new notification channel.",
-			account.Title),
-		Color:     0xFF0000,
-		Timestamp: time.Now().Format(time.RFC3339),
-	}
-
-	_, err = s.ChannelMessageSendEmbed(channel.ID, embed)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to send DM about channel error")
-	}
-}
-*/
-
 func processUserAccounts(s *discordgo.Session, userID string, accounts []models.Account) {
 	userSettings, err := GetUserSettings(userID)
 	if err != nil {
@@ -227,83 +150,6 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 		NotifyCookieExpiringSoon(s, expiringAccounts)
 	}
 }
-
-/*
-func processUserAccountBatch(s *discordgo.Session, userID string, accounts []models.Account) {
-	userSettings, err := GetUserSettings(userID)
-	if err != nil {
-		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
-		return
-	}
-
-	if err := validateUserCaptchaService(userID, userSettings); err != nil {
-		logger.Log.WithError(err).Errorf("Captcha service validation failed for user %s", userID)
-		notifyUserOfServiceIssue(s, userID, err)
-		return
-	}
-
-	var (
-		accountsToUpdate    []models.Account
-		dailyUpdateAccounts []models.Account
-		expiringAccounts    []models.Account
-		now                 = time.Now()
-	)
-
-	for _, account := range accounts {
-		if shouldCheckAccount(account, userSettings, now) {
-			accountsToUpdate = append(accountsToUpdate, account)
-		}
-
-		if shouldIncludeInDailyUpdate(account, userSettings, now) {
-			dailyUpdateAccounts = append(dailyUpdateAccounts, account)
-		}
-
-		if shouldCheckExpiration(account, now) {
-			expiringAccounts = append(expiringAccounts, account)
-		}
-	}
-
-	var wg sync.WaitGroup
-	errorChan := make(chan error, len(accountsToUpdate))
-
-	for _, account := range accountsToUpdate {
-		wg.Add(1)
-		go func(acc models.Account) {
-			defer wg.Done()
-
-			checkSemaphore <- struct{}{}
-			defer func() { <-checkSemaphore }()
-
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
-			defer cancel()
-
-			logger.Log.WithFields(logrus.Fields{
-				"account": acc.Title,
-				"userId":  acc.UserID,
-			}).Info("Starting account check")
-
-			if err := processAccountCheck(ctx, s, acc, userSettings); err != nil {
-				errorChan <- fmt.Errorf("error checking account %s: %w", acc.Title, err)
-			}
-		}(account)
-	}
-
-	wg.Wait()
-	close(errorChan)
-
-	for err := range errorChan {
-		logger.Log.Error(err)
-	}
-
-	if len(dailyUpdateAccounts) > 0 {
-		SendConsolidatedDailyUpdate(s, userID, userSettings, dailyUpdateAccounts)
-	}
-
-	if len(expiringAccounts) > 0 {
-		NotifyCookieExpiringSoon(s, expiringAccounts)
-	}
-}
-*/
 
 func notifyUserOfServiceIssue(s *discordgo.Session, userID string, err error) {
 	channel, err := s.UserChannelCreate(userID)
@@ -365,39 +211,6 @@ func processAccountCheck(s *discordgo.Session, account models.Account, userSetti
 	}
 	return fmt.Errorf("max retries exceeded for account %s", account.Title)
 }
-
-/*
-func checkAccountWithContext(ctx context.Context, s *discordgo.Session, account models.Account, userSettings models.UserSettings) error {
-	captchaAPIKey, err := getCaptchaKeyForUser(userSettings)
-	if err != nil {
-		return fmt.Errorf("failed to get captcha key: %w", err)
-	}
-
-	status, err := CheckAccountWithContext(ctx, account.SSOCookie, account.UserID, captchaAPIKey)
-	if err != nil {
-		return fmt.Errorf("failed to check account status: %w", err)
-	}
-
-	DBMutex.Lock()
-	defer DBMutex.Unlock()
-
-	previousStatus := account.LastStatus
-	account.LastStatus = status
-	account.LastCheck = time.Now().Unix()
-	account.LastSuccessfulCheck = time.Now()
-	account.ConsecutiveErrors = 0
-
-	if err := database.DB.Save(&account).Error; err != nil {
-		return fmt.Errorf("failed to update account state: %w", err)
-	}
-
-	if previousStatus != status {
-		HandleStatusChange(s, account, status, userSettings)
-	}
-
-	return nil
-}
-*/
 
 func handleCheckFailure(s *discordgo.Session, account models.Account, err error) {
 	DBMutex.Lock()
@@ -474,7 +287,7 @@ func shouldCheckAccount(account models.Account, userSettings models.UserSettings
 			logger.Log.Debugf("Account %s is permabanned, skipping check until %s", account.Title, nextCheck)
 			return false
 		}
-		// Only check permabanned accounts for cookie validity
+		//TODO: we dont need to check perma banned accounts for anything once they have been permabanned a single notice should be sent to the user so they can remove the account wasting resources otherwise
 		return true
 	}
 
@@ -539,7 +352,10 @@ func validateUserCaptchaService(userID string, userSettings models.UserSettings)
 	}
 
 	return nil
+
 }
+
+//TODO: why is this here not in use ?
 
 func getCaptchaKeyForUser(userSettings models.UserSettings) (string, error) {
 	switch userSettings.PreferredCaptchaProvider {
