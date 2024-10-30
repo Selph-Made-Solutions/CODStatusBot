@@ -80,13 +80,23 @@ func GetCooldownDuration(userSettings models.UserSettings, notificationType stri
 }
 
 func GetNotificationChannel(s *discordgo.Session, account models.Account, userSettings models.UserSettings) (string, error) {
-	if userSettings.NotificationType == "dm" {
+	if userSettings.NotificationType == "dm" || account.ChannelID == "" {
 		channel, err := s.UserChannelCreate(account.UserID)
 		if err != nil {
 			return "", fmt.Errorf("failed to create DM channel: %w", err)
 		}
 		return channel.ID, nil
 	}
+
+	_, err := s.Channel(account.ChannelID)
+	if err != nil {
+		channel, err := s.UserChannelCreate(account.UserID)
+		if err != nil {
+			return "", fmt.Errorf("failed to create DM channel: %w", err)
+		}
+		return channel.ID, nil
+	}
+
 	return account.ChannelID, nil
 }
 
@@ -387,7 +397,11 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 
 	channelID, err := GetNotificationChannel(s, account, userSettings)
 	if err != nil {
-		return fmt.Errorf("failed to get notification channel: %w", err)
+		channel, dmErr := s.UserChannelCreate(account.UserID)
+		if dmErr != nil {
+			return fmt.Errorf("failed to send notification: %w", err)
+		}
+		channelID = channel.ID
 	}
 
 	_, err = s.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
