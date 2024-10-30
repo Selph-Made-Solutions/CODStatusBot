@@ -154,6 +154,7 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 	return "", 0, fmt.Errorf("no valid API key found for provider %s", settings.PreferredCaptchaProvider)
 }
 
+//TODO: why is this not is use and commented out?
 /*
 func SetUserCaptchaKey(userID string, apiKey string, provider string) error {
 	if !isValidUserID(userID) {
@@ -229,20 +230,6 @@ func GetCaptchaSolver(userID string) (CaptchaSolver, error) {
 	return NewCaptchaSolver(apiKey, settings.PreferredCaptchaProvider)
 }
 
-/*
-func isValidUserID(userID string) bool {
-	if len(userID) < 17 || len(userID) > 20 {
-		return false
-	}
-	for _, char := range userID {
-		if char < '0' || char > '9' {
-			return false
-		}
-	}
-	return true
-}
-*/
-
 func GetDefaultSettings() (models.UserSettings, error) {
 	return defaultSettings, nil
 }
@@ -271,6 +258,8 @@ func RemoveCaptchaKey(userID string) error {
 	logger.Log.Infof("Removed captcha key and reset settings for user: %s", userID)
 	return nil
 }
+
+//TODO: why is this not in use and commented out?
 
 /*
 	func UpdateUserSettings(userID string, newSettings models.UserSettings) error {
@@ -309,6 +298,9 @@ func RemoveCaptchaKey(userID string) error {
 		return nil
 	}
 */
+
+//TODO: is this not already in captcha_solver.go?
+
 func CheckCaptchaKeyValidity(captchaKey string) (bool, float64, error) {
 	url := "https://api.ez-captcha.com/getBalance"
 	payload := map[string]string{
@@ -352,20 +344,3 @@ func CheckCaptchaKeyValidity(captchaKey string) (bool, float64, error) {
 
 	return true, result.Balance, nil
 }
-
-/*
-func ValidateEZCaptchaKey(apiKey string) (bool, float64, error) {
-	return CheckCaptchaKeyValidity(apiKey)
-}
-*/
-/*
-func ValidateTwoCaptchaKey(apiKey string) (bool, float64, error) {
-	return CheckCaptchaKeyValidity(apiKey)
-	//	client := api2captcha.NewClient(apiKey)
-	//	balance, err := client.GetBalance()
-	//	if err != nil {
-	//		return false, 0, err
-	//	}
-	//	return true, balance, nil
-}
-*/
