@@ -54,6 +54,7 @@ var (
 	checkNowRateLimit           time.Duration
 	DBMutex                     sync.Mutex
 	notificationConfigs         = map[string]NotificationConfig{
+		"channel_change":       {Cooldown: time.Hour, AllowConsolidated: false},
 		"status_change":        {Cooldown: time.Hour, AllowConsolidated: false},
 		"permaban":             {Cooldown: 24 * time.Hour, AllowConsolidated: false},
 		"shadowban":            {Cooldown: 12 * time.Hour, AllowConsolidated: false},
@@ -814,15 +815,22 @@ func getChannelForAnnouncement(s *discordgo.Session, userID string, userSettings
 		channel, err := s.UserChannelCreate(userID)
 		if err != nil {
 			logger.Log.WithError(err).Error("Error creating DM channel for global announcement")
-			return "", err
+			var account models.Account
+			if err := database.DB.Where("user_id = ?", userID).Order("updated_at DESC").First(&account).Error; err != nil {
+				return "", fmt.Errorf("failed to get any valid channel: %w", err)
+			}
+			return account.ChannelID, nil
 		}
 		return channel.ID, nil
 	}
 
 	var account models.Account
 	if err := database.DB.Where("user_id = ?", userID).Order("updated_at DESC").First(&account).Error; err != nil {
-		logger.Log.WithError(err).Error("Error finding recent channel for user")
-		return "", err
+		channel, err := s.UserChannelCreate(userID)
+		if err != nil {
+			return "", fmt.Errorf("failed to get any valid channel: %w", err)
+		}
+		return channel.ID, nil
 	}
 	return account.ChannelID, nil
 }
