@@ -397,8 +397,13 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 
 	if err != nil {
 		if strings.Contains(err.Error(), "Missing Access") || strings.Contains(err.Error(), "Unknown Channel") {
-			logger.Log.Warnf("Bot might have been removed from the channel or server for user %s", account.UserID)
-			return fmt.Errorf("bot might have been removed: %w", err)
+			logger.Log.Warnf("Bot might have been removed from channel for account %s", account.Title)
+			account.IsCheckDisabled = true
+			account.DisabledReason = "Bot removed from channel"
+			if err := database.DB.Save(&account).Error; err != nil {
+				logger.Log.WithError(err).Error("Failed to update account disabled status")
+			}
+			return fmt.Errorf("bot removed from channel: %w", err)
 		}
 		return fmt.Errorf("failed to send notification: %w", err)
 	}
