@@ -731,19 +731,18 @@ func isCriticalError(err error) bool {
 	return false
 }
 
-// TODO: change emojies to custom application emojis or remove them
 func getStatusIcon(status models.Status) string {
 	switch status {
 	case models.StatusGood:
-		return "✅"
+		return "\u2705" // Unicode white heavy check mark
 	case models.StatusPermaban:
-		return "🚫"
+		return "\u26D4" // Unicode no entry
 	case models.StatusShadowban:
-		return "👁️"
+		return "\u1F441" // Unicode eye
 	case models.StatusTempban:
-		return "⏳"
+		return "\u23F3" // Unicode hourglass
 	default:
-		return "❓"
+		return "\u2753" // Unicode question mark
 	}
 }
 
