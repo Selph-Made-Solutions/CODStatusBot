@@ -13,7 +13,6 @@ import (
 	"github.com/bradselph/CODStatusBot/webserver"
 	"github.com/bwmarrin/discordgo"
 	"github.com/patrickmn/go-cache"
-	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -354,6 +353,7 @@ func (nl *NotificationLimiter) CanSendNotification(userID string) bool {
 }
 
 func SendNotification(s *discordgo.Session, account models.Account, embed *discordgo.MessageEmbed, content, notificationType string) error {
+	// Rate limit and disabled checks
 	if !globalLimiter.CanSendNotification(account.UserID) {
 		logger.Log.Infof("Notification suppressed due to rate limiting for user %s", account.UserID)
 		return nil
@@ -364,6 +364,7 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 		return nil
 	}
 
+	// Get user settings and validate notification type
 	userSettings, err := GetUserSettings(account.UserID)
 	if err != nil {
 		return fmt.Errorf("failed to get user settings: %w", err)
@@ -374,6 +375,7 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 		return fmt.Errorf("unknown notification type: %s", notificationType)
 	}
 
+	// Check cooldown
 	userNotificationMutex.Lock()
 	defer userNotificationMutex.Unlock()
 
@@ -383,7 +385,6 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 
 	lastNotification, exists := userNotificationTimestamps[account.UserID][notificationType]
 	now := time.Now()
-
 	cooldownDuration := GetCooldownDuration(userSettings, notificationType, config.Cooldown)
 
 	if exists && now.Sub(lastNotification) < cooldownDuration {
@@ -391,47 +392,37 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 		return nil
 	}
 
+	// Get channel and send message
 	channelID, err := GetNotificationChannel(s, account, userSettings)
 	if err != nil {
-		logger.Log.WithError(err).WithFields(logrus.Fields{
-			"accountID": account.ID,
-			"userID":    account.UserID,
-			"type":      notificationType,
-		}).Error("Failed to get notification channel")
-
-		channel, dmErr := s.UserChannelCreate(account.UserID)
-		if dmErr != nil {
-			return fmt.Errorf("all notification channels failed: %w", err)
+		if userSettings.NotificationType == "dm" {
+			// If user prefers DMs and DM failed, no fallback
+			return fmt.Errorf("failed to send DM notification: %w", err)
 		}
-		channelID = channel.ID
 
-		if account.ChannelID != channelID {
-			account.ChannelID = channelID
-			if dbErr := database.DB.Save(&account).Error; dbErr != nil {
-				logger.Log.WithError(dbErr).Error("Failed to update account channel to DM")
-			}
-		}
-	}
-
-	if err != nil {
+		// Only try DM fallback for channel access errors
 		if strings.Contains(err.Error(), "Missing Access") || strings.Contains(err.Error(), "Unknown Channel") {
-			logger.Log.Warnf("Bot might have been removed from channel for account %s", account.Title)
-			channel, err := s.UserChannelCreate(account.UserID)
-			if err != nil {
-				return fmt.Errorf("failed to create fallback DM channel: %w", err)
+			logger.Log.Warnf("Channel notification failed for account %s, falling back to DM", account.Title)
+			channel, dmErr := s.UserChannelCreate(account.UserID)
+			if dmErr != nil {
+				return fmt.Errorf("both channel and DM notification failed: %w", err)
 			}
-			_, err = s.ChannelMessageSendComplex(channel.ID, &discordgo.MessageSend{
-				Embed:   embed,
-				Content: content,
-			})
-			if err != nil {
-				return fmt.Errorf("failed to send notification via fallback DM: %w", err)
-			}
+			channelID = channel.ID
 		} else {
 			return fmt.Errorf("failed to send notification: %w", err)
 		}
 	}
 
+	// Send the actual message
+	_, err = s.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
+		Embed:   embed,
+		Content: content,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
+	}
+
+	// Update timestamps and save
 	logger.Log.Infof("%s notification sent to user %s", notificationType, account.UserID)
 	userNotificationTimestamps[account.UserID][notificationType] = now
 
@@ -601,38 +592,6 @@ func UpdateNotificationTimestamp(userID string, notificationType string) error {
 	return database.DB.Save(&settings).Error
 }
 
-/*
-	func sendConsolidatedCookieExpirationWarning(s *discordgo.Session, userID string, expiringAccounts []models.Account, userSettings models.UserSettings) {
-		var embedFields []*discordgo.MessageEmbedField
-
-		for _, account := range expiringAccounts {
-			timeUntilExpiration, _ := CheckSSOCookieExpiration(account.SSOCookieExpiration)
-			embedFields = append(embedFields, &discordgo.MessageEmbedField{
-				Name:   account.Title,
-				Value:  fmt.Sprintf("Cookie expires in %s", FormatDuration(timeUntilExpiration)),
-				Inline: false,
-			})
-		}
-
-		embed := &discordgo.MessageEmbed{
-			Title:       "SSO Cookie Expiration Warning",
-			Description: "The following accounts have SSO cookies that will expire soon:",
-			Color:       0xFFA500, // Orange color for warning
-			Fields:      embedFields,
-			Timestamp:   time.Now().Format(time.RFC3339),
-		}
-
-		err := SendNotification(s, expiringAccounts[0], embed, "", "cookie_expiring_soon")
-		if err != nil {
-			logger.Log.WithError(err).Errorf("Failed to send consolidated cookie expiration warning for user %s", userID)
-		} else {
-			userSettings.LastCookieExpirationWarning = time.Now()
-			if err := database.DB.Save(&userSettings).Error; err != nil {
-				logger.Log.WithError(err).Errorf("Failed to update LastCookieExpirationWarning for user %s", userID)
-			}
-		}
-	}
-*/
 func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettings models.UserSettings, accounts []models.Account) {
 	if len(accounts) == 0 {
 		return
@@ -737,8 +696,12 @@ func notifyUserOfCheckError(s *discordgo.Session, account models.Account, err er
 			Title: "Critical Account Check Error",
 			Description: fmt.Sprintf("There was a critical error checking your account '%s'. "+
 				"The bot developer has been notified and will investigate the issue.", account.Title),
-			Color:     0xFF0000, // Red color for critical error
+			Color:     0xFF0000,
 			Timestamp: time.Now().Format(time.RFC3339),
+		}
+
+		if err := SendNotification(s, account, embed, "", "error"); err != nil {
+			logger.Log.WithError(err).Error("Failed to send error notification")
 		}
 
 		_, err = s.ChannelMessageSendEmbed(channel.ID, embed)
