@@ -215,51 +215,70 @@ func checkAccountAfterTempBan(s *discordgo.Session, account models.Account) {
 */
 
 func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus models.Status, userSettings models.UserSettings) {
+	if account.IsPermabanned && newStatus == models.StatusPermaban {
+		logger.Log.Debugf("Account %s is already marked as permabanned, skipping notification", account.Title)
+		return
+	}
+
+	if account.LastStatus == newStatus {
+		logger.Log.Debugf("No status change for account %s, skipping notification", account.Title)
+		return
+	}
+
 	DBMutex.Lock()
 	defer DBMutex.Unlock()
 
 	now := time.Now()
-
-	if now.Sub(userSettings.LastStatusChangeNotification) < time.Duration(userSettings.StatusChangeCooldown)*time.Hour {
-		logger.Log.Infof("Skipping status change notification for account %s (cooldown)", account.Title)
+	lastStatusChange := time.Unix(account.LastStatusChange, 0)
+	if now.Sub(lastStatusChange) < time.Duration(userSettings.StatusChangeCooldown)*time.Hour {
+		logger.Log.Debugf("Status change notification for account %s is on cooldown", account.Title)
 		return
 	}
 
+	previousStatus := account.LastStatus
 	account.LastStatus = newStatus
 	account.LastStatusChange = now.Unix()
 	account.IsPermabanned = newStatus == models.StatusPermaban
 	account.IsShadowbanned = newStatus == models.StatusShadowban
+	account.IsTempbanned = newStatus == models.StatusTempban
 	account.LastSuccessfulCheck = now
 
 	if err := database.DB.Save(&account).Error; err != nil {
-		logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
+		logger.Log.WithError(err).Error("Failed to update account status")
 		return
 	}
 
 	ban := models.Ban{
-		Account:   account,
-		Status:    newStatus,
 		AccountID: account.ID,
+		Status:    newStatus,
 	}
 
 	if newStatus == models.StatusTempban {
-		ban.TempBanDuration = calculateBanDuration(now)
+		ban.TempBanDuration = calculateBanDuration(time.Now().Add(24 * time.Hour))
 		ban.AffectedGames = getAffectedGames(account.SSOCookie)
 	}
 
 	if err := database.DB.Create(&ban).Error; err != nil {
-		logger.Log.WithError(err).Errorf("Failed to create ban record for account %s", account.Title)
+		logger.Log.WithError(err).Error("Failed to create ban record")
 	}
 
 	embed := &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%s - %s", account.Title, EmbedTitleFromStatus(newStatus)),
 		Description: GetStatusDescription(newStatus, account.Title, ban),
 		Color:       GetColorForStatus(newStatus, account.IsExpiredCookie, account.IsCheckDisabled),
-		Timestamp:   now.Format(time.RFC3339),
 		Fields:      getStatusFields(account, newStatus),
+		Timestamp:   now.Format(time.RFC3339),
 	}
 
 	notificationType := getNotificationType(newStatus)
+
+	if previousStatus != models.StatusUnknown {
+		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+			Name:   "Previous Status",
+			Value:  string(previousStatus),
+			Inline: true,
+		})
+	}
 
 	err := SendNotification(s, account, embed, fmt.Sprintf("<@%s>", account.UserID), notificationType)
 	if err != nil {
@@ -271,8 +290,51 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 		}
 	}
 
-	if newStatus == models.StatusTempban {
+	switch newStatus {
+	case models.StatusTempban:
 		go ScheduleTempBanNotification(s, account, ban.TempBanDuration)
+
+	case models.StatusPermaban:
+		permaBanEmbed := &discordgo.MessageEmbed{
+			Title: fmt.Sprintf("%s - Permanent Ban Detected", account.Title),
+			Description: "This account has been permanently banned. It's recommended to remove it from monitoring " +
+				"using the /removeaccount command to free up your account slot.",
+			Color:     GetColorForStatus(newStatus, false, false),
+			Timestamp: now.Format(time.RFC3339),
+			Fields: []*discordgo.MessageEmbedField{
+				{
+					Name:   "Account Status",
+					Value:  "Permanently Banned",
+					Inline: true,
+				},
+				{
+					Name:   "Action Required",
+					Value:  "Remove account using /removeaccount",
+					Inline: true,
+				},
+				{
+					Name:   "Note",
+					Value:  "Removing this account will free up a slot for monitoring another account.",
+					Inline: false,
+				},
+			},
+		}
+
+		if ban.AffectedGames != "" {
+			permaBanEmbed.Fields = append(permaBanEmbed.Fields, &discordgo.MessageEmbedField{
+				Name:   "Affected Games",
+				Value:  ban.AffectedGames,
+				Inline: false,
+			})
+		}
+
+		if err := SendNotification(s, account, permaBanEmbed, "", "permaban_notice"); err != nil {
+			logger.Log.WithError(err).Error("Failed to send permaban notice")
+		}
+	}
+
+	if err := database.DB.Save(&account).Error; err != nil {
+		logger.Log.WithError(err).Error("Failed to save final account status")
 	}
 }
 
