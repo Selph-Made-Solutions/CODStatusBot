@@ -81,7 +81,7 @@ func GetCooldownDuration(userSettings models.UserSettings, notificationType stri
 }
 
 func GetNotificationChannel(s *discordgo.Session, account models.Account, userSettings models.UserSettings) (string, error) {
-	if userSettings.NotificationType == "dm" || account.ChannelID == "" {
+	if userSettings.NotificationType == "dm" {
 		channel, err := s.UserChannelCreate(account.UserID)
 		if err != nil {
 			return "", fmt.Errorf("failed to create DM channel: %w", err)
@@ -89,13 +89,8 @@ func GetNotificationChannel(s *discordgo.Session, account models.Account, userSe
 		return channel.ID, nil
 	}
 
-	_, err := s.Channel(account.ChannelID)
-	if err != nil {
-		channel, err := s.UserChannelCreate(account.UserID)
-		if err != nil {
-			return "", fmt.Errorf("failed to create DM channel: %w", err)
-		}
-		return channel.ID, nil
+	if account.ChannelID == "" {
+		return "", fmt.Errorf("no channel ID set for account")
 	}
 
 	return account.ChannelID, nil
