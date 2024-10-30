@@ -37,9 +37,11 @@ func CommandRemoveAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		return
 	}
 
-	// Create buttons for each account
-	var components []discordgo.MessageComponent
-	var currentRow []discordgo.MessageComponent
+	var (
+		// Create buttons for each account
+		components []discordgo.MessageComponent
+		currentRow []discordgo.MessageComponent
+	)
 
 	for _, account := range accounts {
 		currentRow = append(currentRow, discordgo.Button{
@@ -182,15 +184,3 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 		logger.Log.WithError(err).Error("Error responding to interaction")
 	}
 }
-
-/*
-func getUserID(i *discordgo.InteractionCreate) (string, error) {
-	if i.Member != nil && i.Member.User != nil {
-		return i.Member.User.ID, nil
-	}
-	if i.User != nil {
-		return i.User.ID, nil
-	}
-	return "", fmt.Errorf("unable to determine user ID")
-}
-*/
