@@ -21,6 +21,7 @@ type Account struct {
 	NotificationType       string    `gorm:"default:channel"` // User preference for location of notifications either channel or dm
 	IsPermabanned          bool      `gorm:"default:false"`   // A flag indicating if the account is permanently banned
 	IsShadowbanned         bool      `gorm:"default:false"`   // A flag indicating if the account is shadowbanned
+	IsTempbanned           bool      `gorm:"default:false"`   // A flag indicating if the account is temporarily banned
 	LastCookieCheck        int64     `gorm:"default:0"`       // The timestamp of the last cookie check for permanently banned accounts.
 	LastStatusChange       int64     `gorm:"default:0"`       // The timestamp of the last status change
 	IsCheckDisabled        bool      `gorm:"default:false"`   // A flag indicating if checks are disabled for this account
