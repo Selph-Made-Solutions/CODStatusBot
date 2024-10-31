@@ -1,11 +1,7 @@
 package services
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"strconv"
 
@@ -242,49 +238,3 @@ func RemoveCaptchaKey(userID string) error {
 		return nil
 	}
 */
-
-//TODO: is this not already in captcha_solver.go?
-
-func CheckCaptchaKeyValidity(captchaKey string) (bool, float64, error) {
-	url := "https://api.ez-captcha.com/getBalance"
-	payload := map[string]string{
-		"clientKey": captchaKey,
-	}
-
-	jsonPayload, err := json.Marshal(payload)
-	if err != nil {
-		return false, 0, fmt.Errorf("failed to marshal JSON payload: %v", err)
-	}
-
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonPayload))
-	if err != nil {
-		return false, 0, fmt.Errorf("failed to send getBalance request: %v", err)
-	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			logger.Log.WithError(err).Error("Error closing response body")
-		}
-	}(resp.Body)
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return false, 0, fmt.Errorf("failed to read response body: %v", err)
-	}
-
-	var result struct {
-		ErrorId int     `json:"errorId"`
-		Balance float64 `json:"balance"`
-	}
-
-	err = json.Unmarshal(body, &result)
-	if err != nil {
-		return false, 0, fmt.Errorf("failed to parse JSON response: %v", err)
-	}
-
-	if result.ErrorId != 0 {
-		return false, 0, nil
-	}
-
-	return true, result.Balance, nil
-}
