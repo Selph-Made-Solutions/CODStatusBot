@@ -137,7 +137,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 					case "announcement_title":
 						title = utils.SanitizeInput(strings.TrimSpace(textInput.Value))
 					case "announcement_content":
-						content = strings.TrimSpace(textInput.Value)
+						content = utils.SanitizeAnnouncement(strings.TrimSpace(textInput.Value))
 					case "reset_flags":
 						resetFlags = strings.ToLower(utils.SanitizeInput(strings.TrimSpace(textInput.Value)))
 					}
