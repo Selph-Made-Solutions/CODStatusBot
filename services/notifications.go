@@ -749,7 +749,7 @@ func getStatusIcon(status models.Status) string {
 func formatAccountStatus(account models.Account, status models.Status, timeUntilExpiration time.Duration) string {
 	switch status {
 	case models.StatusGood:
-		return fmt.Sprintf("Good standing (Expires in %s)", FormatDuration(timeUntilExpiration))
+		return fmt.Sprintf("Good standing | Expires in %s", FormatDuration(timeUntilExpiration))
 	case models.StatusPermaban:
 		return "Permanently banned"
 	case models.StatusShadowban:
@@ -765,6 +765,20 @@ func formatAccountStatus(account models.Account, status models.Status, timeUntil
 	default:
 		return "Unknown status"
 	}
+}
+
+func formatVIPStatus(isVIP bool) string {
+	if isVIP {
+		return "VIP Account"
+	}
+	return "Regular Account"
+}
+
+func formatCheckStatus(isDisabled bool) string {
+	if isDisabled {
+		return "DISABLED"
+	}
+	return "ENABLED"
 }
 
 func getNotificationType(status models.Status) string {
