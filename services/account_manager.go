@@ -40,55 +40,59 @@ func isChannelError(err error) bool {
 		strings.Contains(err.Error(), "Missing Permissions")
 }
 
-func updateNotificationTimestamp(userID string, notificationType string) {
-	var settings models.UserSettings
-	if err := database.DB.Where("user_id = ?", userID).First(&settings).Error; err != nil {
-		logger.Log.WithError(err).Error("Failed to get user settings for timestamp update")
-		return
-	}
+/*
+	func updateNotificationTimestamp(userID string, notificationType string) {
+		var settings models.UserSettings
+		if err := database.DB.Where("user_id = ?", userID).First(&settings).Error; err != nil {
+			logger.Log.WithError(err).Error("Failed to get user settings for timestamp update")
+			return
+		}
 
-	now := time.Now()
-	switch notificationType {
-	case "status_change":
-		settings.LastStatusChangeNotification = now
-	case "daily_update":
-		settings.LastDailyUpdateNotification = now
-	case "cookie_expiring":
-		settings.LastCookieExpirationWarning = now
-	case "error":
-		settings.LastErrorNotification = now
-	default:
-		settings.LastNotification = now
-	}
+		now := time.Now()
+		switch notificationType {
+		case "status_change":
+			settings.LastStatusChangeNotification = now
+		case "daily_update":
+			settings.LastDailyUpdateNotification = now
+		case "cookie_expiring":
+			settings.LastCookieExpirationWarning = now
+		case "error":
+			settings.LastErrorNotification = now
+		default:
+			settings.LastNotification = now
+		}
 
-	if err := database.DB.Save(&settings).Error; err != nil {
-		logger.Log.WithError(err).Error("Failed to update notification timestamp")
+		if err := database.DB.Save(&settings).Error; err != nil {
+			logger.Log.WithError(err).Error("Failed to update notification timestamp")
+		}
 	}
-}
+*/
 
-func checkNotificationCooldown(userID string, notificationType string, cooldownDuration time.Duration) bool {
-	var settings models.UserSettings
-	if err := database.DB.Where("user_id = ?", userID).First(&settings).Error; err != nil {
-		logger.Log.WithError(err).Error("Failed to get user settings for cooldown check")
-		return false
+/*
+	func checkNotificationCooldown(userID string, notificationType string, cooldownDuration time.Duration) bool {
+		var settings models.UserSettings
+		if err := database.DB.Where("user_id = ?", userID).First(&settings).Error; err != nil {
+			logger.Log.WithError(err).Error("Failed to get user settings for cooldown check")
+			return false
+		}
+
+		var lastNotification time.Time
+		switch notificationType {
+		case "status_change":
+			lastNotification = settings.LastStatusChangeNotification
+		case "daily_update":
+			lastNotification = settings.LastDailyUpdateNotification
+		case "cookie_expiring":
+			lastNotification = settings.LastCookieExpirationWarning
+		case "error":
+			lastNotification = settings.LastErrorNotification
+		default:
+			lastNotification = settings.LastNotification
+		}
+
+		return time.Since(lastNotification) >= cooldownDuration
 	}
-
-	var lastNotification time.Time
-	switch notificationType {
-	case "status_change":
-		lastNotification = settings.LastStatusChangeNotification
-	case "daily_update":
-		lastNotification = settings.LastDailyUpdateNotification
-	case "cookie_expiring":
-		lastNotification = settings.LastCookieExpirationWarning
-	case "error":
-		lastNotification = settings.LastErrorNotification
-	default:
-		lastNotification = settings.LastNotification
-	}
-
-	return time.Since(lastNotification) >= cooldownDuration
-}
+*/
 
 func getNotificationChannel(s *discordgo.Session, account models.Account, userSettings models.UserSettings) (string, error) {
 	if userSettings.NotificationType == "dm" {
