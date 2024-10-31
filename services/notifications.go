@@ -18,8 +18,6 @@ import (
 var (
 	userNotificationMutex      sync.Mutex
 	userNotificationTimestamps = make(map[string]map[string]time.Time)
-	userErrorNotifications     = make(map[string][]time.Time)
-	userErrorNotificationMutex sync.Mutex
 	adminNotificationCache     = cache.New(5*time.Minute, 10*time.Minute)
 	checkCircle                = os.Getenv("CHECKCIRCLE")
 	banCircle                  = os.Getenv("BANCIRCLE")
@@ -203,13 +201,14 @@ func ScheduleBalanceChecks(s *discordgo.Session) {
 
 			var apiKey string
 			var provider string
-			if user.PreferredCaptchaProvider == "2captcha" && user.TwoCaptchaAPIKey != "" {
+			switch {
+			case user.PreferredCaptchaProvider == "2captcha" && user.TwoCaptchaAPIKey != "":
 				apiKey = user.TwoCaptchaAPIKey
 				provider = "2captcha"
-			} else if user.PreferredCaptchaProvider == "ezcaptcha" && user.EZCaptchaAPIKey != "" {
+			case user.PreferredCaptchaProvider == "ezcaptcha" && user.EZCaptchaAPIKey != "":
 				apiKey = user.EZCaptchaAPIKey
 				provider = "ezcaptcha"
-			} else {
+			default:
 				continue
 			}
 
@@ -245,11 +244,12 @@ func DisableUserCaptcha(s *discordgo.Session, userID string, reason string) erro
 	}
 
 	settings.TwoCaptchaAPIKey = ""
-	if IsServiceEnabled("ezcaptcha") {
+	switch {
+	case IsServiceEnabled("ezcaptcha"):
 		settings.PreferredCaptchaProvider = "ezcaptcha"
-	} else if IsServiceEnabled("2captcha") {
+	case IsServiceEnabled("2captcha"):
 		settings.PreferredCaptchaProvider = "2captcha"
-	} else {
+	default:
 		settings.PreferredCaptchaProvider = "ezcaptcha"
 	}
 
@@ -597,6 +597,7 @@ func UpdateNotificationTimestamp(userID string, notificationType string) error {
 	return database.DB.Save(&settings).Error
 }
 
+// TODO: Fix this function as it returns inconsistent amount of accounts for users
 func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettings models.UserSettings, accounts []models.Account) {
 	if len(accounts) == 0 {
 		return
@@ -677,6 +678,7 @@ func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettin
 	checkAccountsNeedingAttention(s, accounts, userSettings)
 }
 
+// TODO: do not notify user of errors only send a notification to admin without flooding the admin with a large amount of messages
 func notifyUserOfCheckError(s *discordgo.Session, account models.Account, err error) {
 	canSend, checkErr := CheckNotificationCooldown(account.UserID, "error", time.Hour)
 	if checkErr != nil {
@@ -772,6 +774,7 @@ func formatAccountStatus(account models.Account, status models.Status, timeUntil
 	}
 }
 
+// TODO: what is purpose of this if done elsewhere and not used currently
 func formatVIPStatus(isVIP bool) string {
 	if isVIP {
 		return "VIP Account"
@@ -779,6 +782,7 @@ func formatVIPStatus(isVIP bool) string {
 	return "Regular Account"
 }
 
+// TODO: what is purpose of this if done elsewhere and not used currently
 func formatCheckStatus(isDisabled bool) string {
 	if isDisabled {
 		return "DISABLED"
