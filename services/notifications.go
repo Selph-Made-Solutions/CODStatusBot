@@ -624,23 +624,23 @@ func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettin
 			len(accountsByStatus[models.StatusShadowban])),
 		Inline: false,
 	})
-	//TODO: remove or change thee emojis
+
 	for status, statusAccounts := range accountsByStatus {
 		var description strings.Builder
 		for _, account := range statusAccounts {
 			if account.IsExpiredCookie {
-				description.WriteString(fmt.Sprintf("⛔ %s: Cookie expired\n", account.Title))
+				description.WriteString(fmt.Sprintf("⚠ %s: Cookie expired\n", account.Title))
 				continue
 			}
 
 			timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
 			if err != nil {
-				description.WriteString(fmt.Sprintf("❌ %s: Error checking expiration\n", account.Title))
+				description.WriteString(fmt.Sprintf("⛔ %s: Error checking expiration\n", account.Title))
 				continue
 			}
 
-			icon := getStatusIcon(status)
-			description.WriteString(fmt.Sprintf("%s %s: %s\n", icon, account.Title,
+			statusSymbol := GetStatusIcon(status)
+			description.WriteString(fmt.Sprintf("%s %s: %s\n", statusSymbol, account.Title,
 				formatAccountStatus(account, status, timeUntilExpiration)))
 		}
 
@@ -736,7 +736,7 @@ func isCriticalError(err error) bool {
 	return false
 }
 
-func getStatusIcon(status models.Status) string {
+func GetStatusIcon(status models.Status) string {
 	switch status {
 	case models.StatusGood:
 		return checkCircle
