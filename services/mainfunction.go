@@ -143,8 +143,10 @@ func CheckAccounts(s *discordgo.Session) {
 
 func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus models.Status, userSettings models.UserSettings) {
 	if account.IsPermabanned && newStatus == models.StatusPermaban {
-		logger.Log.Debugf("Account %s is already marked as permabanned, skipping notification", account.Title)
-		return
+		if account.LastNotification != 0 {
+			logger.Log.Debugf("Account %s already notified of permaban, skipping notification", account.Title)
+			return
+		}
 	}
 
 	if account.LastStatus == newStatus {
@@ -216,7 +218,6 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 			logger.Log.WithError(err).Errorf("Failed to update LastStatusChangeNotification for user %s", account.UserID)
 		}
 	}
-
 	switch newStatus {
 	case models.StatusTempban:
 		go ScheduleTempBanNotification(s, account, ban.TempBanDuration)
@@ -258,6 +259,8 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 		if err := SendNotification(s, account, permaBanEmbed, "", "permaban_notice"); err != nil {
 			logger.Log.WithError(err).Error("Failed to send permaban notice")
 		}
+
+		account.LastNotification = now.Unix()
 	}
 
 	if err := database.DB.Save(&account).Error; err != nil {
