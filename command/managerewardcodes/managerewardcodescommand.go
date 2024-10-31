@@ -170,7 +170,6 @@ func HandleAddCodeModal(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		}
 	}
 
-	// Validate inputs
 	days, err := strconv.Atoi(expiresInDays)
 	if err != nil || days <= 0 {
 		respondToInteraction(s, i, "Please enter a valid number of days for expiration.")
@@ -238,8 +237,10 @@ func showRemoveCodeOptions(s *discordgo.Session, i *discordgo.InteractionCreate)
 		return
 	}
 
-	var components []discordgo.MessageComponent
-	var currentRow []discordgo.MessageComponent
+	var (
+		components []discordgo.MessageComponent
+		currentRow []discordgo.MessageComponent
+	)
 
 	for _, code := range codes {
 		currentRow = append(currentRow, discordgo.Button{
