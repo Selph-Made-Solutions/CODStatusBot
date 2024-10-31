@@ -21,6 +21,11 @@ var (
 	userErrorNotifications     = make(map[string][]time.Time)
 	userErrorNotificationMutex sync.Mutex
 	adminNotificationCache     = cache.New(5*time.Minute, 10*time.Minute)
+	checkCircle                = os.Getenv("CHECKCIRCLE")
+	banCircle                  = os.Getenv("BANCIRCLE")
+	infoCircle                 = os.Getenv("INFOCIRCLE")
+	stopWatch                  = os.Getenv("STOPWATCH")
+	questionCircle             = os.Getenv("QUESTIONCIRCLE")
 )
 
 type NotificationLimiter struct {
@@ -734,15 +739,15 @@ func isCriticalError(err error) bool {
 func getStatusIcon(status models.Status) string {
 	switch status {
 	case models.StatusGood:
-		return "\u2705" // Unicode white heavy check mark
+		return checkCircle
 	case models.StatusPermaban:
-		return "\u26D4" // Unicode no entry
+		return banCircle
 	case models.StatusShadowban:
-		return "\u1F441" // Unicode eye
+		return infoCircle
 	case models.StatusTempban:
-		return "\u23F3" // Unicode hourglass
+		return stopWatch
 	default:
-		return "\u2753" // Unicode question mark
+		return questionCircle
 	}
 }
 
