@@ -629,7 +629,7 @@ func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettin
 		var description strings.Builder
 		for _, account := range statusAccounts {
 			if account.IsExpiredCookie {
-				description.WriteString(fmt.Sprintf("📛 %s: Cookie expired\n", account.Title))
+				description.WriteString(fmt.Sprintf("⛔ %s: Cookie expired\n", account.Title))
 				continue
 			}
 
@@ -754,21 +754,21 @@ func getStatusIcon(status models.Status) string {
 func formatAccountStatus(account models.Account, status models.Status, timeUntilExpiration time.Duration) string {
 	switch status {
 	case models.StatusGood:
-		return fmt.Sprintf("Good standing | Expires in %s", FormatDuration(timeUntilExpiration))
+		return fmt.Sprintf("%s Good standing | Expires in %s", checkCircle, FormatDuration(timeUntilExpiration))
 	case models.StatusPermaban:
-		return "Permanently banned"
+		return fmt.Sprintf("%s Permanently banned", banCircle)
 	case models.StatusShadowban:
-		return "Under review"
+		return fmt.Sprintf("%s Under review", infoCircle)
 	case models.StatusTempban:
 		var latestBan models.Ban
 		if err := database.DB.Where("account_id = ?", account.ID).
 			Order("created_at DESC").
 			First(&latestBan).Error; err == nil {
-			return fmt.Sprintf("Temporarily banned (%s remaining)", latestBan.TempBanDuration)
+			return fmt.Sprintf("%s Temporarily banned (%s remaining)", stopWatch, latestBan.TempBanDuration)
 		}
-		return "Temporarily banned (duration unknown)"
+		return fmt.Sprintf("%s  Temporarily banned (duration unknown)", stopWatch)
 	default:
-		return "Unknown status"
+		return fmt.Sprintf("%s Unknown status", questionCircle)
 	}
 }
 
