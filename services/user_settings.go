@@ -81,6 +81,12 @@ func GetUserSettings(userID string) (models.UserSettings, error) {
 		settings.PreferredCaptchaProvider = defaultSettings.PreferredCaptchaProvider
 	}
 
+	if result.RowsAffected > 0 {
+		if err := database.DB.Save(&settings).Error; err != nil {
+			return settings, fmt.Errorf("error saving default settings: %w", err)
+		}
+	}
+
 	logger.Log.Infof("Got user settings for user: %s", userID)
 	return settings, nil
 }
@@ -153,68 +159,6 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 
 	return "", 0, fmt.Errorf("no valid API key found for provider %s", settings.PreferredCaptchaProvider)
 }
-
-//TODO: why is this not is use and commented out?
-/*
-func SetUserCaptchaKey(userID string, apiKey string, provider string) error {
-	if !isValidUserID(userID) {
-		logger.Log.Error("Invalid userID provided")
-		return fmt.Errorf("invalid userID")
-	}
-
-	var settings models.UserSettings
-	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
-	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error retrieving user settings")
-		return result.Error
-	}
-
-	if apiKey != "" {
-		isValid, _, err := ValidateCaptchaKey(apiKey, provider)
-		if err != nil {
-			return fmt.Errorf("error validating API key: %w", err)
-		}
-		if !isValid {
-			return fmt.Errorf("invalid %s API key", provider)
-		}
-
-		switch provider {
-		case "ezcaptcha":
-			settings.EZCaptchaAPIKey = apiKey
-			settings.TwoCaptchaAPIKey = ""
-		case "2captcha":
-			settings.TwoCaptchaAPIKey = apiKey
-			settings.EZCaptchaAPIKey = ""
-		default:
-			return fmt.Errorf("invalid captcha provider: %s", provider)
-		}
-		settings.PreferredCaptchaProvider = provider
-
-		settings.CheckInterval = 15
-		settings.NotificationInterval = 12
-
-		logger.Log.Infof("Setting %s key for user %s", provider, userID)
-	} else {
-		settings.EZCaptchaAPIKey = ""
-		settings.TwoCaptchaAPIKey = ""
-		settings.PreferredCaptchaProvider = "ezcaptcha"
-		settings.CheckInterval = defaultSettings.CheckInterval
-		settings.NotificationInterval = defaultSettings.NotificationInterval
-		settings.CooldownDuration = defaultSettings.CooldownDuration
-		settings.StatusChangeCooldown = defaultSettings.StatusChangeCooldown
-
-		logger.Log.Infof("Removing captcha key for user %s. Resetting to default settings", userID)
-	}
-
-	if err := database.DB.Save(&settings).Error; err != nil {
-		logger.Log.WithError(err).Errorf("Error saving settings for user %s", userID)
-		return fmt.Errorf("error saving user settings: %w", err)
-	}
-
-	logger.Log.Infof("Successfully updated captcha key and settings for user %s", userID)
-	return nil
-}
-*/
 
 func GetCaptchaSolver(userID string) (CaptchaSolver, error) {
 	settings, err := GetUserSettings(userID)
