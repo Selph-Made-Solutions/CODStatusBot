@@ -2,7 +2,6 @@ package services
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -356,23 +355,4 @@ func validateUserCaptchaService(userID string, userSettings models.UserSettings)
 
 	return nil
 
-}
-
-//TODO: why is this here not in use ?
-
-func getCaptchaKeyForUser(userSettings models.UserSettings) (string, error) {
-	switch userSettings.PreferredCaptchaProvider {
-	case "ezcaptcha":
-		if userSettings.EZCaptchaAPIKey != "" {
-			return userSettings.EZCaptchaAPIKey, nil
-		}
-		return os.Getenv("EZCAPTCHA_CLIENT_KEY"), nil
-	case "2captcha":
-		if userSettings.TwoCaptchaAPIKey != "" {
-			return userSettings.TwoCaptchaAPIKey, nil
-		}
-		return "", fmt.Errorf("no 2captcha API key available")
-	default:
-		return "", fmt.Errorf("unsupported captcha provider: %s", userSettings.PreferredCaptchaProvider)
-	}
 }
