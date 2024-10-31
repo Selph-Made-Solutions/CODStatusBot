@@ -76,6 +76,7 @@ type DiscordStats struct {
 	ServerCount int `json:"server_count"`
 }
 
+//nolint:gochecknoinits
 func init() {
 	if err := godotenv.Load(); err != nil {
 		logger.Log.WithError(err).Error("Error loading .env file")
@@ -176,13 +177,17 @@ func GetCachedStats() Stats {
 	return cachedStats
 }
 
-func ServerCountHandler(w http.ResponseWriter, r *http.Request) {
+func ServerCountHandler(w http.ResponseWriter, _ *http.Request) {
 	cachedDiscordStatsLock.RLock()
 	botstats := cachedDiscordStats
 	cachedDiscordStatsLock.RUnlock()
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(botstats)
+	if err := json.NewEncoder(w).Encode(botstats); err != nil {
+		logger.Log.WithError(err).Error("Error encoding server count response")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 }
 
 func StatsHandler(w http.ResponseWriter, r *http.Request) {
@@ -205,50 +210,69 @@ func StatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func TermsHandler(w http.ResponseWriter, r *http.Request) {
+func TermsHandler(w http.ResponseWriter, _ *http.Request) {
 	tmpl, err := template.ParseFiles("templates/terms.html")
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to parse terms template")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	tmpl.Execute(w, nil)
+	if err := tmpl.Execute(w, nil); err != nil {
+		logger.Log.WithError(err).Error("Failed to execute template")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 }
 
-func PolicyHandler(w http.ResponseWriter, r *http.Request) {
+func PolicyHandler(w http.ResponseWriter, _ *http.Request) {
 	tmpl, err := template.ParseFiles("templates/policy.html")
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to parse policy template")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	tmpl.Execute(w, nil)
+	if err := tmpl.Execute(w, nil); err != nil {
+		logger.Log.WithError(err).Error("Failed to execute template")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 }
 
-func HomeHandler(w http.ResponseWriter, r *http.Request) {
+func HomeHandler(w http.ResponseWriter, _ *http.Request) {
 	tmpl, err := template.ParseFiles("templates/index.html")
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to parse index template")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	tmpl.Execute(w, nil)
+	if err := tmpl.Execute(w, nil); err != nil {
+		logger.Log.WithError(err).Error("Failed to execute template")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 }
 
-func HelpHandler(w http.ResponseWriter, r *http.Request) {
+func HelpHandler(w http.ResponseWriter, _ *http.Request) {
 	tmpl, err := template.ParseFiles("templates/help.html")
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to parse help template")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	tmpl.Execute(w, nil)
+	if err := tmpl.Execute(w, nil); err != nil {
+		logger.Log.WithError(err).Error("Failed to execute template")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 }
 
 func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	session, _ := store.Get(r, "admin-session")
 	session.Values["authenticated"] = false
-	session.Save(r, w)
+	err := session.Save(r, w)
+	if err != nil {
+		return
+	}
 	http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
 }
 
@@ -280,10 +304,16 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/admin", http.StatusSeeOther)
 			return
 		}
-		tmpl.Execute(w, map[string]string{"Error": "Invalid credentials"})
+		err := tmpl.Execute(w, map[string]string{"Error": "Invalid credentials"})
+		if err != nil {
+			return
+		}
 		return
 	}
-	tmpl.Execute(w, nil)
+	err = tmpl.Execute(w, nil)
+	if err != nil {
+		return
+	}
 }
 
 func isAuthenticated(r *http.Request) bool {
@@ -529,6 +559,7 @@ func getBanDataForChart() ([]string, []int, error) {
 
 	var dates []string
 	var counts []int
+
 	shadowbanCounts := make(map[string]int)
 	permaBanCounts := make(map[string]int)
 	tempBanCounts := make(map[string]int)
@@ -567,7 +598,7 @@ func getHistoricalData(statType string) ([]HistoricalData, error) {
 			FROM accounts
 			WHERE created > ?
 			GROUP BY date
-			ORDER BY date ASC
+			ORDER BY date
 		`, time.Now().AddDate(0, 0, -30).Unix()).Scan(&data).Error
 
 	case "users":
@@ -576,7 +607,7 @@ func getHistoricalData(statType string) ([]HistoricalData, error) {
 			FROM user_settings
 			WHERE created_at > ?
 			GROUP BY date
-			ORDER BY date ASC
+			ORDER BY date
 		`, time.Now().AddDate(0, 0, -30)).Scan(&data).Error
 
 	case "checks":
@@ -585,7 +616,7 @@ func getHistoricalData(statType string) ([]HistoricalData, error) {
 			FROM accounts
 			WHERE last_check > ?
 			GROUP BY date
-			ORDER BY date ASC
+			ORDER BY date
 		`, time.Now().AddDate(0, 0, -30).Unix()).Scan(&data).Error
 
 	case "bans":
@@ -594,17 +625,17 @@ func getHistoricalData(statType string) ([]HistoricalData, error) {
 			FROM bans
 			WHERE created_at > ?
 			GROUP BY date
-			ORDER BY date ASC
+			ORDER BY date
 		`, time.Now().AddDate(0, 0, -30)).Scan(&data).Error
 
 	case "notifications":
 		err = database.DB.Raw(`
-			SELECT DATE(FROM_UNIXTIME(last_notification)) as date, COUNT(*) as value
-			FROM accounts
-			WHERE last_notification > ?
-			GROUP BY date
-			ORDER BY date ASC
-		`, time.Now().AddDate(0, 0, -30).Unix()).Scan(&data).Error
+					SELECT DATE(FROM_UNIXTIME(last_notification)) as date, COUNT(*) as value
+					FROM accounts
+					WHERE last_notification > ?
+					GROUP BY date
+					ORDER BY date
+				`, time.Now().AddDate(0, 0, -30).Unix()).Scan(&data).Error
 
 	default:
 		return nil, nil
