@@ -3,6 +3,7 @@ package services
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -24,20 +25,16 @@ type NotificationConfig struct {
 }
 
 const (
-	maxRetryAttempts    = 3
-	retryDelay          = 5 * time.Second
-	errorCooldownPeriod = 15 * time.Minute
-	//checkTimeout        = 30 * time.Second
-	//maxConcurrentChecks = 5
+	maxRetryAttempts = 3
+	retryDelay       = 5 * time.Second
+	// checkTimeout        = 30 * time.Second // TODO: fix this to be used
+	// maxConcurrentChecks = 5 // TODO: fix this to be used
 
-)
-
-const (
-	maxConsecutiveErrors          = 5
-	balanceNotificationThreshold  = 1000
-	maxUserErrorNotifications     = 3
-	userErrorNotificationCooldown = 24 * time.Hour
-	balanceNotificationInterval   = 24 * time.Hour
+	maxConsecutiveErrors         = 5
+	balanceNotificationThreshold = 1000 // TODO: fix this to be used
+	// maxUserErrorNotifications     = 3
+	// userErrorNotificationCooldown = 24 * time.Hour
+	// balanceNotificationInterval = 24 * time.Hour // TODO: fix this to be used
 )
 
 var (
@@ -290,7 +287,12 @@ func getAffectedGames(ssoCookie string) string {
 		logger.Log.WithError(err).Error("Failed to get affected games")
 		return "All Games"
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			logger.Log.WithError(err).Error("Failed to close response body")
+		}
+	}(resp.Body)
 
 	var data struct {
 		Bans []struct {
@@ -346,12 +348,11 @@ func getStatusFields(account models.Account, status models.Status) []*discordgo.
 			})
 		}
 	}
-	//TODO: remove or change the emojis
 
 	if isVIP, err := CheckVIPStatus(account.SSOCookie); err == nil {
 		vipStatus := "No"
 		if isVIP {
-			vipStatus = "Yes ⭐"
+			vipStatus = "Yes"
 		}
 		fields = append(fields, &discordgo.MessageEmbedField{
 			Name:   "VIP Status",
