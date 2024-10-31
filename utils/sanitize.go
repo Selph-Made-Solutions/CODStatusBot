@@ -25,12 +25,13 @@ func SanitizeInput(input string) string {
 	return strings.Join(strings.Fields(input), " ")
 }
 
-func SanitizeUsername(username string) string {
-	username = SanitizeInput(username)
-	if len(username) > 32 {
-		username = username[:32]
-	}
-	return username
+func SanitizeAnnouncement(input string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) && r != '\n' {
+			return -1
+		}
+		return r
+	}, input)
 }
 
 func SanitizeAPIKey(apiKey string) string {
