@@ -679,6 +679,7 @@ func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettin
 }
 
 // TODO: do not notify user of errors only send a notification to admin without flooding the admin with a large amount of messages
+/*
 func notifyUserOfCheckError(s *discordgo.Session, account models.Account, err error) {
 	canSend, checkErr := CheckNotificationCooldown(account.UserID, "error", time.Hour)
 	if checkErr != nil {
@@ -722,6 +723,7 @@ func notifyUserOfCheckError(s *discordgo.Session, account models.Account, err er
 		}
 	}
 }
+*/
 
 func isCriticalError(err error) bool {
 	criticalErrors := []string{
