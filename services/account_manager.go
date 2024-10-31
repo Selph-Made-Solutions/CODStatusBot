@@ -183,7 +183,30 @@ func processAccountCheck(s *discordgo.Session, account models.Account, userSetti
 		status, err := CheckAccount(account.SSOCookie, account.UserID, "")
 		if err != nil {
 			if attempt == maxRetryAttempts {
-				handleCheckFailure(s, account, err)
+				DBMutex.Lock()
+				account.ConsecutiveErrors++
+				account.LastErrorTime = time.Now()
+
+				switch {
+				case strings.Contains(err.Error(), "Missing Access") || strings.Contains(err.Error(), "Unknown Channel"):
+					disableAccount(s, account, "Bot removed from server/channel")
+				case strings.Contains(err.Error(), "insufficient balance"):
+					disableAccount(s, account, "Insufficient captcha balance")
+				case strings.Contains(err.Error(), "invalid captcha API key"):
+					disableAccount(s, account, "Invalid captcha API key")
+				default:
+					if account.ConsecutiveErrors >= maxConsecutiveErrors {
+						disableAccount(s, account, fmt.Sprintf("Too many consecutive errors: %v", err))
+					} else {
+						logger.Log.WithError(err).Errorf("Failed to check account %s: possible expired SSO Cookie", account.Title)
+						if err := database.DB.Save(&account).Error; err != nil {
+							logger.Log.WithError(err).Errorf("Failed to update account %s after error", account.Title)
+						}
+						notifyUserOfError(s, account, err)
+					}
+				}
+				DBMutex.Unlock()
+				NotifyAdminWithCooldown(s, fmt.Sprintf("Error checking account %s: %v", account.Title, err), 5*time.Minute)
 				return err
 			}
 			logger.Log.Infof("Retrying account check after error (attempt %d/%d): %v", attempt, maxRetryAttempts, err)
@@ -234,47 +257,47 @@ func handleCheckFailure(s *discordgo.Session, account models.Account, err error)
 }
 
 func notifyUserOfError(s *discordgo.Session, account models.Account, err error) {
-	if !checkNotificationCooldown(account.UserID, "error", errorCooldownPeriod) {
+	canSend, checkErr := CheckNotificationCooldown(account.UserID, "error", time.Hour)
+	if checkErr != nil {
+		logger.Log.WithError(checkErr).Errorf("Failed to check error notification cooldown for user %s", account.UserID)
+		return
+	}
+	if !canSend {
+		logger.Log.Infof("Skipping error notification for user %s due to cooldown", account.UserID)
 		return
 	}
 
-	embed := &discordgo.MessageEmbed{
-		Title:       fmt.Sprintf("%s - Check Error", account.Title),
-		Description: fmt.Sprintf("An error occurred while checking your account: %v", err),
-		Color:       0xFF0000,
-		Fields: []*discordgo.MessageEmbedField{
-			{
-				Name:   "Consecutive Errors",
-				Value:  fmt.Sprintf("%d", account.ConsecutiveErrors),
-				Inline: true,
-			},
-			{
-				Name:   "Last Successful Check",
-				Value:  account.LastSuccessfulCheck.Format(time.RFC1123),
-				Inline: true,
-			},
-		},
-		Timestamp: time.Now().Format(time.RFC3339),
-	}
+	NotifyAdminWithCooldown(s, fmt.Sprintf("Error checking account %s (ID: %d): %v", account.Title, account.ID, err), 5*time.Minute)
 
-	userSettings, err := GetUserSettings(account.UserID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to get user settings for error notification")
-		return
-	}
+	if isCriticalError(err) {
+		channel, err := s.UserChannelCreate(account.UserID)
+		if err != nil {
+			logger.Log.WithError(err).Errorf("Failed to create DM channel for user %s", account.UserID)
+			return
+		}
 
-	channelID, err := getNotificationChannel(s, account, userSettings)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to get notification channel")
-		return
-	}
+		embed := &discordgo.MessageEmbed{
+			Title: "Critical Account Check Error",
+			Description: fmt.Sprintf("There was a critical error checking your account '%s'. "+
+				"The bot developer has been notified and will investigate the issue.", account.Title),
+			Color:     0xFF0000,
+			Timestamp: time.Now().Format(time.RFC3339),
+		}
 
-	_, err = s.ChannelMessageSendEmbed(channelID, embed)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to send error notification")
-	}
+		if err := SendNotification(s, account, embed, "", "error"); err != nil {
+			logger.Log.WithError(err).Error("Failed to send error notification")
+		}
 
-	updateNotificationTimestamp(account.UserID, "error")
+		_, err = s.ChannelMessageSendEmbed(channel.ID, embed)
+		if err != nil {
+			logger.Log.WithError(err).Errorf("Failed to send critical error notification to user %s", account.UserID)
+			return
+		}
+
+		if updateErr := UpdateNotificationTimestamp(account.UserID, "error"); updateErr != nil {
+			logger.Log.WithError(updateErr).Errorf("Failed to update error notification timestamp for user %s", account.UserID)
+		}
+	}
 }
 
 func shouldCheckAccount(account models.Account, userSettings models.UserSettings, now time.Time) bool {
