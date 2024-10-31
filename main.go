@@ -161,6 +161,11 @@ func loadEnvironmentVariables() error {
 		"DEFAULT_RATE_LIMIT",
 		"DEFAULT_USER_MAXACCOUNTS",
 		"PREM_USER_MAXACCOUNTS",
+		"CHECKCIRCLE",
+		"BANCIRCLE",
+		"INFOCIRCLE",
+		"STOPWATCH",
+		"QUESTIONCIRCLE",
 	}
 
 	for _, envVar := range requiredEnvVars {
