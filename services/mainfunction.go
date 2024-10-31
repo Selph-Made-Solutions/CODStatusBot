@@ -218,6 +218,7 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 			logger.Log.WithError(err).Errorf("Failed to update LastStatusChangeNotification for user %s", account.UserID)
 		}
 	}
+
 	switch newStatus {
 	case models.StatusTempban:
 		go ScheduleTempBanNotification(s, account, ban.TempBanDuration)
@@ -267,7 +268,6 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 		logger.Log.WithError(err).Error("Failed to save final account status")
 	}
 }
-
 func getAffectedGames(ssoCookie string) string {
 	req, err := http.NewRequest("GET", checkURL, nil)
 	if err != nil {
