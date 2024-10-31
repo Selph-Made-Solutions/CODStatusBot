@@ -268,6 +268,7 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 		logger.Log.WithError(err).Error("Failed to save final account status")
 	}
 }
+
 func getAffectedGames(ssoCookie string) string {
 	req, err := http.NewRequest("GET", checkURL, nil)
 	if err != nil {
@@ -409,66 +410,6 @@ func getStatusFields(account models.Account, status models.Status) []*discordgo.
 	}
 
 	return fields
-}
-
-//TODO: Remove this function if it's not used anywhere but first check why it's not used because it might need to be used.
-
-func CheckSingleAccount(s *discordgo.Session, account models.Account, captchaAPIKey string) {
-	logger.Log.Infof("Checking account: %s", account.Title)
-
-	if account.IsCheckDisabled {
-		logger.Log.Infof("Account %s is disabled. Reason: %s", account.Title, account.DisabledReason)
-		return
-	}
-
-	timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
-	if err != nil {
-		logger.Log.WithError(err).Errorf("Failed to check SSO cookie expiration for account %s", account.Title)
-		handleCheckAccountError(s, account, err)
-		return
-	} else if timeUntilExpiration > 0 && timeUntilExpiration <= 24*time.Hour {
-		if err := NotifyCookieExpiringSoon(s, []models.Account{account}); err != nil {
-			logger.Log.WithError(err).Errorf("Failed to send cookie expiration notification for account %s", account.Title)
-		}
-	}
-
-	result, err := CheckAccount(account.SSOCookie, account.UserID, captchaAPIKey)
-	if err != nil {
-		logger.Log.WithError(err).Errorf("Error checking account %s", account.Title)
-		handleCheckAccountError(s, account, err)
-		NotifyAdminWithCooldown(s, fmt.Sprintf("Error checking account %s: %v", account.Title, err), 5*time.Minute)
-		return
-	}
-
-	account.ConsecutiveErrors = 0
-	account.LastSuccessfulCheck = time.Now()
-
-	updateAccountStatus(s, account, result)
-}
-
-func handleCheckAccountError(s *discordgo.Session, account models.Account, err error) {
-	account.ConsecutiveErrors++
-	account.LastErrorTime = time.Now()
-
-	switch {
-	case strings.Contains(err.Error(), "Missing Access") || strings.Contains(err.Error(), "Unknown Channel"):
-		disableAccount(s, account, "Bot removed from server/channel")
-	case strings.Contains(err.Error(), "insufficient balance"):
-		disableAccount(s, account, "Insufficient captcha balance")
-	case strings.Contains(err.Error(), "invalid captcha API key"):
-		disableAccount(s, account, "Invalid captcha API key")
-	default:
-		if account.ConsecutiveErrors >= maxConsecutiveErrors {
-			disableAccount(s, account, fmt.Sprintf("Too many consecutive errors: %v", err))
-		} else {
-			logger.Log.WithError(err).Errorf("Failed to check account %s: possible expired SSO Cookie", account.Title)
-			notifyUserOfCheckError(s, account, err)
-		}
-	}
-
-	if err := database.DB.Save(&account).Error; err != nil {
-		logger.Log.WithError(err).Errorf("Failed to update account %s after error", account.Title)
-	}
 }
 
 func disableAccount(s *discordgo.Session, account models.Account, reason string) {
