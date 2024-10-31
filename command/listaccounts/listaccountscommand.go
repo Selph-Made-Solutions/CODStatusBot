@@ -2,6 +2,7 @@ package listaccounts
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/bradselph/CODStatusBot/database"
@@ -9,6 +10,14 @@ import (
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bradselph/CODStatusBot/services"
 	"github.com/bwmarrin/discordgo"
+)
+
+var (
+	checkCircle    = os.Getenv("CHECKCIRCLE")
+	banCircle      = os.Getenv("BANCIRCLE")
+	infoCircle     = os.Getenv("INFOCIRCLE")
+	stopWatch      = os.Getenv("STOPWATCH")
+	questionCircle = os.Getenv("QUESTIONCIRCLE")
 )
 
 func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -59,7 +68,6 @@ func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		Color:       0x00ff00,
 		Fields:      make([]*discordgo.MessageEmbedField, 0),
 	}
-	//TODO: Replace or remove emojis
 
 	for _, account := range accounts {
 		checkStatus := getCheckStatus(account.IsCheckDisabled)
@@ -70,22 +78,25 @@ func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		isVIP, _ := services.CheckVIPStatus(account.SSOCookie)
 		vipStatus := "No"
 		if isVIP {
-			vipStatus = "Yes ⭐"
+			vipStatus = "Yes ✓"
 		}
 
 		fieldValue := fmt.Sprintf("Status: %s\n", account.LastStatus)
 
 		if account.IsPermabanned {
-			fieldValue += "⛔ Account Permanently Banned\n"
+			fieldValue += banCircle + "Account Permanently Banned\n"
+		}
+		if account.IsTempbanned {
+			fieldValue += stopWatch + "Account Temporarily Banned\n"
 		}
 		if account.IsShadowbanned {
-			fieldValue += "👁️ Account Under Review\n"
+			fieldValue += questionCircle + "Account Under Review\n"
 		}
 		if account.IsExpiredCookie {
-			fieldValue += "⚠️ Cookie Expired\n"
+			fieldValue += "⚠ Cookie Expired\n"
 		}
 		if account.ConsecutiveErrors > 0 {
-			fieldValue += fmt.Sprintf("❌ Check Errors: %d\n", account.ConsecutiveErrors)
+			fieldValue += fmt.Sprintf("⚠ Check Errors: %d\n", account.ConsecutiveErrors)
 		}
 
 		fieldValue += fmt.Sprintf("VIP Status: %s\nChecks: %s\nNotification Type: %s\n"+
@@ -137,9 +148,9 @@ func getCheckStatus(isDisabled bool) string {
 
 func getDisabledEmoji(isDisabled bool) string {
 	if isDisabled {
-		return "🚫"
+		return "⛔"
 	}
-	return "✅"
+	return "✓"
 }
 
 func getBalanceInfo(userID string) string {
