@@ -284,13 +284,10 @@ func shouldCheckAccount(account models.Account, userSettings models.UserSettings
 	}
 
 	if account.IsPermabanned {
-		nextCheck := time.Unix(account.LastCookieCheck, 0).Add(time.Duration(cookieCheckIntervalPermaban) * time.Hour)
-		if nextCheck.After(now) {
-			logger.Log.Debugf("Account %s is permabanned, skipping check until %s", account.Title, nextCheck)
-			return false
+		if account.LastNotification == 0 {
+			return true
 		}
-		//TODO: we dont need to check perma banned accounts for anything once they have been permabanned a single notice should be sent to the user so they can remove the account wasting resources otherwise
-		return true
+		return false
 	}
 
 	checkInterval := time.Duration(userSettings.CheckInterval) * time.Minute
