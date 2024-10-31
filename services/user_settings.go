@@ -199,42 +199,56 @@ func RemoveCaptchaKey(userID string) error {
 	return nil
 }
 
-//TODO: why is this not in use and commented out?
-
-/*
-	func UpdateUserSettings(userID string, newSettings models.UserSettings) error {
-		var settings models.UserSettings
-		result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
-		if result.Error != nil {
-			logger.Log.WithError(result.Error).Error("Error updating user settings")
-			return result.Error
-		}
-
-		if settings.EZCaptchaAPIKey != "" || settings.TwoCaptchaAPIKey != "" {
-			if newSettings.CheckInterval != 0 {
-				settings.CheckInterval = newSettings.CheckInterval
-			}
-			if newSettings.NotificationInterval != 0 {
-				settings.NotificationInterval = newSettings.NotificationInterval
-			}
-			if newSettings.CooldownDuration != 0 {
-				settings.CooldownDuration = newSettings.CooldownDuration
-			}
-			if newSettings.StatusChangeCooldown != 0 {
-				settings.StatusChangeCooldown = newSettings.StatusChangeCooldown
-			}
-		}
-
-		if newSettings.NotificationType != "" {
-			settings.NotificationType = newSettings.NotificationType
-		}
-
-		if err := database.DB.Save(&settings).Error; err != nil {
-			logger.Log.WithError(err).Error("Error updating user settings")
-			return err
-		}
-
-		logger.Log.Infof("Updated settings for user: %s", userID)
-		return nil
+func UpdateUserSettings(userID string, newSettings models.UserSettings) error {
+	var settings models.UserSettings
+	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
+	if result.Error != nil {
+		logger.Log.WithError(result.Error).Error("Error updating user settings")
+		return result.Error
 	}
-*/
+
+	if settings.EZCaptchaAPIKey != "" || settings.TwoCaptchaAPIKey != "" {
+		if newSettings.CheckInterval >= 1 && newSettings.CheckInterval <= 1440 {
+			settings.CheckInterval = newSettings.CheckInterval
+		}
+		if newSettings.NotificationInterval >= 1 && newSettings.NotificationInterval <= 24 {
+			settings.NotificationInterval = newSettings.NotificationInterval
+		}
+		if newSettings.CooldownDuration >= 1 && newSettings.CooldownDuration <= 24 {
+			settings.CooldownDuration = newSettings.CooldownDuration
+		}
+		if newSettings.StatusChangeCooldown >= 1 && newSettings.StatusChangeCooldown <= 24 {
+			settings.StatusChangeCooldown = newSettings.StatusChangeCooldown
+		}
+	}
+
+	if newSettings.NotificationType == "channel" || newSettings.NotificationType == "dm" {
+		settings.NotificationType = newSettings.NotificationType
+	}
+
+	if IsServiceEnabled(newSettings.PreferredCaptchaProvider) {
+		settings.PreferredCaptchaProvider = newSettings.PreferredCaptchaProvider
+	}
+
+	if newSettings.EZCaptchaAPIKey != "" {
+		isValid, _, err := ValidateCaptchaKey(newSettings.EZCaptchaAPIKey, "ezcaptcha")
+		if err == nil && isValid {
+			settings.EZCaptchaAPIKey = newSettings.EZCaptchaAPIKey
+		}
+	}
+
+	if newSettings.TwoCaptchaAPIKey != "" {
+		isValid, _, err := ValidateCaptchaKey(newSettings.TwoCaptchaAPIKey, "2captcha")
+		if err == nil && isValid {
+			settings.TwoCaptchaAPIKey = newSettings.TwoCaptchaAPIKey
+		}
+	}
+
+	if err := database.DB.Save(&settings).Error; err != nil {
+		logger.Log.WithError(err).Error("Error saving user settings")
+		return err
+	}
+
+	logger.Log.Infof("Updated settings for user: %s", userID)
+	return nil
+}
