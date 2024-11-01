@@ -50,10 +50,7 @@ func CreateAnnouncementEmbed() *discordgo.MessageEmbed {
 	}
 }
 
-func GetColorForStatus(status models.Status, isExpiredCookie bool, isCheckDisabled bool, isError bool) int {
-	if isError {
-		return 0x8B0000 // Dark Red for errors
-	}
+func GetColorForStatus(status models.Status, isExpiredCookie bool, isCheckDisabled bool) int {
 	if isCheckDisabled {
 		return 0xA9A9A9 // Dark Gray for disabled checks
 	}
