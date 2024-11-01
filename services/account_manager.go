@@ -118,10 +118,8 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 		return
 	}
 
-	var (
-		accountsToUpdate []models.Account
-		accountsToNotify []models.Account
-	)
+	var accountsToUpdate []models.Account
+	var accountsToNotify []models.Account
 
 	for _, account := range accounts {
 		if !shouldCheckAccount(account, userSettings) {
@@ -134,75 +132,32 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 			continue
 		}
 
+		now := time.Now()
+		account.LastCheck = now.Unix()
+		account.LastSuccessfulCheck = now
+		account.ConsecutiveErrors = 0
+
 		if hasStatusChanged(account, result) {
 			account.LastStatus = result
-			account.LastStatusChange = time.Now().Unix()
-			account.ConsecutiveErrors = 0
-			accountsToUpdate = append(accountsToUpdate, account)
+			account.LastStatusChange = now.Unix()
 			accountsToNotify = append(accountsToNotify, account)
 		}
+
+		accountsToUpdate = append(accountsToUpdate, account)
 	}
 
 	if len(accountsToUpdate) > 0 {
+		DBMutex.Lock()
 		if err := database.DB.Save(&accountsToUpdate).Error; err != nil {
 			logger.Log.WithError(err).Error("Failed to batch update accounts")
 		}
+		DBMutex.Unlock()
 	}
 
 	if len(accountsToNotify) > 0 {
 		processNotifications(s, accountsToNotify, userSettings)
 	}
 }
-
-/*
-func processUserAccounts(s *discordgo.Session, userID string, accounts []models.Account) {
-	userSettings, err := GetUserSettings(userID)
-	if err != nil {
-		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
-		return
-	}
-
-	if err := validateUserCaptchaService(userID, userSettings); err != nil {
-		logger.Log.WithError(err).Errorf("Captcha service validation failed for user %s", userID)
-		notifyUserOfServiceIssue(s, userID, err)
-		return
-	}
-
-	for _, account := range accounts {
-		if !shouldCheckAccount(account, userSettings, time.Now()) {
-			continue
-		}
-
-		if err := processAccountCheck(s, account, userSettings); err != nil {
-			logger.Log.WithError(err).Errorf("Error checking account %s: %v", account.Title, err)
-		}
-
-		time.Sleep(time.Second * 2)
-	}
-
-	var dailyUpdateAccounts []models.Account
-	var expiringAccounts []models.Account
-	now := time.Now()
-
-	for _, account := range accounts {
-		if shouldIncludeInDailyUpdate(account, userSettings, now) {
-			dailyUpdateAccounts = append(dailyUpdateAccounts, account)
-		}
-
-		if shouldCheckExpiration(account, now) {
-			expiringAccounts = append(expiringAccounts, account)
-		}
-	}
-
-	if len(dailyUpdateAccounts) > 0 {
-		SendConsolidatedDailyUpdate(s, userID, userSettings, dailyUpdateAccounts)
-	}
-
-	if len(expiringAccounts) > 0 {
-		NotifyCookieExpiringSoon(s, expiringAccounts)
-	}
-}
-*/
 
 func notifyUserOfServiceIssue(s *discordgo.Session, userID string, err error) {
 	channel, err := s.UserChannelCreate(userID)
@@ -371,7 +326,18 @@ func shouldCheckAccount(account models.Account, settings models.UserSettings) bo
 	if account.IsPermabanned {
 		nextCheckTime = time.Unix(account.LastCheck, 0).Add(time.Duration(cookieCheckIntervalPermaban) * time.Hour)
 	} else {
-		nextCheckTime = time.Unix(account.LastCheck, 0).Add(time.Duration(settings.CheckInterval) * time.Minute)
+		checkInterval := settings.CheckInterval
+		if checkInterval < 1 {
+			checkInterval = GetEnvInt("CHECK_INTERVAL", 15)
+		}
+		nextCheckTime = time.Unix(account.LastCheck, 0).Add(time.Duration(checkInterval) * time.Minute)
+	}
+
+	if account.ConsecutiveErrors > 0 && !account.LastErrorTime.IsZero() {
+		errorCooldown := time.Hour * 1
+		if time.Since(account.LastErrorTime) < errorCooldown {
+			return false
+		}
 	}
 
 	return now.After(nextCheckTime)
