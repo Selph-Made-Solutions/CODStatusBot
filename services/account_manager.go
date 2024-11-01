@@ -118,6 +118,56 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 		return
 	}
 
+	var (
+		accountsToUpdate []models.Account
+		accountsToNotify []models.Account
+	)
+
+	for _, account := range accounts {
+		if !shouldCheckAccount(account, userSettings) {
+			continue
+		}
+
+		result, err := CheckAccount(account.SSOCookie, userID, "")
+		if err != nil {
+			handleCheckError(s, &account, err)
+			continue
+		}
+
+		if hasStatusChanged(account, result) {
+			account.LastStatus = result
+			account.LastStatusChange = time.Now().Unix()
+			account.ConsecutiveErrors = 0
+			accountsToUpdate = append(accountsToUpdate, account)
+			accountsToNotify = append(accountsToNotify, account)
+		}
+	}
+
+	if len(accountsToUpdate) > 0 {
+		if err := database.DB.Save(&accountsToUpdate).Error; err != nil {
+			logger.Log.WithError(err).Error("Failed to batch update accounts")
+		}
+	}
+
+	if len(accountsToNotify) > 0 {
+		processNotifications(s, accountsToNotify, userSettings)
+	}
+}
+
+/*
+func processUserAccounts(s *discordgo.Session, userID string, accounts []models.Account) {
+	userSettings, err := GetUserSettings(userID)
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
+		return
+	}
+
+	if err := validateUserCaptchaService(userID, userSettings); err != nil {
+		logger.Log.WithError(err).Errorf("Captcha service validation failed for user %s", userID)
+		notifyUserOfServiceIssue(s, userID, err)
+		return
+	}
+
 	for _, account := range accounts {
 		if !shouldCheckAccount(account, userSettings, time.Now()) {
 			continue
@@ -152,6 +202,7 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 		NotifyCookieExpiringSoon(s, expiringAccounts)
 	}
 }
+*/
 
 func notifyUserOfServiceIssue(s *discordgo.Session, userID string, err error) {
 	channel, err := s.UserChannelCreate(userID)
@@ -304,21 +355,92 @@ func notifyUserOfError(s *discordgo.Session, account models.Account, err error) 
 	}
 }
 
-func shouldCheckAccount(account models.Account, userSettings models.UserSettings, now time.Time) bool {
+func shouldCheckAccount(account models.Account, settings models.UserSettings) bool {
+	now := time.Now()
+
 	if account.IsCheckDisabled {
 		logger.Log.Debugf("Account %s is disabled, skipping check", account.Title)
 		return false
 	}
 
-	if account.IsPermabanned {
-		if account.LastNotification == 0 {
-			return true
-		}
+	if account.IsExpiredCookie {
 		return false
 	}
 
-	checkInterval := time.Duration(userSettings.CheckInterval) * time.Minute
-	return time.Unix(account.LastCheck, 0).Add(checkInterval).Before(now)
+	var nextCheckTime time.Time
+	if account.IsPermabanned {
+		nextCheckTime = time.Unix(account.LastCheck, 0).Add(time.Duration(cookieCheckIntervalPermaban) * time.Hour)
+	} else {
+		nextCheckTime = time.Unix(account.LastCheck, 0).Add(time.Duration(settings.CheckInterval) * time.Minute)
+	}
+
+	return now.After(nextCheckTime)
+}
+
+func hasStatusChanged(account models.Account, newStatus models.Status) bool {
+	if account.LastStatus == models.StatusUnknown {
+		return true
+	}
+	return account.LastStatus != newStatus
+}
+
+func handleCheckError(s *discordgo.Session, account *models.Account, err error) {
+	account.ConsecutiveErrors++
+	account.LastErrorTime = time.Now()
+
+	if account.ConsecutiveErrors >= maxConsecutiveErrors {
+		reason := fmt.Sprintf("Max consecutive errors reached (%d). Last error: %v", maxConsecutiveErrors, err)
+		disableAccount(s, *account, reason)
+	}
+
+	if err := database.DB.Save(account).Error; err != nil {
+		logger.Log.WithError(err).Errorf("Failed to update account error status: %s", account.Title)
+	}
+}
+
+func processNotifications(s *discordgo.Session, accounts []models.Account, userSettings models.UserSettings) {
+	accountsByStatus := make(map[models.Status][]models.Account)
+	for _, account := range accounts {
+		accountsByStatus[account.LastStatus] = append(accountsByStatus[account.LastStatus], account)
+	}
+
+	for status, statusAccounts := range accountsByStatus {
+		switch status {
+		case models.StatusPermaban:
+			for _, account := range statusAccounts {
+				HandleStatusChange(s, account, status, userSettings)
+			}
+		case models.StatusShadowban:
+			for _, account := range statusAccounts {
+				HandleStatusChange(s, account, status, userSettings)
+			}
+		case models.StatusTempban:
+			for _, account := range statusAccounts {
+				HandleStatusChange(s, account, status, userSettings)
+			}
+		case models.StatusGood:
+			for _, account := range statusAccounts {
+				if isComingFromBannedState(account) {
+					HandleStatusChange(s, account, status, userSettings)
+				}
+			}
+		}
+	}
+}
+
+func isComingFromBannedState(account models.Account) bool {
+	bannedStates := []models.Status{
+		models.StatusPermaban,
+		models.StatusShadowban,
+		models.StatusTempban,
+	}
+
+	for _, state := range bannedStates {
+		if account.LastStatus == state {
+			return true
+		}
+	}
+	return false
 }
 
 func shouldIncludeInDailyUpdate(account models.Account, userSettings models.UserSettings, now time.Time) bool {
