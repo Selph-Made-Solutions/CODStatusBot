@@ -50,7 +50,10 @@ func CreateAnnouncementEmbed() *discordgo.MessageEmbed {
 	}
 }
 
-func GetColorForStatus(status models.Status, isExpiredCookie bool, isCheckDisabled bool) int {
+func GetColorForStatus(status models.Status, isExpiredCookie bool, isCheckDisabled bool, isError bool) int {
+	if isError {
+		return 0x8B0000 // Dark Red for errors
+	}
 	if isCheckDisabled {
 		return 0xA9A9A9 // Dark Gray for disabled checks
 	}
@@ -59,7 +62,7 @@ func GetColorForStatus(status models.Status, isExpiredCookie bool, isCheckDisabl
 	}
 	switch status {
 	case models.StatusPermaban:
-		return 0x8B0000 // Dark Red for permanent ban
+		return 0xFF0000 // Red for permanent ban
 	case models.StatusShadowban:
 		return 0xFFA500 // Orange for shadowban
 	case models.StatusTempban:
