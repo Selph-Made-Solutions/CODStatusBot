@@ -84,6 +84,7 @@ const (
 	TwoCaptcha CaptchaProvider = "2captcha"
 )
 
+/*
 type RewardCode struct {
 	gorm.Model
 	Code        string    `gorm:"uniqueIndex"` // The actual reward code
@@ -93,3 +94,4 @@ type RewardCode struct {
 	UsedBy      []string  `gorm:"type:json"` // List of user IDs who have used this code
 	Active      bool      // Whether the code is still active
 }
+*/
