@@ -73,6 +73,10 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 
 	userSettings, err := GetUserSettings(userID)
 	if err != nil {
+		if isCriticalError(err) {
+			logger.Log.WithError(err).Error("Critical error getting user settings")
+			return models.StatusUnknown, fmt.Errorf("critical error: %w", err)
+		}
 		return models.StatusUnknown, fmt.Errorf("failed to get user settings: %w", err)
 	}
 
@@ -94,6 +98,14 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 
 	solver, err := GetCaptchaSolver(userID)
 	if err != nil {
+		if isCriticalError(err) {
+			if strings.Contains(err.Error(), "insufficient balance") {
+				if err := DisableUserCaptcha(nil, userID, "Insufficient balance"); err != nil {
+					logger.Log.WithError(err).Error("Failed to disable user captcha service")
+				}
+			}
+			return models.StatusUnknown, fmt.Errorf("critical error: %w", err)
+		}
 		return models.StatusUnknown, fmt.Errorf("failed to create captcha solver: %w", err)
 	}
 
