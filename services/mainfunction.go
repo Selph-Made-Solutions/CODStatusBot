@@ -123,7 +123,7 @@ func CheckAccounts(s *discordgo.Session) {
 	logger.Log.Info("Starting periodic account check")
 
 	var accounts []models.Account
-	if err := database.DB.Find(&accounts).Error; err != nil {
+	if err := database.DB.Where("is_check_disabled = ? AND is_expired_cookie = ?", false, false).Find(&accounts).Error; err != nil {
 		logger.Log.WithError(err).Error("Failed to fetch accounts from database")
 		return
 	}
@@ -348,19 +348,19 @@ func getStatusFields(account models.Account, status models.Status) []*discordgo.
 			})
 		}
 	}
-
-	if isVIP, err := CheckVIPStatus(account.SSOCookie); err == nil {
-		vipStatus := "No"
-		if isVIP {
-			vipStatus = "Yes"
+	/*
+		if isVIP, err := CheckVIPStatus(account.SSOCookie); err == nil {
+			vipStatus := "No"
+			if isVIP {
+				vipStatus = "Yes"
+			}
+			fields = append(fields, &discordgo.MessageEmbedField{
+				Name:   "VIP Status",
+				Value:  vipStatus,
+				Inline: true,
+			})
 		}
-		fields = append(fields, &discordgo.MessageEmbedField{
-			Name:   "VIP Status",
-			Value:  vipStatus,
-			Inline: true,
-		})
-	}
-
+	*/
 	if account.Created > 0 {
 		creationDate := time.Unix(account.Created, 0)
 		accountAge := time.Since(creationDate)
@@ -386,7 +386,6 @@ func getStatusFields(account models.Account, status models.Status) []*discordgo.
 		if err := database.DB.Where("account_id = ?", account.ID).
 			Order("created_at DESC").
 			First(&latestBan).Error; err == nil {
-
 			fields = append(fields, &discordgo.MessageEmbedField{
 				Name:   "Ban Duration",
 				Value:  latestBan.TempBanDuration,
@@ -412,7 +411,6 @@ func getStatusFields(account models.Account, status models.Status) []*discordgo.
 
 	return fields
 }
-
 func disableAccount(s *discordgo.Session, account models.Account, reason string) {
 	account.IsCheckDisabled = true
 	account.DisabledReason = reason
