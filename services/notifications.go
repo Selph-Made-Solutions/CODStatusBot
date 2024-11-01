@@ -756,27 +756,37 @@ func GetStatusIcon(status models.Status) string {
 }
 
 func formatAccountStatus(account models.Account, status models.Status, timeUntilExpiration time.Duration) string {
+	var statusDesc strings.Builder
+
 	switch status {
 	case models.StatusGood:
-		return fmt.Sprintf("%s Good standing | Expires in %s", checkCircle, FormatDuration(timeUntilExpiration))
+		statusDesc.WriteString(fmt.Sprintf("%s Good standing | Expires in %s", checkCircle, FormatDuration(timeUntilExpiration)))
 	case models.StatusPermaban:
-		return fmt.Sprintf("%s Permanently banned", banCircle)
+		statusDesc.WriteString(fmt.Sprintf("%s Permanently banned", banCircle))
 	case models.StatusShadowban:
-		return fmt.Sprintf("%s Under review", infoCircle)
+		statusDesc.WriteString(fmt.Sprintf("%s Under review", infoCircle))
 	case models.StatusTempban:
 		var latestBan models.Ban
 		if err := database.DB.Where("account_id = ?", account.ID).
 			Order("created_at DESC").
 			First(&latestBan).Error; err == nil {
-			return fmt.Sprintf("%s Temporarily banned (%s remaining)", stopWatch, latestBan.TempBanDuration)
+			statusDesc.WriteString(fmt.Sprintf("%s Temporarily banned (%s remaining)", stopWatch, latestBan.TempBanDuration))
+		} else {
+			statusDesc.WriteString(fmt.Sprintf("%s Temporarily banned (duration unknown)", stopWatch))
 		}
-		return fmt.Sprintf("%s  Temporarily banned (duration unknown)", stopWatch)
 	default:
-		return fmt.Sprintf("%s Unknown status", questionCircle)
+		statusDesc.WriteString(fmt.Sprintf("%s Unknown status", questionCircle))
 	}
+
+	if isVIP, err := CheckVIPStatus(account.SSOCookie); err == nil {
+		statusDesc.WriteString(fmt.Sprintf(" | %s", formatVIPStatus(isVIP)))
+	}
+
+	statusDesc.WriteString(fmt.Sprintf(" | Checks: %s", formatCheckStatus(account.IsCheckDisabled)))
+
+	return statusDesc.String()
 }
 
-// TODO: what is purpose of this if done elsewhere and not used currently
 func formatVIPStatus(isVIP bool) string {
 	if isVIP {
 		return "VIP Account"
@@ -784,7 +794,6 @@ func formatVIPStatus(isVIP bool) string {
 	return "Regular Account"
 }
 
-// TODO: what is purpose of this if done elsewhere and not used currently
 func formatCheckStatus(isDisabled bool) string {
 	if isDisabled {
 		return "DISABLED"
