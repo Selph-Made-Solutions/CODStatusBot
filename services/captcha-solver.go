@@ -46,8 +46,6 @@ var (
 	clientKey    string
 	ezappID      string
 	softID       string
-	siteKey      string
-	pageURL      string
 	siteAction   string
 	ezCapBalMin  float64
 	twoCapBalMin float64
@@ -75,13 +73,15 @@ const (
 	EZCaptchaResultEndpoint  = "https://api.ez-captcha.com/getTaskResult"
 	TwoCaptchaCreateEndpoint = "https://api.2captcha.com/createTask"
 	TwoCaptchaResultEndpoint = "https://api.2captcha.com/getTaskResult"
+	twocap                   = "2captcha"
+	ezcap                    = "ezcaptcha"
 )
 
 func IsServiceEnabled(provider string) bool {
 	switch provider {
-	case "ezcaptcha":
+	case ezcap:
 		return os.Getenv("EZCAPTCHA_ENABLED") == "true"
-	case "2captcha":
+	case twocap:
 		return os.Getenv("TWOCAPTCHA_ENABLED") == "true"
 	default:
 		return false
@@ -94,9 +94,9 @@ func NewCaptchaSolver(apiKey, provider string) (CaptchaSolver, error) {
 	}
 
 	switch provider {
-	case "ezcaptcha":
+	case ezcap:
 		return &EZCaptchaSolver{APIKey: apiKey, EzappID: ezappID}, nil
-	case "2captcha":
+	case twocap:
 		return &TwoCaptchaSolver{APIKey: apiKey, SoftID: softID}, nil
 	default:
 		return nil, errors.New("unsupported captcha provider")
@@ -291,67 +291,26 @@ func sendRequest(url string, payload interface{}) ([]byte, error) {
 
 func getBalanceThreshold(provider string) float64 {
 	switch provider {
-	case "ezcaptcha":
-		return ezCapBalMin // EZCaptcha threshold
-	case "2captcha":
-		return twoCapBalMin // 2Captcha threshold
+	case ezcap:
+		return ezCapBalMin
+	case twocap:
+		return twoCapBalMin
 	default:
 		return 0
 	}
 }
 
 func ValidateCaptchaKey(apiKey, provider string) (bool, float64, error) {
-	if !IsServiceEnabled(provider) {
-		return false, 0, errors.New("captcha service is currently disabled")
-	}
-
-	url := fmt.Sprintf("https://api.%s.com/getBalance", provider)
-	payload := map[string]string{
-		"clientKey": apiKey,
-		"action":    "getBalance",
-	}
-
-	resp, err := sendRequest(url, payload)
-	if err != nil {
-		return false, 0, err
-	}
-
-	var result struct {
-		ErrorId  int     `json:"errorId"`
-		Balance  float64 `json:"balance"`
-		Error    string  `json:"error"`
-		Response string  `json:"response"`
-	}
-
-	if err := json.Unmarshal(resp, &result); err != nil {
-		return false, 0, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	if result.ErrorId != 0 || result.Error != "" {
-		return false, 0, fmt.Errorf("API error: %s", result.Error)
-	}
-
-	if result.Balance < getBalanceThreshold(provider) {
-		logger.Log.Warnf("Low balance warning for %s: %.2f", provider, result.Balance)
-	}
-
-	return true, result.Balance, nil
-}
-
-/*
-func ValidateCaptchaKey(apiKey, provider string) (bool, float64, error) {
 	switch provider {
-	case "ezcaptcha":
+	case ezcap:
 		return validateEZCaptchaKey(apiKey)
-	case "2captcha":
+	case twocap:
 		return validate2CaptchaKey(apiKey)
 	default:
 		return false, 0, errors.New("unsupported captcha provider")
 	}
 }
-*/
 
-/*
 func validateEZCaptchaKey(apiKey string) (bool, float64, error) {
 	url := "https://api.ez-captcha.com/getBalance"
 	payload := map[string]string{
@@ -379,9 +338,7 @@ func validateEZCaptchaKey(apiKey string) (bool, float64, error) {
 
 	return true, result.Balance, nil
 }
-*/
 
-/*
 func validate2CaptchaKey(apiKey string) (bool, float64, error) {
 	url := "https://api.2captcha.com/getBalance"
 	payload := map[string]string{
@@ -409,4 +366,3 @@ func validate2CaptchaKey(apiKey string) (bool, float64, error) {
 
 	return true, result.Balance, nil
 }
-*/
