@@ -86,10 +86,10 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 
 	if !IsServiceEnabled(userSettings.PreferredCaptchaProvider) {
 		if IsServiceEnabled("ezcaptcha") {
-			userSettings.PreferredCaptchaProvider = "ezcaptcha"
+			userSettings.PreferredCaptchaProvider = ezcap
 			database.DB.Save(&userSettings)
 		} else if IsServiceEnabled("2captcha") {
-			userSettings.PreferredCaptchaProvider = "2captcha"
+			userSettings.PreferredCaptchaProvider = twocap
 			database.DB.Save(&userSettings)
 		} else {
 			return models.StatusUnknown, fmt.Errorf("no captcha services are currently enabled")
