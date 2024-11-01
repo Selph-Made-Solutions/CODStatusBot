@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/bradselph/CODStatusBot/logger"
@@ -18,20 +19,38 @@ func LoadEnvironmentVariables() error {
 	ezappID = os.Getenv("EZAPPID")
 	softID = os.Getenv("SOFT_ID")
 	siteAction = os.Getenv("SITE_ACTION")
+	ezCapBalMinStr := os.Getenv("EZCAPBALMIN")
+	twoCapBalMinStr := os.Getenv("TWOCAPBALMIN")
+
+	var err error
+	ezCapBalMin, err = strconv.ParseFloat(ezCapBalMinStr, 64)
+	if err != nil {
+		ezCapBalMin = 100
+		logger.Log.Warnf("Failed to parse EZCAPBALMIN, using default value: %v", ezCapBalMin)
+	}
+
+	twoCapBalMin, err = strconv.ParseFloat(twoCapBalMinStr, 64)
+	if err != nil {
+		twoCapBalMin = 0.10
+		logger.Log.Warnf("Failed to parse TWOCAPBALMIN, using default value: %v", twoCapBalMin)
+	}
 
 	if clientKey == "" || ezappID == "" || softID == "" || siteAction == "" {
 		return fmt.Errorf("EZCAPTCHA_CLIENT_KEY, EZAPPID, SOFT_ID, or SITE_ACTION is not set in the environment")
 	}
+
 	return nil
 }
 
 var (
-	clientKey  string
-	ezappID    string
-	softID     string
-	siteKey    string
-	pageURL    string
-	siteAction string
+	clientKey    string
+	ezappID      string
+	softID       string
+	siteKey      string
+	pageURL      string
+	siteAction   string
+	ezCapBalMin  float64
+	twoCapBalMin float64
 )
 
 type CaptchaSolver interface {
@@ -270,6 +289,56 @@ func sendRequest(url string, payload interface{}) ([]byte, error) {
 	return body, nil
 }
 
+func getBalanceThreshold(provider string) float64 {
+	switch provider {
+	case "ezcaptcha":
+		return ezCapBalMin // EZCaptcha threshold
+	case "2captcha":
+		return twoCapBalMin // 2Captcha threshold
+	default:
+		return 0
+	}
+}
+
+func ValidateCaptchaKey(apiKey, provider string) (bool, float64, error) {
+	if !IsServiceEnabled(provider) {
+		return false, 0, errors.New("captcha service is currently disabled")
+	}
+
+	url := fmt.Sprintf("https://api.%s.com/getBalance", provider)
+	payload := map[string]string{
+		"clientKey": apiKey,
+		"action":    "getBalance",
+	}
+
+	resp, err := sendRequest(url, payload)
+	if err != nil {
+		return false, 0, err
+	}
+
+	var result struct {
+		ErrorId  int     `json:"errorId"`
+		Balance  float64 `json:"balance"`
+		Error    string  `json:"error"`
+		Response string  `json:"response"`
+	}
+
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return false, 0, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if result.ErrorId != 0 || result.Error != "" {
+		return false, 0, fmt.Errorf("API error: %s", result.Error)
+	}
+
+	if result.Balance < getBalanceThreshold(provider) {
+		logger.Log.Warnf("Low balance warning for %s: %.2f", provider, result.Balance)
+	}
+
+	return true, result.Balance, nil
+}
+
+/*
 func ValidateCaptchaKey(apiKey, provider string) (bool, float64, error) {
 	switch provider {
 	case "ezcaptcha":
@@ -280,7 +349,9 @@ func ValidateCaptchaKey(apiKey, provider string) (bool, float64, error) {
 		return false, 0, errors.New("unsupported captcha provider")
 	}
 }
+*/
 
+/*
 func validateEZCaptchaKey(apiKey string) (bool, float64, error) {
 	url := "https://api.ez-captcha.com/getBalance"
 	payload := map[string]string{
@@ -308,7 +379,9 @@ func validateEZCaptchaKey(apiKey string) (bool, float64, error) {
 
 	return true, result.Balance, nil
 }
+*/
 
+/*
 func validate2CaptchaKey(apiKey string) (bool, float64, error) {
 	url := "https://api.2captcha.com/getBalance"
 	payload := map[string]string{
@@ -336,3 +409,4 @@ func validate2CaptchaKey(apiKey string) (bool, float64, error) {
 
 	return true, result.Balance, nil
 }
+*/
