@@ -310,12 +310,21 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 }
 
 func checkRateLimit(userID string) bool {
-	rateLimiterLock.Lock()
-	defer rateLimiterLock.Unlock()
+	var userSettings models.UserSettings
+	if err := database.DB.Where("user_id = ?", userID).First(&userSettings).Error; err != nil {
+		logger.Log.WithError(err).Error("Error fetching user settings")
+		return false
+	}
 
-	lastUse, exists := rateLimiter[userID]
-	if !exists || time.Since(lastUse) >= rateLimit {
-		rateLimiter[userID] = time.Now()
+	now := time.Now()
+	lastCheckTime := userSettings.LastCommandTimes["check_now"]
+
+	if lastCheckTime.IsZero() || time.Since(lastCheckTime) >= rateLimit {
+		userSettings.LastCommandTimes["check_now"] = now
+		if err := database.DB.Save(&userSettings).Error; err != nil {
+			logger.Log.WithError(err).Error("Error saving user settings")
+			return false
+		}
 		return true
 	}
 	return false

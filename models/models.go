@@ -31,30 +31,34 @@ type Account struct {
 	LastSuccessfulCheck    time.Time // The timestamp of the last successful check
 	LastErrorTime          time.Time // The timestamp of the last error encountered
 	Last24HourNotification time.Time // The timestamp of the last 24-hour notification
+	LastCheckNowTime       time.Time // For check now command rate limiting
+	LastAddAccountTime     time.Time // For add account rate limiting
 }
 
 type UserSettings struct {
 	gorm.Model
-	UserID                       string    `gorm:"uniqueIndex"`
-	EZCaptchaAPIKey              string    // User's own EZCaptcha API key, if provided
-	TwoCaptchaAPIKey             string    // User's own 2captcha API key, if provided
-	PreferredCaptchaProvider     string    `gorm:"default:'ezcaptcha'"` // 'ezcaptcha' or '2captcha'
-	CaptchaBalance               float64   // Current balance for the selected provider
-	LastBalanceCheck             time.Time // Last time the balance was checked
-	CheckInterval                int       // In minutes
-	NotificationInterval         float64   // In hours
-	CooldownDuration             float64   // In hours
-	StatusChangeCooldown         float64   // In hours
-	HasSeenAnnouncement          bool      `gorm:"default:false"`   // Flag to track if the user has seen the global announcement.
-	NotificationType             string    `gorm:"default:channel"` // User preference for location of notifications either channel or dm
-	LastNotification             time.Time // Timestamp of the last notification
-	LastDisabledNotification     time.Time // Timestamp of the last disabled notification
-	LastStatusChangeNotification time.Time // Timestamp of the last status change notification
-	LastDailyUpdateNotification  time.Time // Timestamp of the last daily update notification
-	LastCookieExpirationWarning  time.Time // Timestamp of the last cookie expiration warning
-	LastBalanceNotification      time.Time // Timestamp of the last balance notification
-	LastErrorNotification        time.Time // Timestamp of the last error notification
-	CustomSettings               bool      `gorm:"default:false"` // Flag to indicate if user has custom settings
+	UserID                       string               `gorm:"uniqueIndex"`
+	EZCaptchaAPIKey              string               // User's own EZCaptcha API key, if provided
+	TwoCaptchaAPIKey             string               // User's own 2captcha API key, if provided
+	PreferredCaptchaProvider     string               `gorm:"default:'ezcaptcha'"` // 'ezcaptcha' or '2captcha'
+	CaptchaBalance               float64              // Current balance for the selected provider
+	LastBalanceCheck             time.Time            // Last time the balance was checked
+	CheckInterval                int                  // In minutes
+	NotificationInterval         float64              // In hours
+	CooldownDuration             float64              // In hours
+	StatusChangeCooldown         float64              // In hours
+	HasSeenAnnouncement          bool                 `gorm:"default:false"`   // Flag to track if the user has seen the global announcement.
+	NotificationType             string               `gorm:"default:channel"` // User preference for location of notifications either channel or dm
+	LastNotification             time.Time            // Timestamp of the last notification
+	LastDisabledNotification     time.Time            // Timestamp of the last disabled notification
+	LastStatusChangeNotification time.Time            // Timestamp of the last status change notification
+	LastDailyUpdateNotification  time.Time            // Timestamp of the last daily update notification
+	LastCookieExpirationWarning  time.Time            // Timestamp of the last cookie expiration warning
+	LastBalanceNotification      time.Time            // Timestamp of the last balance notification
+	LastErrorNotification        time.Time            // Timestamp of the last error notification
+	CustomSettings               bool                 `gorm:"default:false"`   // Flag to indicate if user has custom settings
+	LastCommandTimes             map[string]time.Time `gorm:"serializer:json"` // Map of command names to their last execution time
+	RateLimitExpiration          map[string]time.Time `gorm:"serializer:json"` // Map of command names to their rate limit expiration time
 }
 
 type Ban struct {
