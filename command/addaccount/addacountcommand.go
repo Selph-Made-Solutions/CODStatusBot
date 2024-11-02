@@ -175,16 +175,16 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	logger.Log.Infof("Attempting to add account. Title: %s, SSO Cookie length: %d", title, len(ssoCookie))
 
-	if !services.VerifySSOCookie(ssoCookie) {
-		logger.Log.Error("Invalid SSO cookie provided")
-		respondToInteraction(s, i, "Invalid SSO cookie. Please make sure you've copied the entire cookie value.")
+	validationResult, err := services.ValidateAndGetAccountInfo(ssoCookie)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error validating account")
+		respondToInteraction(s, i, fmt.Sprintf("Error processing account: %v", err))
 		return
 	}
 
-	expirationTimestamp, err := services.DecodeSSOCookie(ssoCookie)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error decoding SSO cookie")
-		respondToInteraction(s, i, fmt.Sprintf("Error processing SSO cookie: %v", err))
+	if !validationResult.IsValid {
+		logger.Log.Error("Invalid SSO cookie provided")
+		respondToInteraction(s, i, "Invalid SSO cookie. Please make sure you've copied the entire cookie value.")
 		return
 	}
 
@@ -226,10 +226,13 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		UserID:              userID,
 		Title:               title,
 		SSOCookie:           ssoCookie,
-		SSOCookieExpiration: expirationTimestamp,
+		SSOCookieExpiration: validationResult.ExpiresAt,
+		Created:             validationResult.Created,
+		IsVIP:               validationResult.IsVIP,
 		ChannelID:           channelID,
 		NotificationType:    userSettings.NotificationType,
 		LastSuccessfulCheck: time.Now(),
+		LastStatus:          models.StatusUnknown,
 	}
 
 	if err := database.DB.Create(&account).Error; err != nil {
@@ -238,10 +241,9 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	isVIP, vipErr := services.CheckVIPStatus(ssoCookie)
 	vipStatus := "Regular Account"
-	if vipErr == nil && isVIP {
-		vipStatus = "VIP Account ⭐"
+	if account.IsVIP {
+		vipStatus = "VIP Account"
 	}
 
 	remainingSlots := maxAccounts - int(accountCount) - 1
@@ -259,7 +261,12 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			},
 			{
 				Name:   "Cookie Expiration",
-				Value:  services.FormatExpirationTime(expirationTimestamp),
+				Value:  services.FormatExpirationTime(account.SSOCookieExpiration),
+				Inline: true,
+			},
+			{
+				Name:   "Account Age",
+				Value:  formatAccountAge(time.Unix(account.Created, 0)),
 				Inline: true,
 			},
 			{
@@ -322,6 +329,13 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			logger.Log.WithError(err).Error("Error performing initial status check")
 		}
 	}()
+}
+
+func formatAccountAge(created time.Time) string {
+	age := time.Since(created)
+	years := int(age.Hours() / 24 / 365)
+	months := int(age.Hours()/24/30.44) % 12
+	return fmt.Sprintf("%d years, %d months", years, months)
 }
 
 func getUserID(i *discordgo.InteractionCreate) string {
