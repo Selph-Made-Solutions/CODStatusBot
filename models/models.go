@@ -103,3 +103,31 @@ type RewardCode struct {
 	Active      bool      // Whether the code is still active
 }
 */
+
+func (u *UserSettings) EnsureMapsInitialized() {
+	if u.NotificationTimes == nil {
+		u.NotificationTimes = make(map[string]time.Time)
+	}
+	if u.ActionCounts == nil {
+		u.ActionCounts = make(map[string]int)
+	}
+	if u.LastActionTimes == nil {
+		u.LastActionTimes = make(map[string]time.Time)
+	}
+	if u.LastCommandTimes == nil {
+		u.LastCommandTimes = make(map[string]time.Time)
+	}
+	if u.RateLimitExpiration == nil {
+		u.RateLimitExpiration = make(map[string]time.Time)
+	}
+}
+
+func (u *UserSettings) BeforeCreate(tx *gorm.DB) error {
+	u.EnsureMapsInitialized()
+	return nil
+}
+
+func (u *UserSettings) AfterFind(tx *gorm.DB) error {
+	u.EnsureMapsInitialized()
+	return nil
+}
