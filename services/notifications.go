@@ -10,26 +10,37 @@ import (
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
-	"github.com/bradselph/CODStatusBot/webserver"
 	"github.com/bwmarrin/discordgo"
 	"github.com/patrickmn/go-cache"
 )
+
+var notificationConfigs = map[string]struct {
+	Cooldown   time.Duration
+	MaxPerHour int
+}{
+	"status_change":        {time.Hour, 4},
+	"daily_update":         {24 * time.Hour, 1},
+	"error":                {time.Hour, 4},
+	"balance_warning":      {24 * time.Hour, 1},
+	"cookie_expiring_soon": {24 * time.Hour, 1},
+	"captcha_disabled":     {24 * time.Hour, 1},
+	"account_disabled":     {time.Hour, 4},
+}
 
 var (
 	userNotificationMutex      sync.Mutex
 	userNotificationTimestamps = make(map[string]map[string]time.Time)
 	adminNotificationCache     = cache.New(5*time.Minute, 10*time.Minute)
-	checkCircle                = os.Getenv("CHECKCIRCLE")
-	banCircle                  = os.Getenv("BANCIRCLE")
-	infoCircle                 = os.Getenv("INFOCIRCLE")
-	stopWatch                  = os.Getenv("STOPWATCH")
-	questionCircle             = os.Getenv("QUESTIONCIRCLE")
+
+	checkCircle    = os.Getenv("CHECKCIRCLE")
+	banCircle      = os.Getenv("BANCIRCLE")
+	infoCircle     = os.Getenv("INFOCIRCLE")
+	stopWatch      = os.Getenv("STOPWATCH")
+	questionCircle = os.Getenv("QUESTIONCIRCLE")
 )
 
 type NotificationLimiter struct {
 	sync.RWMutex
-	notifications map[string]*NotificationState
-	cleanupTicker *time.Ticker
 }
 
 type NotificationState struct {
@@ -295,65 +306,33 @@ func getEnabledServicesString() string {
 	return strings.Join(enabledServices, ", ")
 }
 
-func NewNotificationLimiter() *NotificationLimiter {
-	nl := &NotificationLimiter{
-		notifications: make(map[string]*NotificationState),
-		cleanupTicker: time.NewTicker(1 * time.Hour),
-	}
-
-	go nl.cleanup()
-	return nl
-}
-
-func (nl *NotificationLimiter) cleanup() {
-	for range nl.cleanupTicker.C {
-		nl.Lock()
-		now := time.Now()
-		for userID, state := range nl.notifications {
-			if now.Sub(state.LastSent) > 24*time.Hour {
-				delete(nl.notifications, userID)
-			}
-		}
-		nl.Unlock()
-	}
-}
-
 func (nl *NotificationLimiter) CanSendNotification(userID string) bool {
-	nl.Lock()
-	defer nl.Unlock()
+	var userSettings models.UserSettings
+	if err := database.DB.Where("user_id = ?", userID).First(&userSettings).Error; err != nil {
+		logger.Log.WithError(err).Error("Error fetching user settings")
+		return false
+	}
 
 	now := time.Now()
-	state, exists := nl.notifications[userID]
+	lastNotification := userSettings.LastCommandTimes["notification"]
 
-	if !exists {
-		nl.notifications[userID] = &NotificationState{
-			Count:     1,
-			LastReset: now,
-			LastSent:  now,
-		}
+	if lastNotification.IsZero() {
+		userSettings.LastCommandTimes["notification"] = now
+		userSettings.LastCommandTimes["notification_count"] = now
+		database.DB.Save(&userSettings)
 		return true
 	}
 
-	if now.Sub(state.LastReset) >= 24*time.Hour {
-		state.Count = 0
-		state.LastReset = now
-	}
-
-	if now.Sub(state.LastSent) < minNotificationInterval {
+	if now.Sub(lastNotification) < minNotificationInterval {
 		return false
 	}
 
-	hourlyCount := 0
-	if now.Sub(state.LastSent) < time.Hour {
-		hourlyCount = state.Count
-	}
-
-	if hourlyCount >= maxNotificationsPerHour || state.Count >= maxNotificationsPerDay {
+	userSettings.LastCommandTimes["notification"] = now
+	if err := database.DB.Save(&userSettings).Error; err != nil {
+		logger.Log.WithError(err).Error("Error saving notification limits")
 		return false
 	}
 
-	state.Count++
-	state.LastSent = now
 	return true
 }
 
@@ -373,23 +352,12 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 		return fmt.Errorf("failed to get user settings: %w", err)
 	}
 
-	config, ok := notificationConfigs[notificationType]
-	if !ok {
-		return fmt.Errorf("unknown notification type: %s", notificationType)
-	}
-
-	userNotificationMutex.Lock()
-	defer userNotificationMutex.Unlock()
-
-	if _, exists := userNotificationTimestamps[account.UserID]; !exists {
-		userNotificationTimestamps[account.UserID] = make(map[string]time.Time)
-	}
-
-	lastNotification, exists := userNotificationTimestamps[account.UserID][notificationType]
+	// Check cooldown
 	now := time.Now()
-	cooldownDuration := GetCooldownDuration(userSettings, notificationType, config.Cooldown)
+	lastNotification := userSettings.LastCommandTimes[notificationType]
+	cooldownDuration := GetCooldownDuration(userSettings, notificationType, defaultCooldown)
 
-	if exists && now.Sub(lastNotification) < cooldownDuration {
+	if !lastNotification.IsZero() && now.Sub(lastNotification) < cooldownDuration {
 		logger.Log.Infof("Skipping %s notification for user %s (cooldown)", notificationType, account.UserID)
 		return nil
 	}
@@ -397,14 +365,9 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 	channelID, err := GetNotificationChannel(s, account, userSettings)
 	if err != nil {
 		if userSettings.NotificationType == "dm" {
-			return fmt.Errorf("failed to send DM notification: %w", err)
-		}
-
-		if strings.Contains(err.Error(), "Missing Access") || strings.Contains(err.Error(), "Unknown Channel") {
-			logger.Log.Warnf("Channel notification failed for account %s, falling back to DM", account.Title)
 			channel, dmErr := s.UserChannelCreate(account.UserID)
 			if dmErr != nil {
-				return fmt.Errorf("both channel and DM notification failed: %w", err)
+				return fmt.Errorf("failed to create DM channel: %w", dmErr)
 			}
 			channelID = channel.ID
 		} else {
@@ -420,25 +383,36 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 		return fmt.Errorf("failed to send message: %w", err)
 	}
 
-	userNotificationTimestamps[account.UserID][notificationType] = now
+	userSettings.LastCommandTimes[notificationType] = now
+	if err := database.DB.Save(&userSettings).Error; err != nil {
+		logger.Log.WithError(err).Error("Failed to update notification timestamp")
+	}
+
 	account.LastNotification = now.Unix()
 	if err := database.DB.Save(&account).Error; err != nil {
-		logger.Log.WithError(err).Errorf("Failed to update LastNotification for account %s", account.Title)
+		logger.Log.WithError(err).Error("Failed to update account last notification")
 	}
 
 	return nil
 }
 
 func NotifyAdminWithCooldown(s *discordgo.Session, message string, cooldownDuration time.Duration) {
-	webserver.NotificationMutex.Lock()
-	defer webserver.NotificationMutex.Unlock()
+	var admin models.UserSettings
+	if err := database.DB.Where("user_id = ?", os.Getenv("DEVELOPER_ID")).FirstOrCreate(&admin).Error; err != nil {
+		logger.Log.WithError(err).Error("Error getting admin settings")
+		return
+	}
 
+	now := time.Now()
 	notificationType := "admin_" + strings.Split(message, " ")[0]
+	lastNotification := admin.LastCommandTimes[notificationType]
 
-	_, found := adminNotificationCache.Get(notificationType)
-	if !found {
+	if lastNotification.IsZero() || now.Sub(lastNotification) >= cooldownDuration {
 		NotifyAdmin(s, message)
-		adminNotificationCache.Set(notificationType, time.Now(), cooldownDuration)
+		admin.LastCommandTimes[notificationType] = now
+		if err := database.DB.Save(&admin).Error; err != nil {
+			logger.Log.WithError(err).Error("Error saving admin settings")
+		}
 	} else {
 		logger.Log.Infof("Skipping admin notification '%s' due to cooldown", notificationType)
 	}
