@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
@@ -75,6 +76,22 @@ func GetUserSettings(userID string) (models.UserSettings, error) {
 	}
 	if settings.PreferredCaptchaProvider == "" {
 		settings.PreferredCaptchaProvider = defaultSettings.PreferredCaptchaProvider
+	}
+
+	if settings.NotificationTimes == nil {
+		settings.NotificationTimes = make(map[string]time.Time)
+	}
+	if settings.ActionCounts == nil {
+		settings.ActionCounts = make(map[string]int)
+	}
+	if settings.LastActionTimes == nil {
+		settings.LastActionTimes = make(map[string]time.Time)
+	}
+	if settings.LastCommandTimes == nil {
+		settings.LastCommandTimes = make(map[string]time.Time)
+	}
+	if settings.RateLimitExpiration == nil {
+		settings.RateLimitExpiration = make(map[string]time.Time)
 	}
 
 	if result.RowsAffected > 0 {
@@ -184,11 +201,27 @@ func RemoveCaptchaKey(userID string) error {
 
 	settings.EZCaptchaAPIKey = ""
 	settings.TwoCaptchaAPIKey = ""
-	settings.PreferredCaptchaProvider = "ezcaptcha" // Reset to default provider
+	settings.PreferredCaptchaProvider = "ezcaptcha"
 	settings.CheckInterval = defaultSettings.CheckInterval
 	settings.NotificationInterval = defaultSettings.NotificationInterval
 	settings.CooldownDuration = defaultSettings.CooldownDuration
 	settings.StatusChangeCooldown = defaultSettings.StatusChangeCooldown
+
+	if settings.NotificationTimes == nil {
+		settings.NotificationTimes = make(map[string]time.Time)
+	}
+	if settings.ActionCounts == nil {
+		settings.ActionCounts = make(map[string]int)
+	}
+	if settings.LastActionTimes == nil {
+		settings.LastActionTimes = make(map[string]time.Time)
+	}
+	if settings.LastCommandTimes == nil {
+		settings.LastCommandTimes = make(map[string]time.Time)
+	}
+	if settings.RateLimitExpiration == nil {
+		settings.RateLimitExpiration = make(map[string]time.Time)
+	}
 
 	if err := database.DB.Save(&settings).Error; err != nil {
 		logger.Log.WithError(err).Error("Error saving user settings")
@@ -242,6 +275,22 @@ func UpdateUserSettings(userID string, newSettings models.UserSettings) error {
 		if err == nil && isValid {
 			settings.TwoCaptchaAPIKey = newSettings.TwoCaptchaAPIKey
 		}
+	}
+
+	if settings.NotificationTimes == nil {
+		settings.NotificationTimes = make(map[string]time.Time)
+	}
+	if settings.ActionCounts == nil {
+		settings.ActionCounts = make(map[string]int)
+	}
+	if settings.LastActionTimes == nil {
+		settings.LastActionTimes = make(map[string]time.Time)
+	}
+	if settings.LastCommandTimes == nil {
+		settings.LastCommandTimes = make(map[string]time.Time)
+	}
+	if settings.RateLimitExpiration == nil {
+		settings.RateLimitExpiration = make(map[string]time.Time)
 	}
 
 	if err := database.DB.Save(&settings).Error; err != nil {
