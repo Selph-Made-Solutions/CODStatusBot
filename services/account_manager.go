@@ -12,87 +12,156 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-type RateLimiter struct {
-	sync.RWMutex
-	limits map[string]time.Time
-	rates  map[string]time.Duration
-}
+var DBMutex sync.Mutex
 
-func (r *RateLimiter) Allow(key string, rate time.Duration) bool {
-	r.Lock()
-	defer r.Unlock()
-
-	now := time.Now()
-	if lastTime, exists := r.limits[key]; exists {
-		if now.Sub(lastTime) < rate {
-			return false
-		}
+func validateRateLimit(userID, action string, duration time.Duration) bool {
+	var userSettings models.UserSettings
+	if err := database.DB.Where("user_id = ?", userID).First(&userSettings).Error; err != nil {
+		logger.Log.WithError(err).Error("Error fetching user settings")
+		return false
 	}
 
-	r.limits[key] = now
-	r.rates[key] = rate
+	now := time.Now()
+	if userSettings.LastCommandTimes == nil {
+		userSettings.LastCommandTimes = make(map[string]time.Time)
+	}
+
+	lastAction := userSettings.LastCommandTimes[action]
+
+	config, exists := notificationConfigs[action]
+	if !exists {
+		config.Cooldown = duration
+		config.MaxPerHour = 4
+	}
+
+	if !lastAction.IsZero() && now.Sub(lastAction) < config.Cooldown {
+		return false
+	}
+
+	userSettings.LastCommandTimes[action] = now
+	if err := database.DB.Save(&userSettings).Error; err != nil {
+		logger.Log.WithError(err).Error("Error saving rate limit")
+		return false
+	}
+
 	return true
 }
-
 func isChannelError(err error) bool {
 	return strings.Contains(err.Error(), "Missing Access") ||
 		strings.Contains(err.Error(), "Unknown Channel") ||
 		strings.Contains(err.Error(), "Missing Permissions")
 }
 
-/*
-	func updateNotificationTimestamp(userID string, notificationType string) {
-		var settings models.UserSettings
-		if err := database.DB.Where("user_id = ?", userID).First(&settings).Error; err != nil {
-			logger.Log.WithError(err).Error("Failed to get user settings for timestamp update")
-			return
-		}
-
-		now := time.Now()
-		switch notificationType {
-		case "status_change":
-			settings.LastStatusChangeNotification = now
-		case "daily_update":
-			settings.LastDailyUpdateNotification = now
-		case "cookie_expiring":
-			settings.LastCookieExpirationWarning = now
-		case "error":
-			settings.LastErrorNotification = now
-		default:
-			settings.LastNotification = now
-		}
-
-		if err := database.DB.Save(&settings).Error; err != nil {
-			logger.Log.WithError(err).Error("Failed to update notification timestamp")
-		}
+func checkActionRateLimit(userID, action string, duration time.Duration) bool {
+	var userSettings models.UserSettings
+	if err := database.DB.Where("user_id = ?", userID).First(&userSettings).Error; err != nil {
+		logger.Log.WithError(err).Error("Error fetching user settings")
+		return false
 	}
-*/
 
-/*
-	func checkNotificationCooldown(userID string, notificationType string, cooldownDuration time.Duration) bool {
-		var settings models.UserSettings
-		if err := database.DB.Where("user_id = ?", userID).First(&settings).Error; err != nil {
-			logger.Log.WithError(err).Error("Failed to get user settings for cooldown check")
-			return false
-		}
-
-		var lastNotification time.Time
-		switch notificationType {
-		case "status_change":
-			lastNotification = settings.LastStatusChangeNotification
-		case "daily_update":
-			lastNotification = settings.LastDailyUpdateNotification
-		case "cookie_expiring":
-			lastNotification = settings.LastCookieExpirationWarning
-		case "error":
-			lastNotification = settings.LastErrorNotification
-		default:
-			lastNotification = settings.LastNotification
-		}
-
-		return time.Since(lastNotification) >= cooldownDuration
+	now := time.Now()
+	if userSettings.LastActionTimes == nil {
+		userSettings.LastActionTimes = make(map[string]time.Time)
 	}
-*/
+	if userSettings.ActionCounts == nil {
+		userSettings.ActionCounts = make(map[string]int)
+	}
+
+	lastAction := userSettings.LastActionTimes[action]
+	count := userSettings.ActionCounts[action]
+
+	// Reset counts if outside the time window
+	if now.Sub(lastAction) > duration {
+		count = 0
+	}
+
+	// Check rate limits
+	if count >= getActionLimit(action) {
+		return false
+	}
+
+	// Update counts and times
+	userSettings.LastActionTimes[action] = now
+	userSettings.ActionCounts[action] = count + 1
+
+	if err := database.DB.Save(&userSettings).Error; err != nil {
+		logger.Log.WithError(err).Error("Error saving user settings")
+		return false
+	}
+
+	return true
+}
+
+func getActionLimit(action string) int {
+	switch action {
+	case "check_account":
+		return 5 // 5 checks per interval
+	case "notification":
+		return 10 // 10 notifications per interval
+	default:
+		return 3 // Default limit
+	}
+}
+
+func getNotificationChannel(s *discordgo.Session, account models.Account, userSettings models.UserSettings) (string, error) {
+	if userSettings.NotificationType == "dm" {
+		channel, err := s.UserChannelCreate(account.UserID)
+		if err != nil {
+			return "", fmt.Errorf("failed to create DM channel: %w", err)
+		}
+		return channel.ID, nil
+	}
+	return account.ChannelID, nil
+}
+
+func updateNotificationTimestamp(userID string, notificationType string) {
+	var settings models.UserSettings
+	if err := database.DB.Where("user_id = ?", userID).First(&settings).Error; err != nil {
+		logger.Log.WithError(err).Error("Failed to get user settings for timestamp update")
+		return
+	}
+
+	now := time.Now()
+	switch notificationType {
+	case "status_change":
+		settings.LastStatusChangeNotification = now
+	case "daily_update":
+		settings.LastDailyUpdateNotification = now
+	case "cookie_expiring":
+		settings.LastCookieExpirationWarning = now
+	case "error":
+		settings.LastErrorNotification = now
+	default:
+		settings.LastNotification = now
+	}
+
+	if err := database.DB.Save(&settings).Error; err != nil {
+		logger.Log.WithError(err).Error("Failed to update notification timestamp")
+	}
+}
+func checkNotificationCooldown(userID string, notificationType string, cooldownDuration time.Duration) bool {
+	var settings models.UserSettings
+	if err := database.DB.Where("user_id = ?", userID).First(&settings).Error; err != nil {
+		logger.Log.WithError(err).Error("Failed to get user settings for cooldown check")
+		return false
+	}
+
+	var lastNotification time.Time
+	switch notificationType {
+	case "status_change":
+		lastNotification = settings.LastStatusChangeNotification
+	case "daily_update":
+		lastNotification = settings.LastDailyUpdateNotification
+	case "cookie_expiring":
+		lastNotification = settings.LastCookieExpirationWarning
+	case "error":
+		lastNotification = settings.LastErrorNotification
+	default:
+		lastNotification = settings.LastNotification
+	}
+
+	return time.Since(lastNotification) >= cooldownDuration
+}
 
 func getNotificationChannel(s *discordgo.Session, account models.Account, userSettings models.UserSettings) (string, error) {
 	if userSettings.NotificationType == "dm" {
@@ -123,6 +192,11 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 
 	for _, account := range accounts {
 		if !shouldCheckAccount(account, userSettings) {
+			continue
+		}
+
+		if !checkActionRateLimit(userID, fmt.Sprintf("check_account_%d", account.ID), time.Hour) {
+			logger.Log.Infof("Rate limit reached for account %s", account.Title)
 			continue
 		}
 
@@ -365,30 +439,18 @@ func handleCheckError(s *discordgo.Session, account *models.Account, err error) 
 }
 
 func processNotifications(s *discordgo.Session, accounts []models.Account, userSettings models.UserSettings) {
-	accountsByStatus := make(map[models.Status][]models.Account)
 	for _, account := range accounts {
-		accountsByStatus[account.LastStatus] = append(accountsByStatus[account.LastStatus], account)
-	}
+		if !validateRateLimit(account.UserID, "notification", time.Hour) {
+			logger.Log.Infof("Notification rate limit reached for user %s", account.UserID)
+			continue
+		}
 
-	for status, statusAccounts := range accountsByStatus {
-		switch status {
-		case models.StatusPermaban:
-			for _, account := range statusAccounts {
-				HandleStatusChange(s, account, status, userSettings)
-			}
-		case models.StatusShadowban:
-			for _, account := range statusAccounts {
-				HandleStatusChange(s, account, status, userSettings)
-			}
-		case models.StatusTempban:
-			for _, account := range statusAccounts {
-				HandleStatusChange(s, account, status, userSettings)
-			}
+		switch account.LastStatus {
+		case models.StatusPermaban, models.StatusShadowban, models.StatusTempban:
+			HandleStatusChange(s, account, account.LastStatus, userSettings)
 		case models.StatusGood:
-			for _, account := range statusAccounts {
-				if isComingFromBannedState(account) {
-					HandleStatusChange(s, account, status, userSettings)
-				}
+			if isComingFromBannedState(account) {
+				HandleStatusChange(s, account, account.LastStatus, userSettings)
 			}
 		}
 	}
