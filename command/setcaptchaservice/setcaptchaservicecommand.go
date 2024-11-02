@@ -26,7 +26,6 @@ func isServiceEnabled(provider string) bool {
 }
 
 func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	// Get currently enabled services for the modal description
 	var enabledServices []string
 	if isServiceEnabled("ezcaptcha") {
 		enabledServices = append(enabledServices, "ezcaptcha")
