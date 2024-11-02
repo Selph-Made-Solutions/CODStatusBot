@@ -26,6 +26,208 @@ func isServiceEnabled(provider string) bool {
 }
 
 func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	// Get currently enabled services for the buttons
+	var enabledServices []string
+	if isServiceEnabled("ezcaptcha") {
+		enabledServices = append(enabledServices, "ezcaptcha")
+	}
+	if isServiceEnabled("2captcha") {
+		enabledServices = append(enabledServices, "2captcha")
+	}
+
+	// Create initial choice buttons
+	components := []discordgo.MessageComponent{
+		discordgo.ActionsRow{
+			Components: []discordgo.MessageComponent{
+				discordgo.Button{
+					Label:    "Add API Key",
+					Style:    discordgo.PrimaryButton,
+					CustomID: "add_captcha_key",
+				},
+				discordgo.Button{
+					Label:    "Remove API Key",
+					Style:    discordgo.DangerButton,
+					CustomID: "remove_captcha_key",
+				},
+			},
+		},
+	}
+
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content:    "Would you like to add a new API key or remove your existing key?",
+			Flags:      discordgo.MessageFlagsEphemeral,
+			Components: components,
+		},
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Error showing captcha service options")
+	}
+}
+
+func HandleButtonClick(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	switch i.MessageComponentData().CustomID {
+	case "add_captcha_key":
+		showAddKeyModal(s, i)
+	case "remove_captcha_key":
+		handleKeyRemoval(s, i)
+	}
+}
+
+func showAddKeyModal(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	var enabledServices []string
+	if isServiceEnabled("ezcaptcha") {
+		enabledServices = append(enabledServices, "ezcaptcha")
+	}
+	if isServiceEnabled("2captcha") {
+		enabledServices = append(enabledServices, "2captcha")
+	}
+
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseModal,
+		Data: &discordgo.InteractionResponseData{
+			CustomID: "set_captcha_service_modal",
+			Title:    "Add Captcha Service API Key",
+			Components: []discordgo.MessageComponent{
+				discordgo.ActionsRow{
+					Components: []discordgo.MessageComponent{
+						discordgo.TextInput{
+							CustomID:    "captcha_provider",
+							Label:       fmt.Sprintf("Captcha Provider (%s)", strings.Join(enabledServices, " or ")),
+							Style:       discordgo.TextInputShort,
+							Placeholder: fmt.Sprintf("Enter '%s'", strings.Join(enabledServices, "' or '")),
+							Required:    true,
+						},
+					},
+				},
+				discordgo.ActionsRow{
+					Components: []discordgo.MessageComponent{
+						discordgo.TextInput{
+							CustomID:    "api_key",
+							Label:       "API Key",
+							Style:       discordgo.TextInputShort,
+							Placeholder: "Enter your API key",
+							Required:    true,
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Error showing add key modal")
+	}
+}
+
+func handleKeyRemoval(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	userID := ""
+	if i.Member != nil {
+		userID = i.Member.User.ID
+	} else if i.User != nil {
+		userID = i.User.ID
+	}
+
+	var settings models.UserSettings
+	if err := database.DB.Where("user_id = ?", userID).First(&settings).Error; err != nil {
+		respondToInteraction(s, i, "Error checking current settings. Please try again.")
+		return
+	}
+
+	hadCustomKey := settings.EZCaptchaAPIKey != "" || settings.TwoCaptchaAPIKey != ""
+
+	if err := services.RemoveCaptchaKey(userID); err != nil {
+		respondToInteraction(s, i, "Error removing API key. Please try again.")
+		return
+	}
+
+	if hadCustomKey {
+		respondToInteraction(s, i, "Your custom API key has been removed. The bot's default API key will be used. Your check interval and notification settings have been reset to default values.")
+	} else {
+		respondToInteraction(s, i, "Your settings have been reset to default values. The bot will continue using the default API key.")
+	}
+}
+func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	data := i.ModalSubmitData()
+
+	provider := strings.ToLower(utils.SanitizeInput(strings.TrimSpace(data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value)))
+	apiKey := utils.SanitizeInput(strings.TrimSpace(data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value))
+
+	if provider != "ezcaptcha" && provider != "2captcha" {
+		respondToInteraction(s, i, "Invalid captcha provider. Please enter 'ezcaptcha' or '2captcha'.")
+		return
+	}
+
+	if !isServiceEnabled(provider) {
+		respondToInteraction(s, i, fmt.Sprintf("The %s service is currently disabled. Please use an enabled service.", provider))
+		return
+	}
+
+	userID := ""
+	if i.Member != nil {
+		userID = i.Member.User.ID
+	} else if i.User != nil {
+		userID = i.User.ID
+	}
+
+	isValid, balance, err := services.ValidateCaptchaKey(apiKey, provider)
+	if err != nil {
+		respondToInteraction(s, i, fmt.Sprintf("Error validating the %s API key: %v. Please try again.", provider, err))
+		return
+	}
+	if !isValid {
+		respondToInteraction(s, i, fmt.Sprintf("The provided %s API key is invalid. Please check and try again.", provider))
+		return
+	}
+
+	var settings models.UserSettings
+	if err := database.DB.Where("user_id = ?", userID).FirstOrCreate(&settings).Error; err != nil {
+		respondToInteraction(s, i, "Error updating settings. Please try again.")
+		return
+	}
+
+	settings.PreferredCaptchaProvider = provider
+	settings.CheckInterval = 15
+	settings.NotificationInterval = 12
+	settings.CustomSettings = true
+
+	if provider == "ezcaptcha" {
+		settings.EZCaptchaAPIKey = apiKey
+		settings.TwoCaptchaAPIKey = ""
+	} else {
+		settings.TwoCaptchaAPIKey = apiKey
+		settings.EZCaptchaAPIKey = ""
+	}
+
+	if err := database.DB.Save(&settings).Error; err != nil {
+		respondToInteraction(s, i, "Error saving settings. Please try again.")
+		return
+	}
+
+	respondToInteraction(s, i, fmt.Sprintf("Your %s API key has been set successfully. Your current balance is %.2f points. You now have access to faster check intervals and no rate limits!", provider, balance))
+
+	go func() {
+		time.Sleep(5 * time.Second)
+		services.CheckAndNotifyBalance(s, userID, 0)
+	}()
+}
+
+func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseUpdateMessage,
+		Data: &discordgo.InteractionResponseData{
+			Content:    message,
+			Components: []discordgo.MessageComponent{},
+			Flags:      discordgo.MessageFlagsEphemeral,
+		},
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Error responding to interaction")
+	}
+}
+
+/*
+func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	// Get currently enabled services for the modal description
 	var enabledServices []string
 	if isServiceEnabled("ezcaptcha") {
@@ -70,7 +272,8 @@ func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCrea
 		logger.Log.WithError(err).Error("Error responding with modal")
 	}
 }
-
+*/
+/*
 func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
 
@@ -173,7 +376,8 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		services.CheckAndNotifyBalance(s, userID, 0)
 	}()
 }
-
+*/
+/*
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
@@ -186,3 +390,4 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 		logger.Log.WithError(err).Error("Error responding to interaction")
 	}
 }
+*/
