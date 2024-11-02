@@ -69,12 +69,14 @@ func StartBot() (*discordgo.Session, error) {
 func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.ModalSubmitData().CustomID
 	switch {
+	case customID == "add_captcha_key" || customID == "remove_captcha_key":
+		setcaptchaservice.HandleButtonClick(s, i)
 	//case customID == "claim_reward_modal":
 	//	claimreward.HandleModalSubmit(s, i)
 	case strings.HasPrefix(customID, "set_notifications_modal_"):
 		setnotifications.HandleModalSubmit(s, i)
-	case customID == "set_captcha_service_modal":
-		setcaptchaservice.HandleModalSubmit(s, i)
+		//	case customID == "set_captcha_service_modal": // TODO: remove after testing new modal
+		//		setcaptchaservice.HandleModalSubmit(s, i) // TODO: remove after testing new modal
 	case customID == "add_account_modal":
 		addaccount.HandleModalSubmit(s, i)
 	case strings.HasPrefix(customID, "update_account_modal_"):
