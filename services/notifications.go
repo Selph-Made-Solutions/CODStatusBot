@@ -37,6 +37,7 @@ var (
 		"temp_ban_update":      {Type: "temp_ban_update", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 4},
 		"error":                {Type: "error", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 3},
 		"account_added":        {Type: "account_added", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 5},
+		"api_key_removed":      {Type: "api_key_removed", Cooldown: 24 * time.Hour, AllowConsolidated: false, MaxPerHour: 1},
 	}
 )
 
@@ -139,6 +140,10 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 		return
 	}
 
+	if userSettings.EZCaptchaAPIKey == "" && userSettings.TwoCaptchaAPIKey == "" {
+		return
+	}
+
 	if time.Since(userSettings.LastBalanceNotification) < 24*time.Hour {
 		return
 	}
@@ -198,6 +203,41 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 			logger.Log.WithError(err).Errorf("Failed to update LastBalanceNotification for user %s", userID)
 		}
 	}
+}
+
+func NotifyCaptchaKeyRemoval(s *discordgo.Session, userID string) error {
+	var account models.Account
+	if err := database.DB.Where("user_id = ?", userID).First(&account).Error; err != nil {
+		return fmt.Errorf("failed to find user account: %w", err)
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title: "API Key Removed",
+		Description: "Your captcha API key has been removed. The bot will now use the default API key.\n\n" +
+			"Note: This means:\n" +
+			"• Check intervals are now limited\n" +
+			"• Rate limits are in effect\n" +
+			"• Settings have been reset to default values",
+		Color:     0xFFA500, // Orange color for warning
+		Timestamp: time.Now().Format(time.RFC3339),
+		Fields: []*discordgo.MessageEmbedField{
+			{
+				Name:   "Default Service",
+				Value:  "EZCaptcha",
+				Inline: true,
+			},
+			{
+				Name:   "Check Interval",
+				Value:  "15 minutes",
+				Inline: true,
+			},
+		},
+		Footer: &discordgo.MessageEmbedFooter{
+			Text: "Use /setcaptchaservice to add your own API key for premium features",
+		},
+	}
+
+	return SendNotification(s, account, embed, "", "api_key_removed")
 }
 
 func ScheduleBalanceChecks(s *discordgo.Session) {
