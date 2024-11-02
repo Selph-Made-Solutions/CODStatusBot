@@ -14,39 +14,49 @@ import (
 	"github.com/patrickmn/go-cache"
 )
 
-var notificationConfigs = map[string]struct {
-	Cooldown   time.Duration
-	MaxPerHour int
-}{
-	"status_change":        {time.Hour, 4},
-	"daily_update":         {24 * time.Hour, 1},
-	"error":                {time.Hour, 4},
-	"balance_warning":      {24 * time.Hour, 1},
-	"cookie_expiring_soon": {24 * time.Hour, 1},
-	"captcha_disabled":     {24 * time.Hour, 1},
-	"account_disabled":     {time.Hour, 4},
-}
+const defaultCooldown = 1 * time.Hour
 
 var (
-	userNotificationMutex      sync.Mutex
-	userNotificationTimestamps = make(map[string]map[string]time.Time)
-	adminNotificationCache     = cache.New(5*time.Minute, 10*time.Minute)
-
 	checkCircle    = os.Getenv("CHECKCIRCLE")
 	banCircle      = os.Getenv("BANCIRCLE")
 	infoCircle     = os.Getenv("INFOCIRCLE")
 	stopWatch      = os.Getenv("STOPWATCH")
 	questionCircle = os.Getenv("QUESTIONCIRCLE")
+
+	userNotificationMutex      sync.Mutex
+	userNotificationTimestamps = make(map[string]map[string]time.Time)
+	adminNotificationCache     = cache.New(5*time.Minute, 10*time.Minute)
+	notificationConfigs        = map[string]NotificationConfig{
+		"channel_change":       {Type: "channel_change", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 4},
+		"status_change":        {Type: "status_change", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 4},
+		"permaban":             {Type: "permaban", Cooldown: 24 * time.Hour, AllowConsolidated: false, MaxPerHour: 2},
+		"shadowban":            {Type: "shadowban", Cooldown: 12 * time.Hour, AllowConsolidated: false, MaxPerHour: 3},
+		"daily_update":         {Type: "daily_update", Cooldown: 24 * time.Hour, AllowConsolidated: true, MaxPerHour: 1},
+		"invalid_cookie":       {Type: "invalid_cookie", Cooldown: 6 * time.Hour, AllowConsolidated: true, MaxPerHour: 2},
+		"cookie_expiring_soon": {Type: "cookie_expiring_soon", Cooldown: 24 * time.Hour, AllowConsolidated: true, MaxPerHour: 1},
+		"temp_ban_update":      {Type: "temp_ban_update", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 4},
+		"error":                {Type: "error", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 3},
+		"account_added":        {Type: "account_added", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 5},
+	}
 )
 
 type NotificationLimiter struct {
 	sync.RWMutex
+	userCounts map[string]*NotificationState
 }
 
 type NotificationState struct {
-	Count     int
-	LastReset time.Time
-	LastSent  time.Time
+	hourlyCount int
+	dailyCount  int
+	lastReset   time.Time
+	lastSent    time.Time
+}
+
+type NotificationConfig struct {
+	Type              string
+	Cooldown          time.Duration
+	AllowConsolidated bool
+	MaxPerHour        int
 }
 
 var (
@@ -306,31 +316,65 @@ func getEnabledServicesString() string {
 	return strings.Join(enabledServices, ", ")
 }
 
-func (nl *NotificationLimiter) CanSendNotification(userID string) bool {
-	var userSettings models.UserSettings
-	if err := database.DB.Where("user_id = ?", userID).First(&userSettings).Error; err != nil {
-		logger.Log.WithError(err).Error("Error fetching user settings")
-		return false
+func NewNotificationLimiter() *NotificationLimiter {
+	return &NotificationLimiter{
+		userCounts: make(map[string]*NotificationState),
 	}
+}
+
+func (nl *NotificationLimiter) CanSendNotification(userID string) bool {
+	nl.Lock()
+	defer nl.Unlock()
 
 	now := time.Now()
-	lastNotification := userSettings.LastCommandTimes["notification"]
+	state, exists := nl.userCounts[userID]
 
-	if lastNotification.IsZero() {
-		userSettings.LastCommandTimes["notification"] = now
-		userSettings.LastCommandTimes["notification_count"] = now
-		database.DB.Save(&userSettings)
-		return true
+	if !exists {
+		state = &NotificationState{
+			lastReset: now,
+			lastSent:  now.Add(-time.Hour),
+		}
+		nl.userCounts[userID] = state
 	}
 
-	if now.Sub(lastNotification) < minNotificationInterval {
+	if now.Sub(state.lastReset) >= time.Hour {
+		state.hourlyCount = 0
+		state.lastReset = now
+	}
+
+	var userSettings models.UserSettings
+	if err := database.DB.Where("user_id = ?", userID).First(&userSettings).Error; err != nil {
+		logger.Log.WithError(err).Error("Error fetching user settings for rate limit check")
 		return false
 	}
+
+	var maxPerHour int
+	var minInterval time.Duration
+
+	if userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != "" {
+		maxPerHour = 10
+		minInterval = time.Minute * 5
+	} else {
+		maxPerHour = 4
+		minInterval = time.Minute * 15
+	}
+
+	if state.hourlyCount >= maxPerHour {
+		logger.Log.Debugf("User %s exceeded hourly notification limit", userID)
+		return false
+	}
+
+	if now.Sub(state.lastSent) < minInterval {
+		logger.Log.Debugf("User %s notification interval too short", userID)
+		return false
+	}
+
+	state.hourlyCount++
+	state.lastSent = now
 
 	userSettings.LastCommandTimes["notification"] = now
 	if err := database.DB.Save(&userSettings).Error; err != nil {
-		logger.Log.WithError(err).Error("Error saving notification limits")
-		return false
+		logger.Log.WithError(err).Error("Error saving notification timestamp")
 	}
 
 	return true
