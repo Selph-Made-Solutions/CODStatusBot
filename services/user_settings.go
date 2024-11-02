@@ -300,6 +300,7 @@ func RemoveCaptchaKey(userID string) error {
 	return nil
 }
 
+/*
 func UpdateUserSettings(userID string, newSettings models.UserSettings) error {
 	var settings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
@@ -369,3 +370,4 @@ func UpdateUserSettings(userID string, newSettings models.UserSettings) error {
 	logger.Log.Infof("Updated settings for user: %s", userID)
 	return nil
 }
+*/
