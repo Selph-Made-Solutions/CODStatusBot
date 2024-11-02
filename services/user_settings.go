@@ -160,14 +160,14 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 
 	if settings.PreferredCaptchaProvider == "ezcaptcha" && IsServiceEnabled("ezcaptcha") {
 		defaultKey := os.Getenv("EZCAPTCHA_CLIENT_KEY")
-		isValid, balance, err := ValidateCaptchaKey(defaultKey, "ezcaptcha")
+		isValid, _, err := ValidateCaptchaKey(defaultKey, "ezcaptcha")
 		if err != nil {
 			return "", 0, err
 		}
 		if !isValid {
 			return "", 0, fmt.Errorf("invalid default ezcaptcha API key")
 		}
-		return defaultKey, balance, nil
+		return defaultKey, 0, nil
 	}
 
 	return "", 0, fmt.Errorf("no valid API key found for provider %s", settings.PreferredCaptchaProvider)
@@ -193,15 +193,19 @@ func GetDefaultSettings() (models.UserSettings, error) {
 
 func RemoveCaptchaKey(userID string) error {
 	var settings models.UserSettings
-	result := database.DB.Where(models.UserSettings{UserID: userID}).First(&settings)
+	result := database.DB.Where("user_id = ?", userID).First(&settings)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error removing apikey in settings")
 		return result.Error
 	}
 
+	hadCustomKey := settings.EZCaptchaAPIKey != "" || settings.TwoCaptchaAPIKey != ""
+
 	settings.EZCaptchaAPIKey = ""
 	settings.TwoCaptchaAPIKey = ""
 	settings.PreferredCaptchaProvider = "ezcaptcha"
+	settings.CustomSettings = false
+
 	settings.CheckInterval = defaultSettings.CheckInterval
 	settings.NotificationInterval = defaultSettings.NotificationInterval
 	settings.CooldownDuration = defaultSettings.CooldownDuration
@@ -223,12 +227,32 @@ func RemoveCaptchaKey(userID string) error {
 		settings.RateLimitExpiration = make(map[string]time.Time)
 	}
 
+	settings.LastCommandTimes["api_key_removed"] = time.Now()
+
 	if err := database.DB.Save(&settings).Error; err != nil {
 		logger.Log.WithError(err).Error("Error saving user settings")
 		return err
 	}
 
-	logger.Log.Infof("Removed captcha key and reset settings for user: %s", userID)
+	if hadCustomKey {
+		logger.Log.Infof("Removed custom captcha key and reset settings for user: %s", userID)
+	} else {
+		logger.Log.Infof("Reset settings to default for user: %s (no custom key was present)", userID)
+	}
+
+	var accounts []models.Account
+	if err := database.DB.Where("user_id = ?", userID).Find(&accounts).Error; err != nil {
+		logger.Log.WithError(err).Error("Error fetching user accounts while removing API key")
+		return err
+	}
+
+	for _, account := range accounts {
+		account.NotificationType = defaultSettings.NotificationType
+		if err := database.DB.Save(&account).Error; err != nil {
+			logger.Log.WithError(err).Errorf("Error updating account %s settings after API key removal", account.Title)
+		}
+	}
+
 	return nil
 }
 
