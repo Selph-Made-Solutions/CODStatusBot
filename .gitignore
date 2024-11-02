@@ -10,3 +10,4 @@ affected games
 qodana.yaml
 qodana.sarif.json
 notes
+/.sonarlint
