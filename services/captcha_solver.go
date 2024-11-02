@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -159,10 +160,9 @@ func (s *TwoCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 		"clientKey": s.APIKey,
 		"softId":    s.SoftID,
 		"task": map[string]interface{}{
-			"type":        "ReCaptchaV2TaskProxyless",
-			"websiteURL":  pageURL,
-			"websiteKey":  siteKey,
-			"isInvisible": false,
+			"type":       "RecaptchaV2TaskProxyless",
+			"websiteURL": pageURL,
+			"websiteKey": siteKey,
 		},
 	}
 
@@ -279,7 +279,12 @@ func sendRequest(url string, payload interface{}) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			log.Println(err)
+		}
+	}(resp.Body)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
