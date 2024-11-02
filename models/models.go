@@ -10,7 +10,7 @@ type Account struct {
 	gorm.Model
 	UserID                 string    `gorm:"index"` // The ID of the user.
 	ChannelID              string    // The ID of the channel associated with the account.
-	Title                  string    // The title of the account.
+	Title                  string    // user assigned title for the account
 	LastStatus             Status    `gorm:"default:unknown"` // The last known status of the account.
 	LastCheck              int64     `gorm:"default:0"`       // The timestamp of the last check performed on the account.
 	LastNotification       int64     // The timestamp of the last daily notification sent out on the account.
@@ -37,18 +37,21 @@ type Account struct {
 
 type UserSettings struct {
 	gorm.Model
-	UserID                       string               `gorm:"uniqueIndex"`
+	UserID                       string               `gorm:"uniqueIndex"` // The ID of the user.
 	EZCaptchaAPIKey              string               // User's own EZCaptcha API key, if provided
 	TwoCaptchaAPIKey             string               // User's own 2captcha API key, if provided
 	PreferredCaptchaProvider     string               `gorm:"default:'ezcaptcha'"` // 'ezcaptcha' or '2captcha'
 	CaptchaBalance               float64              // Current balance for the selected provider
 	LastBalanceCheck             time.Time            // Last time the balance was checked
-	CheckInterval                int                  // In minutes
-	NotificationInterval         float64              // In hours
-	CooldownDuration             float64              // In hours
-	StatusChangeCooldown         float64              // In hours
+	CheckInterval                int                  // the user's set check interval
+	NotificationInterval         float64              // the user's preferred notification interval
+	CooldownDuration             float64              // the user's cooldown duration for actions
+	StatusChangeCooldown         float64              // the user's cooldown duration for status changes
 	HasSeenAnnouncement          bool                 `gorm:"default:false"`   // Flag to track if the user has seen the global announcement.
 	NotificationType             string               `gorm:"default:channel"` // User preference for location of notifications either channel or dm
+	NotificationTimes            map[string]time.Time `gorm:"serializer:json"` // For all notification cooldowns
+	ActionCounts                 map[string]int       `gorm:"serializer:json"` // For counting actions within time windows
+	LastActionTimes              map[string]time.Time `gorm:"serializer:json"` // For tracking when actions were last performed
 	LastNotification             time.Time            // Timestamp of the last notification
 	LastDisabledNotification     time.Time            // Timestamp of the last disabled notification
 	LastStatusChangeNotification time.Time            // Timestamp of the last status change notification
