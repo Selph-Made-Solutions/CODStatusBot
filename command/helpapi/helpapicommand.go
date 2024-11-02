@@ -1,17 +1,29 @@
 package helpapi
 
 import (
-	"CODStatusBot/logger"
+	"fmt"
+	"strings"
 
+	"github.com/bradselph/CODStatusBot/logger"
+	"github.com/bradselph/CODStatusBot/services"
 	"github.com/bwmarrin/discordgo"
 )
 
 func CommandHelpApi(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	logger.Log.Info("Received help command")
+
+	var enabledServices []string
+	if services.IsServiceEnabled("ezcaptcha") {
+		enabledServices = append(enabledServices, "EZ-Captcha")
+	}
+	if services.IsServiceEnabled("2captcha") {
+		enabledServices = append(enabledServices, "2captcha")
+	}
+
 	helpApiGuide := []string{
 		"CODStatusBot Help Guide\n\n" +
-			"To add your Call of Duty account to the bot, you'll need to obtain your SSO (Single Sign-On) cookie. Follow these steps:\n\n" +
-			"1. **Login to Your Activision Account:**\n" +
+			"To add your Call of Duty account to the bot, you'll need to obtain your SSO (Single Sign-On) cookie and set up a captcha service. Here's how:\n\n" +
+			"1. **Getting Your SSO Cookie:**\n" +
 			"   - Go to [Activision's website](https://www.activision.com/) and log in with the account you want to track.\n\n" +
 			"2. **Access the Developer Console:**\n" +
 			"   - Depending on your browser:\n" +
@@ -43,13 +55,31 @@ func CommandHelpApi(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			"  - Log in to Activision.\n" +
 			"  - Use the extension to find and copy the \"ACT_SSO_COOKIE\" value.\n\n",
 
-		"## Setting up your EZ-Captcha API Key:\n" +
-			"To use your own EZ-Captcha API key and control your account check frequency:\n\n" +
-			"1. Visit [EZ-Captcha's website](https://ez-captcha.com) to register and obtain an API key.\n" +
-			"2. Use the `/setcaptchaservice` command to set your personal API key.\n" +
-			"3. Use the `/setcheckinterval` command to set your preferred account check frequency (in minutes).\n\n" +
-			"Note: Using your own API key allows you to control the frequency of checks and manage your usage.",
+		"## Setting up your Captcha Service:\n" +
+			fmt.Sprintf("Currently available services: %s\n\n", strings.Join(enabledServices, ", ")),
 	}
+
+	if services.IsServiceEnabled("ezcaptcha") {
+		helpApiGuide = append(helpApiGuide,
+			"## Setting up EZ-Captcha:\n"+
+				"1. Visit [EZ-Captcha's website](https://dashboard.ez-captcha.com/#/register?inviteCode=uyNrRgWlEKy) to register.\n"+
+				"2. Request a free trial of 10,000 tokens.\n"+
+				"3. Use the `/setcaptchaservice` command with `ezcaptcha` as the provider.\n\n")
+	}
+
+	if services.IsServiceEnabled("2captcha") {
+		helpApiGuide = append(helpApiGuide,
+			"## Setting up 2Captcha:\n"+
+				"1. Visit [2Captcha's website](https://2captcha.com/) to register.\n"+
+				"2. Purchase credits for your account.\n"+
+				"3. Use the `/setcaptchaservice` command with `2captcha` as the provider.\n\n")
+	}
+
+	helpApiGuide = append(helpApiGuide,
+		"## Additional Information:\n"+
+			"• Use `/setcheckinterval` to customize your account check frequency.\n"+
+			"• The bot will notify you when your captcha balance is running low.\n"+
+			"• If you need to switch services, use `/setcaptchaservice` again with the new provider.\n\n")
 
 	for partIndex, part := range helpApiGuide {
 		var err error

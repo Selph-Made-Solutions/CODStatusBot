@@ -5,18 +5,21 @@ import (
 	"os"
 	"strings"
 
-	"CODStatusBot/command"
-	"CODStatusBot/command/accountage"
-	"CODStatusBot/command/accountlogs"
-	"CODStatusBot/command/addaccount"
-	"CODStatusBot/command/checknow"
-	"CODStatusBot/command/feedback"
-	"CODStatusBot/command/removeaccount"
-	"CODStatusBot/command/setcaptchaservice"
-	"CODStatusBot/command/setcheckinterval"
-	"CODStatusBot/command/togglecheck"
-	"CODStatusBot/command/updateaccount"
-	"CODStatusBot/logger"
+	"github.com/bradselph/CODStatusBot/command"
+	"github.com/bradselph/CODStatusBot/command/accountage"
+	"github.com/bradselph/CODStatusBot/command/accountlogs"
+	"github.com/bradselph/CODStatusBot/command/addaccount"
+	"github.com/bradselph/CODStatusBot/command/checknow"
+	"github.com/bradselph/CODStatusBot/command/feedback"
+	"github.com/bradselph/CODStatusBot/command/globalannouncement"
+	"github.com/bradselph/CODStatusBot/command/listaccounts"
+	"github.com/bradselph/CODStatusBot/command/removeaccount"
+	"github.com/bradselph/CODStatusBot/command/setcaptchaservice"
+	"github.com/bradselph/CODStatusBot/command/setcheckinterval"
+	"github.com/bradselph/CODStatusBot/command/setnotifications"
+	"github.com/bradselph/CODStatusBot/command/togglecheck"
+	"github.com/bradselph/CODStatusBot/command/updateaccount"
+	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -66,6 +69,10 @@ func StartBot() (*discordgo.Session, error) {
 func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.ModalSubmitData().CustomID
 	switch {
+	//case customID == "claim_reward_modal":
+	//	claimreward.HandleModalSubmit(s, i)
+	case strings.HasPrefix(customID, "set_notifications_modal_"):
+		setnotifications.HandleModalSubmit(s, i)
 	case customID == "set_captcha_service_modal":
 		setcaptchaservice.HandleModalSubmit(s, i)
 	case customID == "add_account_modal":
@@ -74,6 +81,8 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		updateaccount.HandleModalSubmit(s, i)
 	case customID == "set_check_interval_modal":
 		setcheckinterval.HandleModalSubmit(s, i)
+	case customID == "global_announcement_modal":
+		globalannouncement.HandleModalSubmit(s, i)
 	default:
 		logger.Log.WithField("customID", customID).Error("Unknown modal submission")
 	}
@@ -82,6 +91,12 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
 	switch {
+	//case customID == "claim_reward_manual" || strings.HasPrefix(customID, "claim_reward_preset_"):
+	//	claimreward.HandleRewardChoice(s, i)
+	//case strings.HasPrefix(customID, "claim_account_") || strings.HasPrefix(customID, "claim_all_"):
+	//	claimreward.HandleClaimSelection(s, i)
+	case customID == "listaccounts":
+		listaccounts.CommandListAccounts(s, i)
 	case strings.HasPrefix(customID, "feedback_"):
 		feedback.HandleFeedbackChoice(s, i)
 	case strings.HasPrefix(customID, "account_age_"):
@@ -102,6 +117,8 @@ func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate
 		togglecheck.HandleAccountSelection(s, i)
 	case strings.HasPrefix(customID, "confirm_reenable_") || customID == "cancel_reenable":
 		togglecheck.HandleConfirmation(s, i)
+	case customID == "show_interval_modal":
+		setcheckinterval.HandleButton(s, i)
 	default:
 		logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 	}

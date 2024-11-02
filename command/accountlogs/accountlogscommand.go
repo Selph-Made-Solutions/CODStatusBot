@@ -6,10 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"CODStatusBot/database"
-	"CODStatusBot/logger"
-	"CODStatusBot/models"
-
+	"github.com/bradselph/CODStatusBot/database"
+	"github.com/bradselph/CODStatusBot/logger"
+	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -38,9 +37,11 @@ func CommandAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Create buttons for each account
-	var components []discordgo.MessageComponent
-	var currentRow []discordgo.MessageComponent
+	var (
+		// Create buttons for each account
+		components []discordgo.MessageComponent
+		currentRow []discordgo.MessageComponent
+	)
 
 	for _, account := range accounts {
 		currentRow = append(currentRow, discordgo.Button{

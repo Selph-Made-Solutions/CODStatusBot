@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
-	"CODStatusBot/database"
-	"CODStatusBot/logger"
-	"CODStatusBot/models"
-	"CODStatusBot/services"
-	"CODStatusBot/utils"
+	"github.com/bradselph/CODStatusBot/database"
+	"github.com/bradselph/CODStatusBot/logger"
+	"github.com/bradselph/CODStatusBot/services"
+	"github.com/bradselph/CODStatusBot/utils"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -33,8 +33,72 @@ func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreat
 		return
 	}
 
-	if userSettings.CaptchaAPIKey == "" {
-		respondToInteraction(s, i, "You need to set your own EZ-Captcha API key using the /setcaptchaservice command before you can modify these settings.")
+	if userSettings.EZCaptchaAPIKey == "" && userSettings.TwoCaptchaAPIKey == "" {
+		respondToInteraction(s, i, "You need to set your own EZ-Captcha or 2captcha API key using the /setcaptchaservice command before you can modify these settings.")
+		return
+	}
+
+	explanationEmbed := &discordgo.MessageEmbed{
+		Title: "Configure Check & Notification Settings",
+		Description: "You're about to configure the following settings:\n\n" +
+			"**• Check Interval (1-1440 minutes)**\n" +
+			"How often the bot checks your account status. Lower values mean more frequent checks but use more captcha credits.\n" +
+			"Recommended: 15-30 minutes for active monitoring.\n\n" +
+			"**• Notification Interval (1-24 hours)**\n" +
+			"How often you receive regular status updates, even when nothing changes.\n" +
+			"Recommended: 12-24 hours for daily updates.\n\n" +
+			"**• Cooldown Duration (1-24 hours)**\n" +
+			"Minimum time between repeated notifications of the same type to prevent spam.\n" +
+			"Recommended: 6-12 hours.\n\n" +
+			"**• Status Change Cooldown (1-24 hours)**\n" +
+			"Minimum time between notifications when your account status changes.\n" +
+			"Recommended: 1-2 hours.\n\n" +
+			"Click 'Configure' to set these values.",
+		Color: 0x00ff00,
+		Footer: &discordgo.MessageEmbedFooter{
+			Text: "Note: Lower intervals provide more frequent updates but use more captcha credits",
+		},
+	}
+
+	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Embeds: []*discordgo.MessageEmbed{explanationEmbed},
+			Components: []discordgo.MessageComponent{
+				discordgo.ActionsRow{
+					Components: []discordgo.MessageComponent{
+						discordgo.Button{
+							Label:    "Configure",
+							Style:    discordgo.PrimaryButton,
+							CustomID: "show_interval_modal",
+						},
+					},
+				},
+			},
+			Flags: discordgo.MessageFlagsEphemeral,
+		},
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Error sending explanation message")
+	}
+}
+
+func HandleButton(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	if i.MessageComponentData().CustomID != "show_interval_modal" {
+		return
+	}
+
+	userID := ""
+	if i.Member != nil {
+		userID = i.Member.User.ID
+	} else if i.User != nil {
+		userID = i.User.ID
+	}
+
+	userSettings, err := services.GetUserSettings(userID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error fetching user settings")
+		respondToInteraction(s, i, "Error fetching your settings. Please try again.")
 		return
 	}
 
@@ -42,47 +106,57 @@ func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreat
 		Type: discordgo.InteractionResponseModal,
 		Data: &discordgo.InteractionResponseData{
 			CustomID: "set_check_interval_modal",
-			Title:    "Set User Preferences",
+			Title:    "Configure Settings",
 			Components: []discordgo.MessageComponent{
 				discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
 						discordgo.TextInput{
-							CustomID:    "check_interval",
-							Label:       "Check Interval (minutes)",
-							Style:       discordgo.TextInputShort,
-							Placeholder: "Enter a number between 1 and 1440 (24 hours)",
-							Required:    false,
-							MinLength:   0,
-							MaxLength:   4,
-							Value:       strconv.Itoa(userSettings.CheckInterval),
+							CustomID:  "check_interval",
+							Label:     "Check Interval (minutes)",
+							Style:     discordgo.TextInputShort,
+							Required:  false,
+							MinLength: 0,
+							MaxLength: 4,
+							Value:     strconv.Itoa(userSettings.CheckInterval),
 						},
 					},
 				},
 				discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
 						discordgo.TextInput{
-							CustomID:    "notification_interval",
-							Label:       "Notification Interval (hours)",
-							Style:       discordgo.TextInputShort,
-							Placeholder: "Enter a number between 1 and 24",
-							Required:    false,
-							MinLength:   0,
-							MaxLength:   2,
-							Value:       fmt.Sprintf("%.0f", userSettings.NotificationInterval),
+							CustomID:  "notification_interval",
+							Label:     "Notification Interval (hours)",
+							Style:     discordgo.TextInputShort,
+							Required:  false,
+							MinLength: 0,
+							MaxLength: 2,
+							Value:     fmt.Sprintf("%.0f", userSettings.NotificationInterval),
 						},
 					},
 				},
 				discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
 						discordgo.TextInput{
-							CustomID:    "notification_type",
-							Label:       "Notification Type (channel or dm)",
-							Style:       discordgo.TextInputShort,
-							Placeholder: "Enter 'channel' or 'dm'",
-							Required:    false,
-							MinLength:   0,
-							MaxLength:   7,
-							Value:       userSettings.NotificationType,
+							CustomID:  "cooldown_duration",
+							Label:     "Cooldown Duration (hours)",
+							Style:     discordgo.TextInputShort,
+							Required:  false,
+							MinLength: 0,
+							MaxLength: 2,
+							Value:     fmt.Sprintf("%.0f", userSettings.CooldownDuration),
+						},
+					},
+				},
+				discordgo.ActionsRow{
+					Components: []discordgo.MessageComponent{
+						discordgo.TextInput{
+							CustomID:  "status_change_cooldown",
+							Label:     "Status Change Cooldown (hours)",
+							Style:     discordgo.TextInputShort,
+							Required:  false,
+							MinLength: 0,
+							MaxLength: 2,
+							Value:     fmt.Sprintf("%.0f", userSettings.StatusChangeCooldown),
 						},
 					},
 				},
@@ -122,48 +196,71 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
+	var errors []string
+
 	for _, comp := range data.Components {
 		if row, ok := comp.(*discordgo.ActionsRow); ok {
 			for _, rowComp := range row.Components {
 				if textInput, ok := rowComp.(*discordgo.TextInput); ok {
+					value := utils.SanitizeInput(strings.TrimSpace(textInput.Value))
+
 					switch textInput.CustomID {
 					case "check_interval":
-						if textInput.Value == "" {
+						if value == "" {
 							userSettings.CheckInterval = defaultSettings.CheckInterval
 						} else {
-							interval, err := strconv.Atoi(utils.SanitizeInput(textInput.Value))
+							interval, err := strconv.Atoi(value)
 							if err != nil || interval < 1 || interval > 1440 {
-								respondToInteraction(s, i, "Invalid check interval. Please enter a number between 1 and 1440.")
-								return
+								errors = append(errors, "Check interval must be between 1 and 1440 minutes.")
+								continue
 							}
 							userSettings.CheckInterval = interval
 						}
+
 					case "notification_interval":
-						if textInput.Value == "" {
+						if value == "" {
 							userSettings.NotificationInterval = defaultSettings.NotificationInterval
 						} else {
-							interval, err := strconv.ParseFloat(utils.SanitizeInput(textInput.Value), 64)
+							interval, err := strconv.ParseFloat(value, 64)
 							if err != nil || interval < 1 || interval > 24 {
-								respondToInteraction(s, i, "Invalid notification interval. Please enter a number between 1 and 24.")
-								return
+								errors = append(errors, "Notification interval must be between 1 and 24 hours.")
+								continue
 							}
 							userSettings.NotificationInterval = interval
 						}
-					case "notification_type":
-						if textInput.Value == "" {
-							userSettings.NotificationType = defaultSettings.NotificationType
+
+					case "cooldown_duration":
+						if value == "" {
+							userSettings.CooldownDuration = defaultSettings.CooldownDuration
 						} else {
-							notificationType := strings.ToLower(utils.SanitizeInput(textInput.Value))
-							if notificationType != "channel" && notificationType != "dm" {
-								respondToInteraction(s, i, "Invalid notification type. Please enter 'channel' or 'dm'.")
-								return
+							duration, err := strconv.ParseFloat(value, 64)
+							if err != nil || duration < 1 || duration > 24 {
+								errors = append(errors, "Cooldown duration must be between 1 and 24 hours.")
+								continue
 							}
-							userSettings.NotificationType = notificationType
+							userSettings.CooldownDuration = duration
+						}
+
+					case "status_change_cooldown":
+						if value == "" {
+							userSettings.StatusChangeCooldown = defaultSettings.StatusChangeCooldown
+						} else {
+							cooldown, err := strconv.ParseFloat(value, 64)
+							if err != nil || cooldown < 1 || cooldown > 24 {
+								errors = append(errors, "Status change cooldown must be between 1 and 24 hours.")
+								continue
+							}
+							userSettings.StatusChangeCooldown = cooldown
 						}
 					}
 				}
 			}
 		}
+	}
+
+	if len(errors) > 0 {
+		respondToInteraction(s, i, fmt.Sprintf("Error updating settings:\n%s", strings.Join(errors, "\n")))
+		return
 	}
 
 	if err := database.DB.Save(&userSettings).Error; err != nil {
@@ -172,39 +269,40 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Update all accounts for this user with the new settings
-	result := database.DB.Model(&models.Account{}).
-		Where("user_id = ?", userID).
-		Updates(map[string]interface{}{
-			"notification_type": userSettings.NotificationType,
-		})
-
-	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error updating user accounts")
-		respondToInteraction(s, i, "Error updating accounts with new settings. Please try again.")
-		return
+	successEmbed := &discordgo.MessageEmbed{
+		Title: "Settings Updated Successfully",
+		Description: fmt.Sprintf("Your new settings:\n\n"+
+			"• Check Interval: %d minutes\n"+
+			"• Notification Interval: %.1f hours\n"+
+			"• Cooldown Duration: %.1f hours\n"+
+			"• Status Change Cooldown: %.1f hours",
+			userSettings.CheckInterval,
+			userSettings.NotificationInterval,
+			userSettings.CooldownDuration,
+			userSettings.StatusChangeCooldown),
+		Color:     0x00ff00,
+		Timestamp: time.Now().Format(time.RFC3339),
 	}
 
-	logger.Log.Infof("Updated %d accounts for user %s", result.RowsAffected, userID)
-
-	message := fmt.Sprintf("Your preferences have been updated:\n"+
-		"Check Interval: %d minutes\n"+
-		"Notification Interval: %.1f hours\n"+
-		"Notification Type: %s\n\n"+
-		"These settings will be used for all your account checks and notifications.",
-		userSettings.CheckInterval, userSettings.NotificationInterval, userSettings.NotificationType)
-
-	respondToInteraction(s, i, message)
+	respondToInteraction(s, i, "", successEmbed)
 }
 
-func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string, embeds ...*discordgo.MessageEmbed) {
+	response := &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			Content: message,
-			Flags:   discordgo.MessageFlagsEphemeral,
+			Flags: discordgo.MessageFlagsEphemeral,
 		},
-	})
+	}
+
+	if message != "" {
+		response.Data.Content = message
+	}
+	if len(embeds) > 0 {
+		response.Data.Embeds = embeds
+	}
+
+	err := s.InteractionRespond(i.Interaction, response)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction")
 	}

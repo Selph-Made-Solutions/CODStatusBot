@@ -1,23 +1,23 @@
 package main
 
 import (
-	"CODStatusBot/admin"
-	"CODStatusBot/bot"
-	"CODStatusBot/database"
-	"CODStatusBot/logger"
-	"CODStatusBot/models"
-	"CODStatusBot/services"
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/bot"
+	"github.com/bradselph/CODStatusBot/database"
+	"github.com/bradselph/CODStatusBot/logger"
+	"github.com/bradselph/CODStatusBot/models"
+	"github.com/bradselph/CODStatusBot/services"
+	"github.com/bradselph/CODStatusBot/webserver"
 	"github.com/bwmarrin/discordgo"
-	"github.com/gorilla/mux"
+
 	"github.com/joho/godotenv"
 )
 
@@ -32,7 +32,7 @@ func main() {
 
 	if err := run(); err != nil {
 		logger.Log.WithError(err).Error("Bot encountered an error and is shutting down")
-		os.Exit(1)
+		logger.Log.Fatal("Exiting due to error")
 	}
 }
 
@@ -43,6 +43,21 @@ func run() error {
 		return fmt.Errorf("failed to load environment variables: %w", err)
 	}
 	logger.Log.Info("Environment variables loaded successfully")
+
+	if !services.IsServiceEnabled("ezcaptcha") && !services.IsServiceEnabled("2captcha") {
+		logger.Log.Warn("Starting bot with no captcha services enabled - functionality will be limited")
+	} else {
+		var enabledServices []string
+		if services.IsServiceEnabled("ezcaptcha") {
+			enabledServices = append(enabledServices, "EZCaptcha")
+			logger.Log.Info("EZCaptcha service enabled")
+		}
+		if services.IsServiceEnabled("2captcha") {
+			enabledServices = append(enabledServices, "2Captcha")
+			logger.Log.Info("2Captcha service enabled")
+		}
+		logger.Log.Infof("Enabled captcha services: %s", strings.Join(enabledServices, ", "))
+	}
 
 	if err := services.LoadEnvironmentVariables(); err != nil {
 		return fmt.Errorf("failed to initialize EZ-Captcha service: %w", err)
@@ -59,7 +74,7 @@ func run() error {
 	}
 	logger.Log.Info("Database initialized successfully")
 
-	server := startAdminDashboard()
+	server := webserver.StartAdminDashboard()
 
 	var err error
 	discord, err = bot.StartBot()
@@ -84,7 +99,7 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := server.Shutdown(ctx); err != nil {
-		logger.Log.WithError(err).Error("Error shutting down admin dashboard server")
+		logger.Log.WithError(err).Error("Error shutting down webpage server")
 	}
 
 	if err := discord.Close(); err != nil {
@@ -108,28 +123,49 @@ func loadEnvironmentVariables() error {
 
 	requiredEnvVars := []string{
 		"DISCORD_TOKEN",
-		"EZCAPTCHA_CLIENT_KEY",
-		"RECAPTCHA_SITE_KEY",
-		"RECAPTCHA_URL",
+		"DEVELOPER_ID",
 		"DB_USER",
 		"DB_PASSWORD",
+		"DB_NAME",
 		"DB_HOST",
 		"DB_PORT",
-		"DB_NAME",
 		"DB_VAR",
-		"DEVELOPER_ID",
-		"ADMIN_PORT",
-		"ADMIN_USERNAME",
-		"ADMIN_PASSWORD",
+		"EZCAPTCHA_ENABLED",
+		"TWOCAPTCHA_ENABLED",
+		"MAX_RETRIES",
+		"RECAPTCHA_SITE_KEY",
+		"RECAPTCHA_URL",
+		"SITE_ACTION",
+		"EZAPPID",
+		"EZCAPTCHA_CLIENT_KEY",
+		"SOFT_ID",
+		"COOLDOWN_DURATION",
 		"CHECK_INTERVAL",
 		"NOTIFICATION_INTERVAL",
-		"COOLDOWN_DURATION",
 		"SLEEP_DURATION",
 		"COOKIE_CHECK_INTERVAL_PERMABAN",
 		"STATUS_CHANGE_COOLDOWN",
 		"GLOBAL_NOTIFICATION_COOLDOWN",
 		"COOKIE_EXPIRATION_WARNING",
 		"TEMP_BAN_UPDATE_INTERVAL",
+		"CHECK_ENDPOINT",
+		"PROFILE_ENDPOINT",
+		"CHECK_VIP_ENDPOINT",
+		"REDEEM_CODE_ENDPOINT",
+		"SESSION_KEY",
+		"STATIC_DIR",
+		"ADMIN_PORT",
+		"ADMIN_USERNAME",
+		"ADMIN_PASSWORD",
+		"CHECK_NOW_RATE_LIMIT",
+		"DEFAULT_RATE_LIMIT",
+		"DEFAULT_USER_MAXACCOUNTS",
+		"PREM_USER_MAXACCOUNTS",
+		"CHECKCIRCLE",
+		"BANCIRCLE",
+		"INFOCIRCLE",
+		"STOPWATCH",
+		"QUESTIONCIRCLE",
 	}
 
 	for _, envVar := range requiredEnvVars {
@@ -145,39 +181,16 @@ func initializeDatabase() error {
 	if err := database.DB.AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{}); err != nil {
 		return fmt.Errorf("failed to migrate database tables: %w", err)
 	}
-	return nil
-}
 
-func startAdminDashboard() *http.Server {
-	r := mux.NewRouter()
-	r.HandleFunc("/", admin.HomeHandler)
-	r.HandleFunc("/help", admin.HelpHandler)
-	r.HandleFunc("/admin/login", admin.LoginHandler)
-	r.HandleFunc("/admin/logout", admin.LogoutHandler)
-	r.HandleFunc("/admin", admin.AuthMiddleware(admin.DashboardHandler))
-	r.HandleFunc("/admin/stats", admin.AuthMiddleware(admin.StatsHandler))
-
-	staticDir := "/home/container/"
-	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
-
-	port := os.Getenv("ADMIN_PORT")
-	if port == "" {
-		port = "443"
-	}
-
-	server := &http.Server{
-		Addr:    ":" + port,
-		Handler: r,
-	}
-
-	go func() {
-		logger.Log.Infof("Admin dashboard starting on port %s", port)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Log.WithError(err).Fatal("Failed to start admin dashboard")
+	var accounts []models.Account
+	database.DB.Find(&accounts)
+	for _, account := range accounts {
+		if account.LastStatus == models.StatusShadowban {
+			account.IsShadowbanned = true
+			database.DB.Save(&account)
 		}
-	}()
-
-	return server
+	}
+	return nil
 }
 
 func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
@@ -194,7 +207,7 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 		}
 	}()
 
-	go admin.StartStatsCaching()
+	go webserver.StartStatsCaching()
 	go services.ScheduleBalanceChecks(s)
 
 	go func() {
@@ -206,7 +219,7 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 				if err := services.SendAnnouncementToAllUsers(s); err != nil {
 					logger.Log.WithError(err).Error("Failed to send global announcement")
 				}
-				time.Sleep(24 * time.Hour) // Check once a day
+				time.Sleep(24 * time.Hour)
 			}
 		}
 	}()

@@ -1,10 +1,13 @@
 .env
-/.idea
-/logs/*.txt
+*.md
 *.exe
-/Pages
-/donutupload
-/ignored
-/vendor
-codstatusadmin/.env.dashboard
-/templates/01-login
+/.idea
+/logs
+/discordgo
+/Other
+NOTE
+affected games
+qodana.yaml
+qodana.sarif.json
+notes
+/.sonarlint

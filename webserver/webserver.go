@@ -1,45 +1,55 @@
-package admin
+package webserver
 
 import (
 	"encoding/json"
-	"github.com/joho/godotenv"
+	"errors"
+	"fmt"
 	"html/template"
+	"io"
 	"net/http"
 	"os"
+	"sort"
 	"sync"
 	"time"
 
-	"CODStatusBot/database"
-	"CODStatusBot/logger"
-	"CODStatusBot/models"
+	"github.com/gorilla/mux"
+	"github.com/joho/godotenv"
+
+	"github.com/bradselph/CODStatusBot/database"
+	"github.com/bradselph/CODStatusBot/logger"
+	"github.com/bradselph/CODStatusBot/models"
 
 	"github.com/didip/tollbooth"
 	"github.com/didip/tollbooth/limiter"
 	"github.com/gorilla/sessions"
 )
 
+const (
+	discordAPIBase = "https://discord.com/api/v10"
+)
+
 var (
-	statsLimiter          *limiter.Limiter
-	cachedStats           Stats
-	cachedStatsLock       sync.RWMutex
-	cacheInterval         = 15 * time.Minute
-	NotificationCooldowns = make(map[string]time.Time)
-	NotificationMutex     sync.Mutex
-	store                 *sessions.CookieStore
+	statsLimiter           *limiter.Limiter
+	cachedStats            Stats
+	cachedStatsLock        sync.RWMutex
+	cacheInterval          = 15 * time.Minute
+	NotificationMutex      sync.Mutex
+	store                  *sessions.CookieStore
+	cachedDiscordStats     DiscordStats
+	cachedDiscordStatsLock sync.RWMutex
 )
 
 type Stats struct {
 	TotalAccounts            int
 	ActiveAccounts           int
-	BannedAccounts           int
+	PermaBannedAccounts      int
+	ShadowBannedAccounts     int
 	TotalUsers               int
 	ChecksLastHour           int
 	ChecksLast24Hours        int
 	TotalBans                int
 	RecentBans               int
 	AverageChecksPerDay      float64
-	MostCheckedAccount       string
-	LeastCheckedAccount      string
 	TotalNotifications       int
 	RecentNotifications      int
 	UsersWithCustomAPIKey    int
@@ -62,6 +72,11 @@ type HistoricalData struct {
 	Value int    `json:"value"`
 }
 
+type DiscordStats struct {
+	ServerCount int `json:"server_count"`
+}
+
+//nolint:gochecknoinits
 func init() {
 	if err := godotenv.Load(); err != nil {
 		logger.Log.WithError(err).Error("Error loading .env file")
@@ -79,6 +94,39 @@ func init() {
 		HttpOnly: true,
 		Secure:   false,
 	}
+}
+
+func StartAdminDashboard() *http.Server {
+	r := mux.NewRouter()
+	r.HandleFunc("/", HomeHandler)
+	r.HandleFunc("/help", HelpHandler)
+	r.HandleFunc("/terms", TermsHandler)
+	r.HandleFunc("/policy", PolicyHandler)
+	r.HandleFunc("/admin/login", LoginHandler)
+	r.HandleFunc("/admin/logout", LogoutHandler)
+	r.HandleFunc("/admin", AuthMiddleware(DashboardHandler))
+	r.HandleFunc("/admin/stats", AuthMiddleware(StatsHandler))
+	r.HandleFunc("/api/server-count", ServerCountHandler)
+
+	staticDir := os.Getenv("STATIC_DIR")
+	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
+
+	port := os.Getenv("ADMIN_PORT")
+
+	server := &http.Server{
+		Addr:              ":" + port,
+		Handler:           r,
+		ReadHeaderTimeout: 20 * time.Second,
+	}
+
+	go func() {
+		logger.Log.Infof("Admin dashboard starting on port %s", port)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Log.WithError(err).Fatal("Failed to start admin dashboard")
+		}
+	}()
+
+	return server
 }
 
 func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
@@ -108,15 +156,38 @@ func updateCachedStats() {
 		return
 	}
 
+	botstats, err := fetchDiscordStats()
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to fetch Discord botstats")
+		return
+	}
+
 	cachedStatsLock.Lock()
+	cachedDiscordStatsLock.Lock()
 	cachedStats = stats
+	cachedDiscordStats = botstats
 	cachedStatsLock.Unlock()
+	cachedDiscordStatsLock.Unlock()
+
 }
 
 func GetCachedStats() Stats {
 	cachedStatsLock.RLock()
 	defer cachedStatsLock.RUnlock()
 	return cachedStats
+}
+
+func ServerCountHandler(w http.ResponseWriter, _ *http.Request) {
+	cachedDiscordStatsLock.RLock()
+	botstats := cachedDiscordStats
+	cachedDiscordStatsLock.RUnlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(botstats); err != nil {
+		logger.Log.WithError(err).Error("Error encoding server count response")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 }
 
 func StatsHandler(w http.ResponseWriter, r *http.Request) {
@@ -133,36 +204,75 @@ func StatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	stats := GetCachedStats()
 	w.Header().Set("Content-Type", "application/json")
-	err := json.NewEncoder(w).Encode(stats)
+	if err := json.NewEncoder(w).Encode(stats); err != nil {
+		logger.Log.WithError(err).Error("Error encoding stats")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+}
+
+func TermsHandler(w http.ResponseWriter, _ *http.Request) {
+	tmpl, err := template.ParseFiles("templates/terms.html")
 	if err != nil {
+		logger.Log.WithError(err).Error("Failed to parse terms template")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.Execute(w, nil); err != nil {
+		logger.Log.WithError(err).Error("Failed to execute template")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 }
 
-func HomeHandler(w http.ResponseWriter, r *http.Request) {
+func PolicyHandler(w http.ResponseWriter, _ *http.Request) {
+	tmpl, err := template.ParseFiles("templates/policy.html")
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to parse policy template")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := tmpl.Execute(w, nil); err != nil {
+		logger.Log.WithError(err).Error("Failed to execute template")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
+func HomeHandler(w http.ResponseWriter, _ *http.Request) {
 	tmpl, err := template.ParseFiles("templates/index.html")
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to parse index template")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	tmpl.Execute(w, nil)
+	if err := tmpl.Execute(w, nil); err != nil {
+		logger.Log.WithError(err).Error("Failed to execute template")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 }
 
-func HelpHandler(w http.ResponseWriter, r *http.Request) {
+func HelpHandler(w http.ResponseWriter, _ *http.Request) {
 	tmpl, err := template.ParseFiles("templates/help.html")
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to parse help template")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	tmpl.Execute(w, nil)
+	if err := tmpl.Execute(w, nil); err != nil {
+		logger.Log.WithError(err).Error("Failed to execute template")
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 }
 
 func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	session, _ := store.Get(r, "admin-session")
 	session.Values["authenticated"] = false
-	session.Save(r, w)
+	err := session.Save(r, w)
+	if err != nil {
+		return
+	}
 	http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
 }
 
@@ -194,10 +304,16 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/admin", http.StatusSeeOther)
 			return
 		}
-		tmpl.Execute(w, map[string]string{"Error": "Invalid credentials"})
+		err := tmpl.Execute(w, map[string]string{"Error": "Invalid credentials"})
+		if err != nil {
+			return
+		}
 		return
 	}
-	tmpl.Execute(w, nil)
+	err = tmpl.Execute(w, nil)
+	if err != nil {
+		return
+	}
 }
 
 func isAuthenticated(r *http.Request) bool {
@@ -233,6 +349,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	stats := GetCachedStats()
+
 	logger.Log.WithField("stats", stats).Info("Retrieved cached stats")
 
 	tmpl, err := template.ParseFiles("templates/dashboard.html")
@@ -246,7 +363,9 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to execute dashboard template")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+
 	logger.Log.Info("Dashboard rendered successfully")
 }
 
@@ -255,7 +374,8 @@ func getStats() (Stats, error) {
 
 	stats.TotalAccounts, _ = getTotalAccounts()
 	stats.ActiveAccounts, _ = getActiveAccounts()
-	stats.BannedAccounts, _ = getBannedAccounts()
+	stats.PermaBannedAccounts, _ = getPermaBannedAccounts()
+	stats.ShadowBannedAccounts, _ = getShadowBannedAccounts()
 	stats.TotalUsers, _ = getTotalUsers()
 	stats.ChecksLastHour, _ = getChecksInTimeRange(1 * time.Hour)
 	stats.ChecksLast24Hours, _ = getChecksInTimeRange(24 * time.Hour)
@@ -291,12 +411,25 @@ func getActiveAccounts() (int, error) {
 	return int(count), err
 }
 
-func getBannedAccounts() (int, error) {
+func getPermaBannedAccounts() (int, error) {
 	var count int64
 	err := database.DB.Model(&models.Account{}).Where("is_permabanned = ?", true).Count(&count).Error
 	return int(count), err
 }
 
+func getShadowBannedAccounts() (int, error) {
+	var count int64
+	err := database.DB.Model(&models.Account{}).Where("is_shadowbanned = ?", true).Count(&count).Error
+	return int(count), err
+}
+
+/*
+	func getTotalShadowbans() (int, error) {
+		var count int64
+		err := database.DB.Model(&models.Ban{}).Where("status = ?", models.StatusShadowban).Count(&count).Error
+		return int(count), err
+	}
+*/
 func getTotalUsers() (int, error) {
 	var count int64
 	err := database.DB.Model(&models.UserSettings{}).Count(&count).Error
@@ -372,16 +505,37 @@ func getAverageAccountsPerUser() (float64, error) {
 
 func getAccountAgeRange() (time.Time, time.Time, error) {
 	var oldestAccount, newestAccount models.Account
-	err := database.DB.Order("created ASC").First(&oldestAccount).Error
+	cutoffDate := time.Date(2003, 1, 1, 0, 0, 0, 0, time.UTC)
+	err := database.DB.Where("created >= ?", cutoffDate).
+		Order("created ASC").First(&oldestAccount).Error
 	if err != nil {
 		return time.Time{}, time.Time{}, err
 	}
-	err = database.DB.Order("created DESC").First(&newestAccount).Error
+	err = database.DB.Where("created >= ?", cutoffDate).
+		Order("created DESC").First(&newestAccount).Error
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
 	return time.Unix(oldestAccount.Created, 0), time.Unix(newestAccount.Created, 0), err
 }
 
 func getTotalBansByType(banType models.Status) (int, error) {
 	var count int64
+	if banType == models.StatusShadowban {
+		var shadowbanCount int64
+		var currentlyShadowbannedCount int64
+
+		if err := database.DB.Model(&models.Ban{}).Where("status = ?", banType).Count(&shadowbanCount).Error; err != nil {
+			return 0, err
+		}
+
+		if err := database.DB.Model(&models.Account{}).Where("is_shadowbanned = ?", true).Count(&currentlyShadowbannedCount).Error; err != nil {
+			return 0, err
+		}
+
+		return int(shadowbanCount), nil
+	}
+
 	err := database.DB.Model(&models.Ban{}).Where("status = ?", banType).Count(&count).Error
 	return int(count), err
 }
@@ -390,11 +544,13 @@ func getBanDataForChart() ([]string, []int, error) {
 	var banData []struct {
 		Date  time.Time
 		Count int
+		Type  string
 	}
+
 	err := database.DB.Model(&models.Ban{}).
-		Select("DATE(created_at) as date, COUNT(*) as count").
+		Select("DATE(created_at) as date, COUNT(*) as count, status as type").
 		Where("created_at > ?", time.Now().AddDate(0, 0, -30)).
-		Group("DATE(created_at)").
+		Group("DATE(created_at), status").
 		Order("date").
 		Scan(&banData).Error
 	if err != nil {
@@ -403,10 +559,30 @@ func getBanDataForChart() ([]string, []int, error) {
 
 	var dates []string
 	var counts []int
+
+	shadowbanCounts := make(map[string]int)
+	permaBanCounts := make(map[string]int)
+	tempBanCounts := make(map[string]int)
+
 	for _, data := range banData {
-		dates = append(dates, data.Date.Format("2006-01-02"))
-		counts = append(counts, data.Count)
+		dateStr := data.Date.Format("2006-01-02")
+		switch data.Type {
+		case string(models.StatusShadowban):
+			shadowbanCounts[dateStr] += data.Count
+		case string(models.StatusPermaban):
+			permaBanCounts[dateStr] += data.Count
+		case string(models.StatusTempban):
+			tempBanCounts[dateStr] += data.Count
+		}
 	}
+
+	for dateStr := range shadowbanCounts {
+		dates = append(dates, dateStr)
+		totalCount := shadowbanCounts[dateStr] + permaBanCounts[dateStr] + tempBanCounts[dateStr]
+		counts = append(counts, totalCount)
+	}
+
+	sort.Strings(dates)
 
 	return dates, counts, nil
 }
@@ -422,7 +598,7 @@ func getHistoricalData(statType string) ([]HistoricalData, error) {
 			FROM accounts
 			WHERE created > ?
 			GROUP BY date
-			ORDER BY date ASC
+			ORDER BY date
 		`, time.Now().AddDate(0, 0, -30).Unix()).Scan(&data).Error
 
 	case "users":
@@ -431,7 +607,7 @@ func getHistoricalData(statType string) ([]HistoricalData, error) {
 			FROM user_settings
 			WHERE created_at > ?
 			GROUP BY date
-			ORDER BY date ASC
+			ORDER BY date
 		`, time.Now().AddDate(0, 0, -30)).Scan(&data).Error
 
 	case "checks":
@@ -440,7 +616,7 @@ func getHistoricalData(statType string) ([]HistoricalData, error) {
 			FROM accounts
 			WHERE last_check > ?
 			GROUP BY date
-			ORDER BY date ASC
+			ORDER BY date
 		`, time.Now().AddDate(0, 0, -30).Unix()).Scan(&data).Error
 
 	case "bans":
@@ -449,21 +625,66 @@ func getHistoricalData(statType string) ([]HistoricalData, error) {
 			FROM bans
 			WHERE created_at > ?
 			GROUP BY date
-			ORDER BY date ASC
+			ORDER BY date
 		`, time.Now().AddDate(0, 0, -30)).Scan(&data).Error
 
 	case "notifications":
 		err = database.DB.Raw(`
-			SELECT DATE(FROM_UNIXTIME(last_notification)) as date, COUNT(*) as value
-			FROM accounts
-			WHERE last_notification > ?
-			GROUP BY date
-			ORDER BY date ASC
-		`, time.Now().AddDate(0, 0, -30).Unix()).Scan(&data).Error
+					SELECT DATE(FROM_UNIXTIME(last_notification)) as date, COUNT(*) as value
+					FROM accounts
+					WHERE last_notification > ?
+					GROUP BY date
+					ORDER BY date
+				`, time.Now().AddDate(0, 0, -30).Unix()).Scan(&data).Error
 
 	default:
 		return nil, nil
 	}
 
 	return data, err
+}
+
+func fetchDiscordStats() (DiscordStats, error) {
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	req, err := http.NewRequest("GET", discordAPIBase+"/users/@me/guilds", nil)
+	if err != nil {
+		return DiscordStats{}, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	token := os.Getenv("DISCORD_TOKEN")
+	if token == "" {
+		return DiscordStats{}, fmt.Errorf("DISCORD_TOKEN not set in environment")
+	}
+
+	req.Header.Set("Authorization", "Bot "+token)
+	req.Header.Set("User-Agent", "CodStatusBot, v3.5)")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return DiscordStats{}, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			logger.Log.WithError(err).Error("Failed to close response body")
+		}
+	}(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return DiscordStats{}, fmt.Errorf("discord API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var guilds []interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&guilds); err != nil {
+		return DiscordStats{}, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return DiscordStats{
+		ServerCount: len(guilds),
+	}, nil
 }

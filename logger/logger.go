@@ -21,6 +21,11 @@ func init() {
 	Log = logrus.New()
 	Log.SetFormatter(&logrus.TextFormatter{
 		ForceColors: true,
+		FieldMap: logrus.FieldMap{
+			logrus.FieldKeyTime:  "timestamp",
+			logrus.FieldKeyLevel: "level",
+			logrus.FieldKeyMsg:   "message",
+		},
 	})
 	logDir := "logs/"
 	err := os.MkdirAll(logDir, 0o755)
@@ -30,7 +35,6 @@ func init() {
 
 	rotateLog()
 
-	// Start a goroutine to check for log rotation
 	go checkRotation()
 }
 
@@ -39,7 +43,10 @@ func rotateLog() {
 	defer rotationMutex.Unlock()
 
 	if logFile != nil {
-		logFile.Close()
+		err := logFile.Close()
+		if err != nil {
+			Log.WithError(err).Error("Failed to close log file")
+		}
 	}
 
 	logDir := "logs/"
@@ -57,7 +64,7 @@ func rotateLog() {
 
 func checkRotation() {
 	for {
-		time.Sleep(1 * time.Hour) // Check every hour
+		time.Sleep(1 * time.Hour)
 
 		now := time.Now()
 		if now.YearDay() != lastRotation.YearDay() {

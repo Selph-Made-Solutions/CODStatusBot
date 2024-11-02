@@ -1,23 +1,25 @@
 package command
 
 import (
-	"CODStatusBot/command/accountage"
-	"CODStatusBot/command/accountlogs"
-	"CODStatusBot/command/addaccount"
-	"CODStatusBot/command/checknow"
-	"CODStatusBot/command/feedback"
-	"CODStatusBot/command/globalannouncement"
-	"CODStatusBot/command/helpapi"
-	"CODStatusBot/command/helpcookie"
-	"CODStatusBot/command/listaccounts"
-	"CODStatusBot/command/removeaccount"
-	"CODStatusBot/command/setcaptchaservice"
-	"CODStatusBot/command/setcheckinterval"
-	"CODStatusBot/command/togglecheck"
-	"CODStatusBot/command/updateaccount"
-	"CODStatusBot/database"
-	"CODStatusBot/logger"
-	"CODStatusBot/models"
+	"github.com/bradselph/CODStatusBot/command/accountage"
+	"github.com/bradselph/CODStatusBot/command/accountlogs"
+	"github.com/bradselph/CODStatusBot/command/addaccount"
+	"github.com/bradselph/CODStatusBot/command/checkcaptchabalance"
+	"github.com/bradselph/CODStatusBot/command/checknow"
+	"github.com/bradselph/CODStatusBot/command/feedback"
+	"github.com/bradselph/CODStatusBot/command/globalannouncement"
+	"github.com/bradselph/CODStatusBot/command/helpapi"
+	"github.com/bradselph/CODStatusBot/command/helpcookie"
+	"github.com/bradselph/CODStatusBot/command/listaccounts"
+	"github.com/bradselph/CODStatusBot/command/removeaccount"
+	"github.com/bradselph/CODStatusBot/command/setcaptchaservice"
+	"github.com/bradselph/CODStatusBot/command/setcheckinterval"
+	"github.com/bradselph/CODStatusBot/command/setnotifications"
+	"github.com/bradselph/CODStatusBot/command/togglecheck"
+	"github.com/bradselph/CODStatusBot/command/updateaccount"
+	"github.com/bradselph/CODStatusBot/database"
+	"github.com/bradselph/CODStatusBot/logger"
+	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -30,11 +32,11 @@ func RegisterCommands(s *discordgo.Session) error {
 		{
 			Name:         "globalannouncement",
 			Description:  "Send a global announcement to all users (Admin only)",
-			DMPermission: BoolPtr(false),
+			DMPermission: BoolPtr(true),
 		},
 		{
 			Name:         "setcaptchaservice",
-			Description:  "Set your EZ-Captcha API key",
+			Description:  "Set your Captcha service provider and API key (EZCaptcha/2Captcha)",
 			DMPermission: BoolPtr(true),
 		},
 		{
@@ -43,14 +45,24 @@ func RegisterCommands(s *discordgo.Session) error {
 			DMPermission: BoolPtr(true),
 		},
 		{
+			Name:         "setnotifications",
+			Description:  "Set your notification preferences (channel or DM)",
+			DMPermission: BoolPtr(true),
+		},
+		{
 			Name:         "addaccount",
 			Description:  "Add a new account to monitor",
 			DMPermission: BoolPtr(true),
 		},
 		{
-			Name:         "helpapi",
-			Description:  "Get help on using the bot and setting up your API key",
+			Name:         "checkcaptchabalance",
+			Description:  "Check your captcha service balance",
 			DMPermission: BoolPtr(true),
+		},
+		{
+			Name:         "helpapi",
+			DMPermission: BoolPtr(true),
+			Description:  " Get help on using the bot and setting up your API key",
 		},
 		{
 			Name:         "helpcookie",
@@ -59,22 +71,22 @@ func RegisterCommands(s *discordgo.Session) error {
 		},
 		{
 			Name:         "accountage",
-			Description:  "Check the age of an account",
+			Description:  "Check the age and VIP status of an account",
 			DMPermission: BoolPtr(true),
 		},
 		{
 			Name:         "accountlogs",
-			Description:  "View the logs for an account",
+			Description:  "View the status logs for an account",
 			DMPermission: BoolPtr(true),
 		},
 		{
 			Name:         "checknow",
-			Description:  "Check All accounts Now (rate limited for default API key)",
+			Description:  "Check account status now (rate limited for default API key)",
 			DMPermission: BoolPtr(true),
 		},
 		{
 			Name:         "listaccounts",
-			Description:  "List all your monitored accounts",
+			Description:  "List all your monitored accounts with status and last checked time",
 			DMPermission: BoolPtr(true),
 		},
 		{
@@ -82,6 +94,17 @@ func RegisterCommands(s *discordgo.Session) error {
 			Description:  "Remove a monitored account",
 			DMPermission: BoolPtr(true),
 		},
+		/*		{
+					Name:         "managerewardcodes",
+					Description:  "Manage reward codes (Admin only)",
+					DMPermission: BoolPtr(true),
+				},
+				{
+					Name:         "claimreward",
+					Description:  "Claim a reward code for your account(s)",
+					DMPermission: BoolPtr(true),
+				},
+		*/
 		{
 			Name:         "updateaccount",
 			Description:  "Update a monitored account's information",
@@ -113,7 +136,7 @@ func RegisterCommands(s *discordgo.Session) error {
 		return err
 	}
 
-	// Command handlers
+	Handlers["checkcaptchabalance"] = checkcaptchabalance.CommandCheckCaptchaBalance
 	Handlers["globalannouncement"] = globalannouncement.CommandGlobalAnnouncement
 	Handlers["setcaptchaservice"] = setcaptchaservice.CommandSetCaptchaService
 	Handlers["setcheckinterval"] = setcheckinterval.CommandSetCheckInterval
@@ -123,37 +146,47 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["feedback"] = feedback.CommandFeedback
 	Handlers["accountage"] = accountage.CommandAccountAge
 	Handlers["accountlogs"] = accountlogs.CommandAccountLogs
+	//	Handlers["claimreward"] = claimreward.CommandClaimReward
 	Handlers["checknow"] = checknow.CommandCheckNow
 	Handlers["listaccounts"] = listaccounts.CommandListAccounts
 	Handlers["removeaccount"] = removeaccount.CommandRemoveAccount
 	Handlers["updateaccount"] = updateaccount.CommandUpdateAccount
 	Handlers["togglecheck"] = togglecheck.CommandToggleCheck
+	Handlers["setnotifications"] = setnotifications.CommandSetNotifications
 
-	// Command Modal Handlers
+	//	Handlers["claim_reward_modal"] = claimreward.HandleModalSubmit
+	Handlers["set_notifications_modal"] = setnotifications.HandleModalSubmit
 	Handlers["setcaptchaservice_modal"] = setcaptchaservice.HandleModalSubmit
 	Handlers["addaccount_modal"] = addaccount.HandleModalSubmit
-	Handlers["updateaccount_modal"] = updateaccount.HandleModalSubmit
-	Handlers["setcheckinterval_modal"] = setcheckinterval.HandleModalSubmit
+	Handlers["update_account_modal"] = updateaccount.HandleModalSubmit
+	Handlers["set_check_interval_modal"] = setcheckinterval.HandleModalSubmit
 
-	// Command select handlers
 	Handlers["account_age"] = accountage.HandleAccountSelection
 	Handlers["account_logs"] = accountlogs.HandleAccountSelection
 	Handlers["remove_account"] = removeaccount.HandleAccountSelection
 	Handlers["check_now"] = checknow.HandleAccountSelection
 	Handlers["toggle_check"] = togglecheck.HandleAccountSelection
+	//	Handlers["claim_reward_manual"] = claimreward.HandleRewardChoice
+	//	Handlers["claim_reward_preset"] = claimreward.HandleRewardChoice
 	Handlers["feedback_anonymous"] = feedback.HandleFeedbackChoice
 	Handlers["feedback_with_id"] = feedback.HandleFeedbackChoice
+	Handlers["show_interval_modal"] = setcheckinterval.HandleButton
 
-	// Confirmation handlers
 	Handlers["confirm_remove"] = removeaccount.HandleConfirmation
+	Handlers["confirm_reenable"] = togglecheck.HandleConfirmation
+	Handlers["cancel_reenable"] = togglecheck.HandleConfirmation
+
+	//	Handlers["add_reward_code_modal"] = managerewardcodes.HandleAddCodeModal
+	//	Handlers["add_reward_code"] = managerewardcodes.HandleManageChoice
+	//	Handlers["list_reward_codes"] = managerewardcodes.HandleManageChoice
+	//	Handlers["remove_reward_code"] = managerewardcodes.HandleManageChoice
+	//	Handlers["managerewardcodes"] = managerewardcodes.CommandManageRewardCodes
 
 	logger.Log.Info("Global commands registered and handlers set up")
 	return nil
 }
 
-// HandleCommand handles incoming commands and checks for announcements
 func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	// Check if the user has seen the announcement
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
@@ -169,11 +202,9 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error getting user settings")
 	} else if !userSettings.HasSeenAnnouncement {
-		// Send the announcement to the user
 		if err := globalannouncement.SendGlobalAnnouncement(s, userID); err != nil {
 			logger.Log.WithError(err).Error("Error sending announcement to user")
 		} else {
-			// Update the user's settings to mark the announcement as seen.
 			userSettings.HasSeenAnnouncement = true
 			if err := database.DB.Save(&userSettings).Error; err != nil {
 				logger.Log.WithError(err).Error("Error updating user settings after sending announcement")
@@ -190,7 +221,6 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 }
 
-// BoolPtr Helper function to create a pointer to a bool
 func BoolPtr(b bool) *bool {
 	return &b
 }

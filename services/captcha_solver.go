@@ -1,0 +1,373 @@
+package services
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"strconv"
+	"time"
+
+	"github.com/bradselph/CODStatusBot/logger"
+)
+
+func LoadEnvironmentVariables() error {
+	clientKey = os.Getenv("EZCAPTCHA_CLIENT_KEY")
+	ezappID = os.Getenv("EZAPPID")
+	softID = os.Getenv("SOFT_ID")
+	siteAction = os.Getenv("SITE_ACTION")
+	ezCapBalMinStr := os.Getenv("EZCAPBALMIN")
+	twoCapBalMinStr := os.Getenv("TWOCAPBALMIN")
+
+	var err error
+	ezCapBalMin, err = strconv.ParseFloat(ezCapBalMinStr, 64)
+	if err != nil {
+		ezCapBalMin = 100
+		logger.Log.Warnf("Failed to parse EZCAPBALMIN, using default value: %v", ezCapBalMin)
+	}
+
+	twoCapBalMin, err = strconv.ParseFloat(twoCapBalMinStr, 64)
+	if err != nil {
+		twoCapBalMin = 0.10
+		logger.Log.Warnf("Failed to parse TWOCAPBALMIN, using default value: %v", twoCapBalMin)
+	}
+
+	if clientKey == "" || ezappID == "" || softID == "" || siteAction == "" {
+		return fmt.Errorf("EZCAPTCHA_CLIENT_KEY, EZAPPID, SOFT_ID, or SITE_ACTION is not set in the environment")
+	}
+
+	return nil
+}
+
+var (
+	clientKey    string
+	ezappID      string
+	softID       string
+	siteAction   string
+	ezCapBalMin  float64
+	twoCapBalMin float64
+)
+
+type CaptchaSolver interface {
+	SolveReCaptchaV2(siteKey, pageURL string) (string, error)
+}
+
+type EZCaptchaSolver struct {
+	APIKey  string
+	EzappID string
+}
+
+type TwoCaptchaSolver struct {
+	APIKey string
+	SoftID string
+}
+
+const (
+	MaxRetries    = 6
+	RetryInterval = 10 * time.Second
+
+	EZCaptchaCreateEndpoint  = "https://api.ez-captcha.com/createTask"
+	EZCaptchaResultEndpoint  = "https://api.ez-captcha.com/getTaskResult"
+	TwoCaptchaCreateEndpoint = "https://api.2captcha.com/createTask"
+	TwoCaptchaResultEndpoint = "https://api.2captcha.com/getTaskResult"
+	twocap                   = "2captcha"
+	ezcap                    = "ezcaptcha"
+)
+
+func IsServiceEnabled(provider string) bool {
+	switch provider {
+	case ezcap:
+		return os.Getenv("EZCAPTCHA_ENABLED") == "true"
+	case twocap:
+		return os.Getenv("TWOCAPTCHA_ENABLED") == "true"
+	default:
+		return false
+	}
+}
+
+func NewCaptchaSolver(apiKey, provider string) (CaptchaSolver, error) {
+	if !IsServiceEnabled(provider) {
+		return nil, fmt.Errorf("captcha service %s is currently disabled", provider)
+	}
+
+	switch provider {
+	case ezcap:
+		return &EZCaptchaSolver{APIKey: apiKey, EzappID: ezappID}, nil
+	case twocap:
+		return &TwoCaptchaSolver{APIKey: apiKey, SoftID: softID}, nil
+	default:
+		return nil, errors.New("unsupported captcha provider")
+	}
+}
+
+func (s *EZCaptchaSolver) SolveReCaptchaV2(siteKey, pageURL string) (string, error) {
+	taskID, err := s.createTask(siteKey, pageURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to create captcha task: %w", err)
+	}
+	return s.getTaskResult(taskID)
+}
+
+func (s *TwoCaptchaSolver) SolveReCaptchaV2(siteKey, pageURL string) (string, error) {
+	taskID, err := s.createTask(siteKey, pageURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to create captcha task: %w", err)
+	}
+	return s.getTaskResult(taskID)
+}
+
+func (s *EZCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
+	payload := map[string]interface{}{
+		"clientKey": s.APIKey,
+		"appId":     s.EzappID,
+		"task": map[string]interface{}{
+			"type":        "ReCaptchaV2TaskProxyless",
+			"websiteURL":  pageURL,
+			"websiteKey":  siteKey,
+			"isInvisible": false,
+		},
+	}
+
+	resp, err := sendRequest(EZCaptchaCreateEndpoint, payload)
+	if err != nil {
+		return "", err
+	}
+
+	var result struct {
+		ErrorId          int    `json:"errorId"`
+		ErrorCode        string `json:"errorCode"`
+		ErrorDescription string `json:"errorDescription"`
+		TaskId           string `json:"taskId"`
+	}
+
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if result.ErrorId != 0 {
+		return "", fmt.Errorf("API error: %s - %s", result.ErrorCode, result.ErrorDescription)
+	}
+
+	return result.TaskId, nil
+}
+
+func (s *TwoCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
+	payload := map[string]interface{}{
+		"clientKey": s.APIKey,
+		"softId":    s.SoftID,
+		"task": map[string]interface{}{
+			"type":       "RecaptchaV2TaskProxyless",
+			"websiteURL": pageURL,
+			"websiteKey": siteKey,
+		},
+	}
+
+	resp, err := sendRequest(TwoCaptchaCreateEndpoint, payload)
+	if err != nil {
+		return "", err
+	}
+
+	logger.Log.Infof("2captcha response: %s", string(resp))
+
+	var result struct {
+		ErrorId          int    `json:"errorId"`
+		ErrorCode        string `json:"errorCode"`
+		ErrorDescription string `json:"errorDescription"`
+		TaskId           int64  `json:"taskId"`
+	}
+
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if result.ErrorId != 0 {
+		return "", fmt.Errorf("API error creating task: %s - %s", result.ErrorCode, result.ErrorDescription)
+	}
+
+	return fmt.Sprintf("%d", result.TaskId), nil
+}
+
+func (s *EZCaptchaSolver) getTaskResult(taskID string) (string, error) {
+	for i := 0; i < MaxRetries; i++ {
+		payload := map[string]interface{}{
+			"clientKey": s.APIKey,
+			"taskId":    taskID,
+		}
+
+		resp, err := sendRequest(EZCaptchaResultEndpoint, payload)
+		if err != nil {
+			return "", err
+		}
+
+		var result struct {
+			ErrorId          int    `json:"errorId"`
+			ErrorCode        string `json:"errorCode"`
+			ErrorDescription string `json:"errorDescription"`
+			Status           string `json:"status"`
+			Solution         struct {
+				GRecaptchaResponse string `json:"gRecaptchaResponse"`
+			} `json:"solution"`
+		}
+
+		if err := json.Unmarshal(resp, &result); err != nil {
+			return "", fmt.Errorf("failed to parse response: %w", err)
+		}
+
+		if result.ErrorId != 0 {
+			return "", fmt.Errorf("API error: %s - %s", result.ErrorCode, result.ErrorDescription)
+		}
+
+		if result.Status == "ready" {
+			return result.Solution.GRecaptchaResponse, nil
+		}
+
+		time.Sleep(RetryInterval)
+	}
+
+	return "", errors.New("max retries reached waiting for result")
+}
+
+func (s *TwoCaptchaSolver) getTaskResult(taskID string) (string, error) {
+	for i := 0; i < MaxRetries; i++ {
+		payload := map[string]interface{}{
+			"clientKey": s.APIKey,
+			"taskId":    taskID,
+		}
+
+		resp, err := sendRequest(TwoCaptchaResultEndpoint, payload)
+		if err != nil {
+			return "", err
+		}
+
+		var result struct {
+			ErrorId  int    `json:"errorId"`
+			Status   string `json:"status"`
+			Solution struct {
+				GRecaptchaResponse string `json:"gRecaptchaResponse"`
+			} `json:"solution"`
+		}
+
+		if err := json.Unmarshal(resp, &result); err != nil {
+			return "", fmt.Errorf("failed to parse response: %w", err)
+		}
+
+		if result.ErrorId != 0 {
+			return "", fmt.Errorf("API error getting result")
+		}
+
+		if result.Status == "ready" {
+			return result.Solution.GRecaptchaResponse, nil
+		}
+
+		time.Sleep(RetryInterval)
+	}
+
+	return "", errors.New("max retries reached waiting for result")
+}
+
+func sendRequest(url string, payload interface{}) ([]byte, error) {
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			log.Println(err)
+		}
+	}(resp.Body)
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	return body, nil
+}
+
+func getBalanceThreshold(provider string) float64 {
+	switch provider {
+	case ezcap:
+		return ezCapBalMin
+	case twocap:
+		return twoCapBalMin
+	default:
+		return 0
+	}
+}
+
+func ValidateCaptchaKey(apiKey, provider string) (bool, float64, error) {
+	switch provider {
+	case ezcap:
+		return validateEZCaptchaKey(apiKey)
+	case twocap:
+		return validate2CaptchaKey(apiKey)
+	default:
+		return false, 0, errors.New("unsupported captcha provider")
+	}
+}
+
+func validateEZCaptchaKey(apiKey string) (bool, float64, error) {
+	url := "https://api.ez-captcha.com/getBalance"
+	payload := map[string]string{
+		"clientKey": apiKey,
+		"action":    "getBalance",
+	}
+
+	resp, err := sendRequest(url, payload)
+	if err != nil {
+		return false, 0, err
+	}
+
+	var result struct {
+		ErrorId int     `json:"errorId"`
+		Balance float64 `json:"balance"`
+	}
+
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return false, 0, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if result.ErrorId != 0 {
+		return false, 0, nil
+	}
+
+	return true, result.Balance, nil
+}
+
+func validate2CaptchaKey(apiKey string) (bool, float64, error) {
+	url := "https://api.2captcha.com/getBalance"
+	payload := map[string]string{
+		"clientKey": apiKey,
+		"action":    "getBalance",
+	}
+
+	resp, err := sendRequest(url, payload)
+	if err != nil {
+		return false, 0, err
+	}
+
+	var result struct {
+		ErrorId int     `json:"errorId"`
+		Balance float64 `json:"balance"`
+	}
+
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return false, 0, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if result.ErrorId != 0 {
+		return false, 0, nil
+	}
+
+	return true, result.Balance, nil
+}
