@@ -6,7 +6,7 @@
 
 COD Status Bot is a Discord bot designed to help you monitor your Activision accounts for shadowbans or permanent bans
 in Call of Duty games. The bot periodically checks the status of your accounts and notifies you of any changes. Now
-serving 300+ Discord servers, our bot has been optimized for performance and scalability.
+serving 395+ Discord servers, our bot has been optimized for performance and scalability.
 
 ## Features
 
@@ -17,109 +17,145 @@ serving 300+ Discord servers, our bot has been optimized for performance and sca
 - Ban history logs
 - Customizable notification preferences
 - Anonymous feedback submission
-- EZ-Captcha integration for continued compatibility with Activision
+- EZ-Captcha and 2Captcha integration for continued compatibility with Activision
 - SSO Cookie expiration tracking and notifications
 - Toggle automatic checks on/off for individual accounts
+- VIP account status detection and tracking
 
 ## Getting Started
 
 1. Invite the bot to your Discord server using the
    provided [Invite Link](https://discord.com/oauth2/authorize?client_id=1211857854324015124).
 2. Once the bot joins your server, it will automatically register the necessary commands.
-3. Set up your EZ-Captcha API key for full functionality and customized check intervals.
+3. Set up your EZ-Captcha or 2Captcha API key for full functionality and customized check intervals.
 4. Use the `/addaccount` command to start monitoring your first account.
 
-## EZ-Captcha Integration
+## Captcha Service Integration
 
 The bot uses EZ-Captcha for solving CAPTCHAs, which maintains compatibility to check your accounts with
 Activision. Users have two options:
 
 1. Use the bot's default API key (limited use, shared among all users)
-2. Get your own EZ-Captcha API key for unlimited use and customizable check intervals
+2. Get your own API key for unlimited use and customizable check intervals
 
-### Getting Your Own EZ-Captcha API Key
+### Getting Your Own API Key
 
+#### EZ-Captcha:
 1. Visit [EZ-Captcha Registration](https://dashboard.ez-captcha.com/#/register?inviteCode=uyNrRgWlEKy)
 2. Complete the registration process
 3. Once registered, you'll receive your API key
 4. Use the `/setcaptchaservice` command to set your API key in the bot
 
-By using your own API key, you can customize the check interval for your accounts and enjoy unlimited use of the
-service.
+#### 2Captcha:
+1. Visit [2Captcha](https://2captcha.com/) to register
+2. Purchase credits for your account
+3. Obtain your API key from your dashboard
+
+Use the `/setcaptchaservice` command to set your preferred service and API key in the bot.
 
 ## Commands
 
+### Account Management Commands
+
 ### /addaccount
-
 Add a new account to be monitored by the bot. You'll need to provide:
-
 - Account Title: A name to identify the account
 - SSO Cookie: The Single Sign-On cookie associated with your Activision account
 
 ### /removeaccount
-
 Remove an account from being monitored by the bot. This will delete all associated data.
 
 ### /updateaccount
-
 Update the SSO cookie for an existing account. Use this when your cookie expires or becomes invalid.
 
 ### /listaccounts
-
-List all your monitored accounts, including their current status and notification preferences.
+List all your monitored accounts, including:
+- Current status
+- VIP status
+- Cookie expiration
+- Check status (enabled/disabled)
+- Notification preferences
 
 ### /accountlogs
-
 View the status change logs for a specific account or all accounts. This shows the last 10 status changes.
 
 ### /accountage
+Check the age and VIP status of a specific account. Displays:
+- Account creation date
+- Current age
+- VIP status
+- Last status check
 
 Check the age of a specific account. This displays the account's creation date and current age.
+### Status Check Commands
 
 ### /checknow
+Immediately check the status of all your accounts or a specific account. Note: This command is rate-limited for users without a personal API key.
 
 Immediately check the status of all your accounts or a specific account. This command is rate-limited for users without
-a personal API key.
+### /togglecheck
+Toggle automatic checks on/off for a monitored account. Useful for:
+- Temporarily disabling checks on specific accounts
+- Re-enabling previously disabled accounts
+- Managing account monitoring status
+
+### Configuration Commands
 
 ### /setcheckinterval
+Configure monitoring preferences:
+- Check Interval: How often the bot checks your accounts (1-1440 minutes)
+- Notification Interval: How often you receive status updates (1-24 hours)
+- Cooldown Duration: Minimum time between repeated notifications (1-24 hours)
+- Status Change Cooldown: Minimum time between status change notifications (1-24 hours)
 
-Set your preferences for:
-
-- Check Interval: How often the bot checks your accounts (in minutes)
-- Notification Interval: How often you receive status updates (in hours)
-- Notification Type: Choose between channel or DM notifications
+### /setnotifications
+Set your notification preferences:
+- Channel: Receive notifications in the Discord channel
+- DM: Receive notifications via direct message
 
 ### /setcaptchaservice
+Configure your captcha service:
+- Select provider (EZ-Captcha or 2Captcha)
+- Set your personal API key
+- Check current balance
 
 Set your personal EZ-Captcha API key for unlimited use and customizable check intervals.
+### /checkcaptchabalance
+Check your remaining balance with your configured captcha service.
+
+### Help and Support Commands
 
 ### /helpapi
-
-Display a detailed guide on how to use the bot and set up your API key.
+Display a detailed guide on:
+- Using the bot effectively
+- Setting up your API key
+- Understanding available commands
 
 ### /helpcookie
-
-Display a step-by-step guide on how to obtain your SSO cookie from the Activision website.
+Comprehensive guide on obtaining your SSO cookie, including:
+- Step-by-step instructions
+- Browser-specific methods
+- Troubleshooting tips
 
 ### /feedback
-
-Send anonymous feedback or suggestions to the bot developer. This is sent directly to the developer's DMs.
-
-### /togglecheck
-
-Toggle automatic checks on/off for a monitored account. Useful for temporarily disabling checks on specific accounts.
+Send anonymous feedback or suggestions to the bot developer. Features:
+- Optional anonymity
+- Direct delivery to developer
+- Support for feature requests and bug reports
 
 ## Notifications
 
-The bot will send notifications:
+The bot will send notifications for:
+- Ban status changes (permanent, temporary, or shadowban)
+- Daily account monitoring confirmations
+- Invalid or expiring SSO cookies
+- Cookie expiration warnings (24 hours notice)
+- Captcha service balance warnings
+- VIP status changes
 
-- When there's a change in the ban status of an account
-- Daily for each account, confirming that it's still being monitored
-- If an SSO cookie becomes invalid or is about to expire
-- 24 hours before an SSO cookie is set to expire
-
-Notifications will be sent to the channel where the account was added or to your DMs, depending on your preference set
-with `/setcheckinterval`.
+Notifications can be sent to:
+- The channel where the account was added
+- Your DMs (configurable via `/setnotifications`)
 
 ## SSO Cookie
 
@@ -153,7 +189,6 @@ The bot uses a MySQL database to store account information and user settings. It
 If you encounter any issues or have questions:
 
 1. Use the `/feedback` command to contact the bot developer anonymously.
-2. Join our [Support Server](https://discord.gg/your-support-server) for real-time assistance and updates.
 
 ## Privacy and Data Security
 
@@ -164,13 +199,14 @@ If you encounter any issues or have questions:
 - We employ industry-standard security practices to protect your data.
 
 ## Recent Changes and Updates
-
-- Optimized bot performance for 300+ Discord servers
-- Implemented database connection pooling for improved scalability
-- Added caching mechanisms to reduce API calls and improve response times
+- Optimized bot performance for 395+ Discord servers
 - Enhanced rate limiting to ensure fair usage across all servers
 - Improved error handling and logging for better issue resolution
-- Implemented performance monitoring to maintain high uptime and responsiveness
+- Added support for multiple captcha services (EZ-Captcha and 2Captcha) Note: 2Captcha is not stable and may be disabled for use.
+- 
+
+
+
 
 ## Disclaimer
 
