@@ -18,12 +18,6 @@ import (
 	"github.com/joho/godotenv"
 )
 
-type NotificationConfig struct {
-	Type              string
-	Cooldown          time.Duration
-	AllowConsolidated bool
-}
-
 const (
 	maxRetryAttempts    = 3
 	retryDelay          = 5 * time.Second
@@ -50,18 +44,6 @@ var (
 	defaultRateLimit            time.Duration
 	checkNowRateLimit           time.Duration
 	DBMutex                     sync.Mutex
-	notificationConfigs         = map[string]NotificationConfig{
-		"channel_change":       {Cooldown: time.Hour, AllowConsolidated: false},
-		"status_change":        {Cooldown: time.Hour, AllowConsolidated: false},
-		"permaban":             {Cooldown: 24 * time.Hour, AllowConsolidated: false},
-		"shadowban":            {Cooldown: 12 * time.Hour, AllowConsolidated: false},
-		"daily_update":         {Cooldown: 0, AllowConsolidated: true},
-		"invalid_cookie":       {Cooldown: 6 * time.Hour, AllowConsolidated: true},
-		"cookie_expiring_soon": {Cooldown: 24 * time.Hour, AllowConsolidated: true},
-		"temp_ban_update":      {Cooldown: time.Hour, AllowConsolidated: false},
-		"error":                {Cooldown: time.Hour, AllowConsolidated: false},
-		"account_added":        {Cooldown: time.Hour, AllowConsolidated: false},
-	}
 )
 
 func init() {
@@ -428,8 +410,8 @@ func disableAccount(s *discordgo.Session, account models.Account, reason string)
 	NotifyUserAboutDisabledAccount(s, account, reason)
 }
 
-// TODO: why is this not in use? was it replaced by a newer function?
-
+// TODO: remove  after ensuring it is not used
+/*
 func updateAccountStatus(s *discordgo.Session, account models.Account, result models.Status) {
 	DBMutex.Lock()
 	defer DBMutex.Unlock()
@@ -453,6 +435,7 @@ func updateAccountStatus(s *discordgo.Session, account models.Account, result mo
 		}
 	}
 }
+*/
 
 func ScheduleTempBanNotification(s *discordgo.Session, account models.Account, duration string) {
 	parts := strings.Split(duration, ",")
