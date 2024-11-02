@@ -238,18 +238,6 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	oldVIP, _ := services.CheckVIPStatus(account.SSOCookie)
-	newVIP, _ := services.CheckVIPStatus(newSSOCookie)
-
-	var vipStatusChange string
-	if oldVIP != newVIP {
-		if newVIP {
-			vipStatusChange = "Your account is now a VIP account! ⭐"
-		} else {
-			vipStatusChange = "Your account is no longer a VIP account"
-		}
-	}
-
 	expirationTimestamp, err := services.DecodeSSOCookie(newSSOCookie)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error decoding SSO cookie")
@@ -257,6 +245,19 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
+	oldVIP, _ := services.CheckVIPStatus(account.SSOCookie)
+	newVIP, _ := services.CheckVIPStatus(newSSOCookie)
+
+	var vipStatusChange string
+	if oldVIP != newVIP {
+		if newVIP {
+			vipStatusChange = "Your account is now a VIP account!"
+		} else {
+			vipStatusChange = "Your account is no longer a VIP account"
+		}
+	}
+
+	services.DBMutex.Lock()
 	account.LastNotification = time.Now().Unix()
 	account.LastCookieNotification = 0
 	account.SSOCookie = newSSOCookie
@@ -268,7 +269,6 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	account.ConsecutiveErrors = 0
 	account.LastSuccessfulCheck = time.Now()
 
-	services.DBMutex.Lock()
 	if err := database.DB.Save(&account).Error; err != nil {
 		services.DBMutex.Unlock()
 		logger.Log.WithError(err).Error("Failed to update account after modification")
@@ -277,6 +277,46 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 	services.DBMutex.Unlock()
 
+	embed := createSuccessEmbed(&account, wasDisabled, vipStatusChange, expirationTimestamp, newVIP)
+	respondToInteractionWithEmbed(s, i, "", embed)
+
+	go func() {
+		time.Sleep(2 * time.Second)
+
+		if status, err := services.CheckAccount(newSSOCookie, userID, ""); err == nil {
+			services.DBMutex.Lock()
+			var updatedAccount models.Account
+			if err := database.DB.First(&updatedAccount, account.ID).Error; err != nil {
+				services.DBMutex.Unlock()
+				logger.Log.WithError(err).Error("Error fetching account for status update")
+				return
+			}
+
+			now := time.Now()
+			prevStatus := updatedAccount.LastStatus
+			updatedAccount.LastStatus = status
+			updatedAccount.LastCheck = now.Unix()
+			updatedAccount.LastStatusChange = now.Unix()
+			updatedAccount.LastSuccessfulCheck = now
+			updatedAccount.ConsecutiveErrors = 0
+
+			if err := database.DB.Save(&updatedAccount).Error; err != nil {
+				services.DBMutex.Unlock()
+				logger.Log.WithError(err).Error("Error saving updated status")
+				return
+			}
+			services.DBMutex.Unlock()
+
+			if prevStatus != status {
+				services.HandleStatusChange(s, updatedAccount, status, userSettings)
+			}
+		} else {
+			logger.Log.WithError(err).Error("Error performing status check after update")
+		}
+	}()
+}
+
+func createSuccessEmbed(account *models.Account, wasDisabled bool, vipStatusChange string, expirationTimestamp int64, isVIP bool) *discordgo.MessageEmbed {
 	embed := &discordgo.MessageEmbed{
 		Title:       "Account Update Successful",
 		Description: fmt.Sprintf("Account '%s' has been updated successfully.", account.Title),
@@ -289,7 +329,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			},
 			{
 				Name:   "VIP Status",
-				Value:  getVIPStatusText(newVIP),
+				Value:  getVIPStatusText(isVIP),
 				Inline: true,
 			},
 		},
@@ -312,12 +352,22 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		})
 	}
 
-	respondToInteractionWithEmbed(s, i, "", embed)
+	embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+		Name:   "Notification Type",
+		Value:  account.NotificationType,
+		Inline: true,
+	})
+
+	embed.Footer = &discordgo.MessageEmbedFooter{
+		Text: "Use /listaccounts to view all your monitored accounts",
+	}
+
+	return embed
 }
 
 func getVIPStatusText(isVIP bool) string {
 	if isVIP {
-		return "VIP Account ⭐"
+		return "VIP Account"
 	}
 	return "Regular Account"
 }
