@@ -25,16 +25,16 @@ type NotificationConfig struct {
 }
 
 const (
-	maxRetryAttempts = 3
-	retryDelay       = 5 * time.Second
-	// checkTimeout        = 30 * time.Second // TODO: fix this to be used
-	// maxConcurrentChecks = 5 // TODO: fix this to be used
+	maxRetryAttempts    = 3
+	retryDelay          = 5 * time.Second
+	checkTimeout        = 30 * time.Second // TODO: fix this to be used
+	maxConcurrentChecks = 5                // TODO: fix this to be used
 
-	maxConsecutiveErrors         = 5
-	balanceNotificationThreshold = 1000 // TODO: fix this to be used
-	// maxUserErrorNotifications     = 3
-	// userErrorNotificationCooldown = 24 * time.Hour
-	// balanceNotificationInterval = 24 * time.Hour // TODO: fix this to be used
+	maxConsecutiveErrors          = 5
+	balanceNotificationThreshold  = 1000           // TODO: fix this to be used
+	maxUserErrorNotifications     = 3              // TODO: fix this to be used
+	userErrorNotificationCooldown = 24 * time.Hour // TODO: fix this to be used
+	balanceNotificationInterval   = 24 * time.Hour // TODO: fix this to be used
 )
 
 var (
@@ -348,6 +348,8 @@ func getStatusFields(account models.Account, status models.Status) []*discordgo.
 			})
 		}
 	}
+
+	// TODO: why is this here? is it duplicated we only need to check vip 1 time once it is set in database for the account
 	/*
 		if isVIP, err := CheckVIPStatus(account.SSOCookie); err == nil {
 			vipStatus := "No"
@@ -361,6 +363,7 @@ func getStatusFields(account models.Account, status models.Status) []*discordgo.
 			})
 		}
 	*/
+
 	if account.Created > 0 {
 		creationDate := time.Unix(account.Created, 0)
 		accountAge := time.Since(creationDate)
@@ -424,6 +427,8 @@ func disableAccount(s *discordgo.Session, account models.Account, reason string)
 
 	NotifyUserAboutDisabledAccount(s, account, reason)
 }
+
+// TODO: why is this not in use? was it replaced by a newer function?
 
 func updateAccountStatus(s *discordgo.Session, account models.Account, result models.Status) {
 	DBMutex.Lock()
