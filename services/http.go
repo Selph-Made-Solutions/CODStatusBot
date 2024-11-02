@@ -162,7 +162,12 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 			time.Sleep(time.Duration(i+1) * time.Second)
 			continue
 		}
-		defer resp.Body.Close()
+		defer func(Body io.ReadCloser) {
+			err := Body.Close()
+			if err != nil {
+				logger.Log.WithError(err).Error("Failed to close response body")
+			}
+		}(resp.Body)
 
 		logger.Log.WithField("status", resp.Status).Info("Received response")
 
