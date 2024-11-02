@@ -9,6 +9,7 @@ import (
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
+	"github.com/bwmarrin/discordgo"
 )
 
 var defaultSettings models.UserSettings
@@ -201,11 +202,20 @@ func RemoveCaptchaKey(userID string) error {
 
 	hadCustomKey := settings.EZCaptchaAPIKey != "" || settings.TwoCaptchaAPIKey != ""
 
+	var accountCount int64
+	if err := database.DB.Model(&models.Account{}).Where("user_id = ?", userID).Count(&accountCount).Error; err != nil {
+		return fmt.Errorf("failed to count user accounts: %w", err)
+	}
+
+	defaultMax, err := strconv.Atoi(os.Getenv("DEFAULT_USER_MAXACCOUNTS"))
+	if err != nil || defaultMax <= 0 {
+		defaultMax = 3
+	}
+
 	settings.EZCaptchaAPIKey = ""
 	settings.TwoCaptchaAPIKey = ""
 	settings.PreferredCaptchaProvider = "ezcaptcha"
 	settings.CustomSettings = false
-
 	settings.CheckInterval = defaultSettings.CheckInterval
 	settings.NotificationInterval = defaultSettings.NotificationInterval
 	settings.CooldownDuration = defaultSettings.CooldownDuration
@@ -240,16 +250,50 @@ func RemoveCaptchaKey(userID string) error {
 		logger.Log.Infof("Reset settings to default for user: %s (no custom key was present)", userID)
 	}
 
-	var accounts []models.Account
-	if err := database.DB.Where("user_id = ?", userID).Find(&accounts).Error; err != nil {
-		logger.Log.WithError(err).Error("Error fetching user accounts while removing API key")
-		return err
-	}
+	if int64(defaultMax) < accountCount {
+		var accounts []models.Account
+		if err := database.DB.Where("user_id = ?", userID).Find(&accounts).Error; err != nil {
+			logger.Log.WithError(err).Error("Error fetching user accounts while removing API key")
+			return err
+		}
 
-	for _, account := range accounts {
-		account.NotificationType = defaultSettings.NotificationType
-		if err := database.DB.Save(&account).Error; err != nil {
-			logger.Log.WithError(err).Errorf("Error updating account %s settings after API key removal", account.Title)
+		for _, account := range accounts {
+			account.NotificationType = defaultSettings.NotificationType
+			if err := database.DB.Save(&account).Error; err != nil {
+				logger.Log.WithError(err).Errorf("Error updating account %s settings after API key removal", account.Title)
+			}
+		}
+
+		embed := &discordgo.MessageEmbed{
+			Title: "Account Limit Warning",
+			Description: fmt.Sprintf("You currently have %d accounts monitored, which exceeds the default limit of %d accounts. "+
+				"You will not be able to add new accounts until you remove some existing ones or add a custom API key.",
+				accountCount, defaultMax),
+			Color: 0xFFA500,
+			Fields: []*discordgo.MessageEmbedField{
+				{
+					Name:   "Current Accounts",
+					Value:  fmt.Sprintf("%d", accountCount),
+					Inline: true,
+				},
+				{
+					Name:   "Default Limit",
+					Value:  fmt.Sprintf("%d", defaultMax),
+					Inline: true,
+				},
+				{
+					Name:   "Action Required",
+					Value:  "Please remove excess accounts or add a custom API key using /setcaptchaservice",
+					Inline: false,
+				},
+			},
+			Timestamp: time.Now().Format(time.RFC3339),
+		}
+
+		if len(accounts) > 0 {
+			if err := SendNotification(nil, accounts[0], embed, "", "api_key_removal_warning"); err != nil {
+				logger.Log.WithError(err).Error("Failed to send API key removal warning")
+			}
 		}
 	}
 
