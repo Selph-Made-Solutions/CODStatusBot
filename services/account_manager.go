@@ -3,7 +3,6 @@ package services
 import (
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/bradselph/CODStatusBot/database"
@@ -11,8 +10,6 @@ import (
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bwmarrin/discordgo"
 )
-
-var DBMutex sync.Mutex
 
 func validateRateLimit(userID, action string, duration time.Duration) bool {
 	var userSettings models.UserSettings
@@ -161,17 +158,6 @@ func checkNotificationCooldown(userID string, notificationType string, cooldownD
 	}
 
 	return time.Since(lastNotification) >= cooldownDuration
-}
-
-func getNotificationChannel(s *discordgo.Session, account models.Account, userSettings models.UserSettings) (string, error) {
-	if userSettings.NotificationType == "dm" {
-		channel, err := s.UserChannelCreate(account.UserID)
-		if err != nil {
-			return "", fmt.Errorf("failed to create DM channel: %w", err)
-		}
-		return channel.ID, nil
-	}
-	return account.ChannelID, nil
 }
 
 func processUserAccounts(s *discordgo.Session, userID string, accounts []models.Account) {
