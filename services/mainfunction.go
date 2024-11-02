@@ -516,7 +516,7 @@ func getChannelForAnnouncement(s *discordgo.Session, userID string, userSettings
 	if err := database.DB.Where("user_id = ?", userID).Order("updated_at DESC").First(&account).Error; err != nil {
 		channel, err := s.UserChannelCreate(userID)
 		if err != nil {
-			return "", fmt.Errorf("both channel lookup and DM creation failed", err)
+			return "", fmt.Errorf("both channel lookup and DM creation failed: %w", err)
 		}
 		return channel.ID, nil
 	}
