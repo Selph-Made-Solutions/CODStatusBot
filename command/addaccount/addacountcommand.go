@@ -36,7 +36,7 @@ func getMaxAccounts(hasCustomKey bool) int {
 		premiumMax, err := strconv.Atoi(os.Getenv("PREM_USER_MAXACCOUNTS"))
 		if err != nil || premiumMax <= 0 {
 			logger.Log.WithError(err).Info("Using default premium max accounts value")
-			return 25
+			return 10
 		}
 		return premiumMax
 	}
@@ -44,7 +44,7 @@ func getMaxAccounts(hasCustomKey bool) int {
 	defaultMax, err := strconv.Atoi(os.Getenv("DEFAULT_USER_MAXACCOUNTS"))
 	if err != nil || defaultMax <= 0 {
 		logger.Log.WithError(err).Info("Using default max accounts value")
-		return 5
+		return 3
 	}
 	return defaultMax
 }
@@ -57,15 +57,16 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	if !checkRateLimit(userID) {
-		respondToInteraction(s, i, fmt.Sprintf("Please wait %v before adding another account.", rateLimit))
-		return
-	}
-
 	userSettings, err := services.GetUserSettings(userID)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error fetching user settings")
 		respondToInteraction(s, i, "Error fetching user settings. Please try again.")
+		return
+	}
+
+	hasCustomKey := userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != ""
+	if !hasCustomKey && !checkRateLimit(userID) {
+		respondToInteraction(s, i, fmt.Sprintf("Please wait %v before adding another account.", rateLimit))
 		return
 	}
 
@@ -103,7 +104,6 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	hasCustomKey := userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != ""
 	maxAccounts := getMaxAccounts(hasCustomKey)
 
 	if accountCount >= int64(maxAccounts) {
