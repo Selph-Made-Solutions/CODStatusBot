@@ -18,6 +18,8 @@ func validateRateLimit(userID, action string, duration time.Duration) bool {
 		return false
 	}
 
+	userSettings.EnsureMapsInitialized()
+
 	now := time.Now()
 	if userSettings.LastCommandTimes == nil {
 		userSettings.LastCommandTimes = make(map[string]time.Time)
@@ -56,6 +58,8 @@ func checkActionRateLimit(userID, action string, duration time.Duration) bool {
 		return false
 	}
 
+	userSettings.EnsureMapsInitialized()
+
 	now := time.Now()
 	if userSettings.LastActionTimes == nil {
 		userSettings.LastActionTimes = make(map[string]time.Time)
@@ -67,17 +71,14 @@ func checkActionRateLimit(userID, action string, duration time.Duration) bool {
 	lastAction := userSettings.LastActionTimes[action]
 	count := userSettings.ActionCounts[action]
 
-	// Reset counts if outside the time window
 	if now.Sub(lastAction) > duration {
 		count = 0
 	}
 
-	// Check rate limits
 	if count >= getActionLimit(action) {
 		return false
 	}
 
-	// Update counts and times
 	userSettings.LastActionTimes[action] = now
 	userSettings.ActionCounts[action] = count + 1
 
@@ -141,27 +142,29 @@ func updateNotificationTimestamp(userID string, notificationType string) {
 */
 /*
 func checkNotificationCooldown(userID string, notificationType string, cooldownDuration time.Duration) bool {
-	var settings models.UserSettings
-	if err := database.DB.Where("user_id = ?", userID).First(&settings).Error; err != nil {
-		logger.Log.WithError(err).Error("Failed to get user settings for cooldown check")
-		return false
-	}
+    var settings models.UserSettings
+    if err := database.DB.Where("user_id = ?", userID).First(&settings).Error; err != nil {
+        logger.Log.WithError(err).Error("Failed to get user settings for cooldown check")
+        return false
+    }
 
-	var lastNotification time.Time
-	switch notificationType {
-	case "status_change":
-		lastNotification = settings.LastStatusChangeNotification
-	case "daily_update":
-		lastNotification = settings.LastDailyUpdateNotification
-	case "cookie_expiring":
-		lastNotification = settings.LastCookieExpirationWarning
-	case "error":
-		lastNotification = settings.LastErrorNotification
-	default:
-		lastNotification = settings.LastNotification
-	}
+    settings.EnsureMapsInitialized() // Ensure maps are initialized
 
-	return time.Since(lastNotification) >= cooldownDuration
+    var lastNotification time.Time
+    switch notificationType {
+    case "status_change":
+        lastNotification = settings.LastStatusChangeNotification
+    case "daily_update":
+        lastNotification = settings.LastDailyUpdateNotification
+    case "cookie_expiring":
+        lastNotification = settings.LastCookieExpirationWarning
+    case "error":
+        lastNotification = settings.LastErrorNotification
+    default:
+        lastNotification = settings.LastNotification
+    }
+
+    return time.Since(lastNotification) >= cooldownDuration
 }
 */
 
