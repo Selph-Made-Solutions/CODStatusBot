@@ -24,6 +24,14 @@ var (
 	recaptchaURL     = os.Getenv("RECAPTCHA_URL")        // URL for reCAPTCHA
 )
 
+type AccountValidationResult struct {
+	IsValid     bool
+	Created     int64
+	IsVIP       bool
+	ExpiresAt   int64
+	ProfileData map[string]interface{}
+}
+
 func VerifySSOCookie(ssoCookie string) bool {
 	logger.Log.Infof("Verifying SSO cookie: %s", ssoCookie)
 	req, err := http.NewRequest("GET", profileURL, nil)
@@ -284,7 +292,12 @@ func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 	if err != nil {
 		return 0, 0, 0, 0, errors.New("failed to send HTTP request to check account age")
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			logger.Log.WithError(err).Error("Failed to close response body")
+		}
+	}(resp.Body)
 
 	var data struct {
 		Created string `json:"created"`
@@ -332,7 +345,12 @@ func CheckVIPStatus(ssoCookie string) (bool, error) {
 		return false, fmt.Errorf("failed to send HTTP request to check VIP status: %w", err)
 	}
 
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			logger.Log.WithError(err).Error("Failed to close response body")
+		}
+	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return false, fmt.Errorf("invalid response status code: %d", resp.StatusCode)
@@ -413,4 +431,69 @@ func RedeemCode(ssoCookie, code string) (string, error) {
 
 	logger.Log.Warnf("Unexpected response body: %s", bodyStr)
 	return "", fmt.Errorf("failed to redeem code: unexpected response")
+}
+
+func ValidateAndGetAccountInfo(ssoCookie string) (*AccountValidationResult, error) {
+	req, err := http.NewRequest("GET", profileURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create profile request: %w", err)
+	}
+
+	headers := GenerateHeaders(ssoCookie)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	client := &http.Client{
+		Timeout: 60 * time.Second,
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send profile request: %w", err)
+	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			logger.Log.WithError(err).Error("Failed to close response body")
+		}
+	}(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return &AccountValidationResult{IsValid: false}, nil
+	}
+
+	var profileData map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&profileData); err != nil {
+		return nil, fmt.Errorf("failed to decode profile response: %w", err)
+	}
+
+	createdStr, ok := profileData["created"].(string)
+	if !ok {
+		return nil, fmt.Errorf("invalid creation date format")
+	}
+
+	created, err := time.Parse(time.RFC3339, createdStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse creation date: %w", err)
+	}
+
+	isVIP, err := CheckVIPStatus(ssoCookie)
+	if err != nil {
+		logger.Log.WithError(err).Warn("Failed to check VIP status, defaulting to false")
+		isVIP = false
+	}
+
+	expirationTimestamp, err := DecodeSSOCookie(ssoCookie)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode SSO cookie: %w", err)
+	}
+
+	return &AccountValidationResult{
+		IsValid:     true,
+		Created:     created.Unix(),
+		IsVIP:       isVIP,
+		ExpiresAt:   expirationTimestamp,
+		ProfileData: profileData,
+	}, nil
 }
