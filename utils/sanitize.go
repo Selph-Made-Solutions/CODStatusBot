@@ -48,6 +48,7 @@ func SanitizeAnnouncement(input string) string {
 	}, input)
 }
 
+/*
 func SanitizeAPIKey(apiKey string) string {
 	return strings.Map(func(r rune) rune {
 		if unicode.IsLetter(r) || unicode.IsNumber(r) {
@@ -56,3 +57,4 @@ func SanitizeAPIKey(apiKey string) string {
 		return -1
 	}, apiKey)
 }
+*/
