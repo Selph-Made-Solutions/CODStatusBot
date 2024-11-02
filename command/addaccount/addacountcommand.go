@@ -27,10 +27,9 @@ func sanitizeInput(input string) string {
 	}, input)
 }
 
-var (
-	rateLimiter = make(map[string]time.Time)
-	rateLimit   = 5 * time.Minute
-)
+const rateLimit = 5 * time.Minute
+
+var rateLimiter = make(map[string]time.Time)
 
 func getMaxAccounts(hasCustomKey bool) int {
 	if hasCustomKey {
@@ -285,10 +284,42 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	go func() {
 		time.Sleep(2 * time.Second)
+
+		userSettings, err := services.GetUserSettings(userID)
+		if err != nil {
+			logger.Log.WithError(err).Error("Error getting user settings for initial status check")
+			return
+		}
+
 		if status, err := services.CheckAccount(ssoCookie, userID, ""); err == nil {
-			account.LastStatus = status
-			account.LastCheck = time.Now().Unix()
-			database.DB.Save(&account)
+			services.DBMutex.Lock()
+			var updatedAccount models.Account
+			if err := database.DB.First(&updatedAccount, account.ID).Error; err != nil {
+				services.DBMutex.Unlock()
+				logger.Log.WithError(err).Error("Error fetching account for initial status update")
+				return
+			}
+
+			now := time.Now()
+			prevStatus := updatedAccount.LastStatus
+			updatedAccount.LastStatus = status
+			updatedAccount.LastCheck = now.Unix()
+			updatedAccount.LastStatusChange = now.Unix()
+			updatedAccount.LastSuccessfulCheck = now
+			updatedAccount.ConsecutiveErrors = 0
+
+			if err := database.DB.Save(&updatedAccount).Error; err != nil {
+				services.DBMutex.Unlock()
+				logger.Log.WithError(err).Error("Error saving initial status")
+				return
+			}
+			services.DBMutex.Unlock()
+
+			if prevStatus == models.StatusUnknown && status != models.StatusUnknown {
+				services.HandleStatusChange(s, updatedAccount, status, userSettings)
+			}
+		} else {
+			logger.Log.WithError(err).Error("Error performing initial status check")
 		}
 	}()
 }
@@ -322,9 +353,21 @@ func getChannelID(s *discordgo.Session, i *discordgo.InteractionCreate) string {
 }
 
 func checkRateLimit(userID string) bool {
-	lastUse, exists := rateLimiter[userID]
-	if !exists || time.Since(lastUse) >= rateLimit {
-		rateLimiter[userID] = time.Now()
+	var userSettings models.UserSettings
+	if err := database.DB.Where("user_id = ?", userID).First(&userSettings).Error; err != nil {
+		logger.Log.WithError(err).Error("Error fetching user settings")
+		return false
+	}
+
+	now := time.Now()
+	lastAddTime := userSettings.LastCommandTimes["add_account"]
+
+	if lastAddTime.IsZero() || time.Since(lastAddTime) >= rateLimit {
+		userSettings.LastCommandTimes["add_account"] = now
+		if err := database.DB.Save(&userSettings).Error; err != nil {
+			logger.Log.WithError(err).Error("Error saving user settings")
+			return false
+		}
 		return true
 	}
 	return false
