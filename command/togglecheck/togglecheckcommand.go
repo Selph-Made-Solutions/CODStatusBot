@@ -8,18 +8,15 @@ import (
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
+	"github.com/bradselph/CODStatusBot/services"
 
 	"github.com/bwmarrin/discordgo"
 )
 
 func CommandToggleCheck(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	var userID string
-	if i.Member != nil {
-		userID = i.Member.User.ID
-	} else if i.User != nil {
-		userID = i.User.ID
-	} else {
-		logger.Log.Error("Interaction doesn't have Member or User")
+	userID, err := services.GetUserID(i)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to get user ID")
 		respondToInteraction(s, i, "An error occurred while processing your request.")
 		return
 	}
@@ -60,7 +57,7 @@ func CommandToggleCheck(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		components = append(components, discordgo.ActionsRow{Components: currentRow})
 	}
 
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content:    "Select an account to toggle auto check On/Off:",
@@ -74,9 +71,10 @@ func CommandToggleCheck(s *discordgo.Session, i *discordgo.InteractionCreate) {
 }
 
 func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	if i.Member == nil || i.Member.User == nil {
-		logger.Log.Error("Interaction member or user is nil")
-		respondToInteraction(s, i, "An error occurred. Please try again.")
+	userID, err := services.GetUserID(i)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to get user ID")
+		respondToInteraction(s, i, "An error occurred while processing your request.")
 		return
 	}
 
@@ -97,7 +95,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		return
 	}
 
-	if account.UserID != i.Member.User.ID {
+	if account.UserID != userID {
 		respondToInteraction(s, i, "You don't have permission to modify this account.")
 		return
 	}
@@ -149,14 +147,13 @@ func showConfirmationButtons(s *discordgo.Session, i *discordgo.InteractionCreat
 		respondToInteraction(s, i, "An error occurred. Please try again.")
 		return
 	}
-
-	logger.Log.Info("Successfully showed confirmation buttons")
 }
 
 func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	if i.Member == nil || i.Member.User == nil {
-		logger.Log.Error("Interaction member or user is nil")
-		respondToInteraction(s, i, "An error occurred. Please try again.")
+	userID, err := services.GetUserID(i)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to get user ID")
+		respondToInteraction(s, i, "An error occurred while processing your request.")
 		return
 	}
 
@@ -183,7 +180,7 @@ func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	if account.UserID != i.Member.User.ID {
+	if account.UserID != userID {
 		respondToInteraction(s, i, "You don't have permission to modify this account.")
 		return
 	}
