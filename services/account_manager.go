@@ -100,6 +100,7 @@ func getActionLimit(action string) int {
 	}
 }
 
+/*
 func getNotificationChannel(s *discordgo.Session, account models.Account, userSettings models.UserSettings) (string, error) {
 	if userSettings.NotificationType == "dm" {
 		channel, err := s.UserChannelCreate(account.UserID)
@@ -110,7 +111,8 @@ func getNotificationChannel(s *discordgo.Session, account models.Account, userSe
 	}
 	return account.ChannelID, nil
 }
-
+*/
+/*
 func updateNotificationTimestamp(userID string, notificationType string) {
 	var settings models.UserSettings
 	if err := database.DB.Where("user_id = ?", userID).First(&settings).Error; err != nil {
@@ -136,6 +138,8 @@ func updateNotificationTimestamp(userID string, notificationType string) {
 		logger.Log.WithError(err).Error("Failed to update notification timestamp")
 	}
 }
+*/
+/*
 func checkNotificationCooldown(userID string, notificationType string, cooldownDuration time.Duration) bool {
 	var settings models.UserSettings
 	if err := database.DB.Where("user_id = ?", userID).First(&settings).Error; err != nil {
@@ -159,6 +163,7 @@ func checkNotificationCooldown(userID string, notificationType string, cooldownD
 
 	return time.Since(lastNotification) >= cooldownDuration
 }
+*/
 
 func processUserAccounts(s *discordgo.Session, userID string, accounts []models.Account) {
 	userSettings, err := GetUserSettings(userID)
@@ -248,6 +253,8 @@ func notifyUserOfServiceIssue(s *discordgo.Session, userID string, err error) {
 	}
 }
 
+/*
+
 func processAccountCheck(s *discordgo.Session, account models.Account, userSettings models.UserSettings) error {
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		status, err := CheckAccount(account.SSOCookie, account.UserID, "")
@@ -302,7 +309,8 @@ func processAccountCheck(s *discordgo.Session, account models.Account, userSetti
 	}
 	return fmt.Errorf("max retries exceeded for account %s", account.Title)
 }
-
+*/
+/*
 func handleCheckFailure(s *discordgo.Session, account models.Account, err error) {
 	DBMutex.Lock()
 	defer DBMutex.Unlock()
@@ -326,6 +334,8 @@ func handleCheckFailure(s *discordgo.Session, account models.Account, err error)
 	notifyUserOfError(s, account, err)
 }
 
+*/
+/*
 func notifyUserOfError(s *discordgo.Session, account models.Account, err error) {
 	canSend, checkErr := CheckNotificationCooldown(account.UserID, "error", time.Hour)
 	if checkErr != nil {
@@ -369,7 +379,7 @@ func notifyUserOfError(s *discordgo.Session, account models.Account, err error) 
 		}
 	}
 }
-
+*/
 func shouldCheckAccount(account models.Account, settings models.UserSettings) bool {
 	now := time.Now()
 
@@ -457,9 +467,11 @@ func isComingFromBannedState(account models.Account) bool {
 	return false
 }
 
+/*
 func shouldIncludeInDailyUpdate(account models.Account, userSettings models.UserSettings, now time.Time) bool {
 	return time.Unix(account.LastNotification, 0).Add(time.Duration(userSettings.NotificationInterval) * time.Hour).Before(now)
 }
+*/
 
 func shouldCheckExpiration(account models.Account, now time.Time) bool {
 	if account.IsExpiredCookie {
@@ -474,6 +486,7 @@ func shouldCheckExpiration(account models.Account, now time.Time) bool {
 	return timeUntilExpiration > 0 && timeUntilExpiration <= time.Duration(cookieExpirationWarning)*time.Hour
 }
 
+/*
 func shouldDisableAccount(account models.Account, err error) bool {
 	if account.ConsecutiveErrors >= maxConsecutiveErrors {
 		return true
@@ -484,6 +497,8 @@ func shouldDisableAccount(account models.Account, err error) bool {
 		strings.Contains(err.Error(), "insufficient balance") ||
 		strings.Contains(err.Error(), "invalid captcha API key")
 }
+*/
+/*
 
 func getDisableReason(err error) string {
 	switch {
@@ -497,7 +512,7 @@ func getDisableReason(err error) string {
 		return fmt.Sprintf("Too many consecutive errors: %v", err)
 	}
 }
-
+*/
 func validateUserCaptchaService(userID string, userSettings models.UserSettings) error {
 	if !IsServiceEnabled(userSettings.PreferredCaptchaProvider) {
 		return fmt.Errorf("captcha service %s is disabled", userSettings.PreferredCaptchaProvider)
