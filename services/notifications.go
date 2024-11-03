@@ -148,12 +148,25 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 		return
 	}
 
-	var thresholds = map[string]float64{
-		"ezcaptcha": 250,
-		"2captcha":  0.50,
+	if balance == 0 {
+		var err error
+		_, balance, err = GetUserCaptchaKey(userID)
+		if err != nil {
+			logger.Log.WithError(err).Error("Failed to get captcha balance")
+			return
+		}
 	}
 
-	threshold := thresholds[userSettings.PreferredCaptchaProvider]
+	var threshold float64
+	switch userSettings.PreferredCaptchaProvider {
+	case "ezcaptcha":
+		threshold = 250
+	case "2captcha":
+		threshold = 0.50
+	default:
+		return
+	}
+
 	if balance < threshold {
 		embed := &discordgo.MessageEmbed{
 			Title: fmt.Sprintf("Low %s Balance Alert", userSettings.PreferredCaptchaProvider),
@@ -194,6 +207,9 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 		}
 
 		userSettings.LastBalanceNotification = time.Now()
+		userSettings.CaptchaBalance = balance
+		userSettings.LastBalanceCheck = time.Now()
+
 		if err := database.DB.Save(&userSettings).Error; err != nil {
 			logger.Log.WithError(err).Errorf("Failed to update LastBalanceNotification for user %s", userID)
 		}
