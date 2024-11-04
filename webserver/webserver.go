@@ -42,6 +42,7 @@ var (
 type Stats struct {
 	TotalAccounts            int
 	ActiveAccounts           int
+	BannedAccounts           int
 	PermaBannedAccounts      int
 	ShadowBannedAccounts     int
 	TotalUsers               int
@@ -374,6 +375,7 @@ func getStats() (Stats, error) {
 
 	stats.TotalAccounts, _ = getTotalAccounts()
 	stats.ActiveAccounts, _ = getActiveAccounts()
+	stats.BannedAccounts = stats.PermaBannedAccounts + stats.ShadowBannedAccounts
 	stats.PermaBannedAccounts, _ = getPermaBannedAccounts()
 	stats.ShadowBannedAccounts, _ = getShadowBannedAccounts()
 	stats.TotalUsers, _ = getTotalUsers()
