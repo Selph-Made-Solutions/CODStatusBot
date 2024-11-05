@@ -4,10 +4,8 @@
     <meta charset="UTF-8">
     <meta content="width=device-width, initial-scale=1.0" name="viewport">
     <title>COD Status Bot Admin Dashboard</title>
-    <link crossorigin="anonymous" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
-          integrity="sha512-iBBXm8fW90+nuLcSKlbmrPcLa0OT92xO1BIsZ+ywDWZCvqsWgccV3gFoRBv0z+8dLJgyAHIhR35VZc2oM/gI1w=="
-          rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body, h1, h2, p, ul {
             margin: 0;
@@ -155,29 +153,26 @@
 <body>
 <header>
     <h1>COD Status Bot Admin Dashboard</h1>
-    <nav>
-        <a href="/">Home</a>
-        <a href="/admin/logout">Logout</a>
-    </nav>
+    <a href="/admin/logout" class="logout-btn">Logout</a>
 </header>
 <div style="text-align: center; margin: 10px 0;">
     <label for="theme-toggle">Dark Mode</label>
-    <input id="theme-toggle" onclick="toggleDarkMode()" onkeydown="handleKeyDown(event)" type="checkbox">
+    <input type="checkbox" id="theme-toggle" onclick="toggleDarkMode()" onkeydown="handleKeyDown(event)">
 </div>
-
 <div class="container">
-    <div class="stat-group" data-stat-group-id="AccountStatistics" draggable="true">
+    <div class="stat-group" draggable="true" data-stat-group-id="AccountStatistics">
         <h2><i class="fas fa-user"></i> Account Statistics</h2>
         <button class="toggle-chart-btn" onclick="toggleStatChart(this)">Show Chart</button>
         <div class="stat-item">Total Accounts: <span id="totalAccounts">{{.TotalAccounts}}</span></div>
         <div class="stat-item">Active Accounts: <span id="activeAccounts">{{.ActiveAccounts}}</span></div>
+        <div class="stat-item">Banned Accounts: <span id="bannedAccounts">{{.BannedAccounts}}</span></div>
         <div class="stat-item">Oldest Account: <span>{{.OldestAccount.Format "2006-01-02"}}</span></div>
         <div class="stat-item">Newest Account: <span>{{.NewestAccount.Format "2006-01-02"}}</span></div>
         <div class="chart-container">
             <canvas id="accountChart"></canvas>
         </div>
     </div>
-    <div class="stat-group" data-stat-group-id="UserStatistics" draggable="true">
+    <div class="stat-group" draggable="true" data-stat-group-id="UserStatistics">
         <h2><i class="fas fa-users"></i> User Statistics</h2>
         <button class="toggle-chart-btn" onclick="toggleStatChart(this)">Show Chart</button>
         <div class="stat-item">Total Users: <span id="totalUsers">{{.TotalUsers}}</span></div>
@@ -189,7 +184,7 @@
             <canvas id="userChart"></canvas>
         </div>
     </div>
-    <div class="stat-group" data-stat-group-id="CheckStatistics" draggable="true">
+    <div class="stat-group" draggable="true" data-stat-group-id="CheckStatistics">
         <h2><i class="fas fa-check"></i> Check Statistics</h2>
         <button class="toggle-chart-btn" onclick="toggleStatChart(this)">Show Chart</button>
         <div class="stat-item">Checks Last Hour: <span id="checksLastHour">{{.ChecksLastHour}}</span></div>
@@ -200,19 +195,18 @@
             <canvas id="checkChart"></canvas>
         </div>
     </div>
-    <div class="stat-group" data-stat-group-id="BanStatistics" draggable="true">
+    <div class="stat-group" draggable="true" data-stat-group-id="BanStatistics">
         <h2><i class="fas fa-ban"></i> Ban Statistics</h2>
         <button class="toggle-chart-btn" onclick="toggleStatChart(this)">Show Chart</button>
         <div class="stat-item">Total Bans: <span id="totalBans">{{.TotalBans}}</span></div>
         <div class="stat-item">Recent Bans (24h): <span id="recentBans">{{.RecentBans}}</span></div>
-        <div class="stat-item">Shadowbanned: <span id="shadowBannedAccounts">{{.ShadowBannedAccounts}}</span></div>
+        <div class="stat-item">Total Shadowbans: <span id="totalShadowbans">{{.TotalShadowbans}}</span></div>
         <div class="stat-item">Total Temporary Bans: <span id="totalTempbans">{{.TotalTempbans}}</span></div>
-        <div class="stat-item">Total Perma Bans: <span id="permaBannedAccounts">{{.PermaBannedAccounts}}</span></div>
         <div class="chart-container">
             <canvas id="banChart"></canvas>
         </div>
     </div>
-    <div class="stat-group" data-stat-group-id="NotificationStatistics" draggable="true">
+    <div class="stat-group" draggable="true" data-stat-group-id="NotificationStatistics">
         <h2><i class="fas fa-bell"></i> Notification Statistics</h2>
         <button class="toggle-chart-btn" onclick="toggleStatChart(this)">Show Chart</button>
         <div class="stat-item">Total Notifications: <span id="totalNotifications">{{.TotalNotifications}}</span></div>
@@ -224,13 +218,70 @@
     </div>
 </div>
 <script>
+
+    const charts = {};
+
+    function initializeChart(chartId) {
+        const ctx = document.getElementById(chartId).getContext('2d');
+        const config = getChartConfig(chartId);
+        charts[chartId] = new Chart(ctx, config);
+        updateChartData(chartId);
+    }
+
+    function getChartConfig(chartId) {
+        const isDarkMode = document.body.classList.contains('dark-mode');
+        const textColor = isDarkMode ? '#ffffff' : '#333333';
+
+        return {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: getChartLabel(chartId),
+                    data: [],
+                    borderColor: getChartColor(chartId),
+                    backgroundColor: getChartBackgroundColor(chartId),
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {color: textColor}
+                    },
+                    x: {
+                        ticks: {color: textColor}
+                    }
+                },
+                plugins: {
+                    legend: {
+                        labels: {color: textColor}
+                    }
+                }
+            }
+        };
+    }
+
     let accountChart, userChart, checkChart, banChart, notificationChart;
 
     function toggleDarkMode() {
         document.body.classList.toggle('dark-mode');
-        document.querySelectorAll('.stat-group').forEach(group => group.classList.toggle('dark-mode'));
         const isDarkMode = document.body.classList.contains('dark-mode');
         localStorage.setItem('darkMode', isDarkMode ? 'enabled' : 'disabled');
+
+        Object.values(charts).forEach(chart => {
+            if (chart) {
+                const textColor = isDarkMode ? '#ffffff' : '#333333';
+                chart.options.plugins.legend.labels.color = textColor;
+                chart.options.scales.x.ticks.color = textColor;
+                chart.options.scales.y.ticks.color = textColor;
+                chart.update();
+            }
+        });
     }
 
     function handleKeyDown(event) {
@@ -247,8 +298,7 @@
             .then(data => {
                 document.getElementById('totalAccounts').textContent = data.TotalAccounts;
                 document.getElementById('activeAccounts').textContent = data.ActiveAccounts;
-                document.getElementById('permaBannedAccounts').textContent = data.PermaBannedAccounts;
-                document.getElementById('shadowBannedAccounts').textContent = data.ShadowBannedAccounts;
+                document.getElementById('bannedAccounts').textContent = data.BannedAccounts;
                 document.getElementById('totalUsers').textContent = data.TotalUsers;
                 document.getElementById('usersWithCustomAPIKey').textContent = data.UsersWithCustomAPIKey;
                 document.getElementById('averageAccountsPerUser').textContent = data.AverageAccountsPerUser.toFixed(2);
@@ -261,8 +311,12 @@
                 document.getElementById('totalTempbans').textContent = data.TotalTempbans;
                 document.getElementById('totalNotifications').textContent = data.TotalNotifications;
                 document.getElementById('recentNotifications').textContent = data.RecentNotifications;
+                Object.entries(data).forEach(([key, value]) => {
+                    updateSpecificStat(key, value);
+                });
 
                 updateCharts(data);
+                animateCharts();
             })
             .catch(error => console.error('Error:', error));
     }
@@ -295,205 +349,133 @@
     }
 
     function initializeCharts() {
-        const accountCtx = document.getElementById('accountChart').getContext('2d');
-        accountChart = new Chart(accountCtx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Total Accounts Over Time',
-                    data: [],
-                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                    borderColor: 'rgba(75, 192, 192, 1)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.4
-                }]
+        const chartConfigs = {
+            accountChart: {
+                id: 'accountChart',
+                label: 'Total Accounts Over Time',
+                color: 'rgba(75, 192, 192, 1)',
+                bgColor: 'rgba(75, 192, 192, 0.2)'
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {beginAtZero: true}
-                },
-                plugins: {
-                    legend: {
-                        labels: {
-                            color: document.body.classList.contains('dark-mode') ? '#ffffff' : '#333333'
-                        }
-                    }
-                }
+            userChart: {
+                id: 'userChart',
+                label: 'Total Users Over Time',
+                color: 'rgba(255, 159, 64, 1)',
+                bgColor: 'rgba(255, 159, 64, 0.2)'
+            },
+            checkChart: {
+                id: 'checkChart',
+                label: 'Checks Over Time',
+                color: 'rgba(153, 102, 255, 1)',
+                bgColor: 'rgba(153, 102, 255, 0.2)'
+            },
+            banChart: {
+                id: 'banChart',
+                label: 'Bans Over Time',
+                color: 'rgba(255, 99, 132, 1)',
+                bgColor: 'rgba(255, 99, 132, 0.2)'
+            },
+            notificationChart: {
+                id: 'notificationChart',
+                label: 'Notifications Over Time',
+                color: 'rgba(54, 162, 235, 1)',
+                bgColor: 'rgba(54, 162, 235, 0.2)'
             }
-        });
+        };
 
-        const userCtx = document.getElementById('userChart').getContext('2d');
-        userChart = new Chart(userCtx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Total Users Over Time',
-                    data: [],
-                    backgroundColor: 'rgba(255, 159, 64, 0.2)',
-                    borderColor: 'rgba(255, 159, 64, 1)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.4
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {beginAtZero: true}
+        Object.entries(chartConfigs).forEach(([chartVar, config]) => {
+            const ctx = document.getElementById(config.id).getContext('2d');
+            window[chartVar] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: config.label,
+                        data: [],
+                        backgroundColor: config.bgColor,
+                        borderColor: config.color,
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4
+                    }]
                 },
-                plugins: {
-                    legend: {
-                        labels: {
-                            color: document.body.classList.contains('dark-mode') ? '#ffffff' : '#333333'
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                color: document.body.classList.contains('dark-mode') ? '#ffffff' : '#333333'
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                color: document.body.classList.contains('dark-mode') ? '#ffffff' : '#333333'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: document.body.classList.contains('dark-mode') ? '#ffffff' : '#333333'
+                            }
                         }
                     }
                 }
-            }
-        });
-
-        const checkCtx = document.getElementById('checkChart').getContext('2d');
-        checkChart = new Chart(checkCtx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Checks Over Time',
-                    data: [],
-                    backgroundColor: 'rgba(153, 102, 255, 0.2)',
-                    borderColor: 'rgba(153, 102, 255, 1)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.4
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {beginAtZero: true}
-                },
-                plugins: {
-                    legend: {
-                        labels: {
-                            color: document.body.classList.contains('dark-mode') ? '#ffffff' : '#333333'
-                        }
-                    }
-                }
-            }
-        });
-
-        const banCtx = document.getElementById('banChart').getContext('2d');
-        banChart = new Chart(banCtx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Bans Over Time',
-                    data: [],
-                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                    borderColor: 'rgba(255, 99, 132, 1)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.4
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {beginAtZero: true}
-                },
-                plugins: {
-                    legend: {
-                        labels: {
-                            color: document.body.classList.contains('dark-mode') ? '#ffffff' : '#333333'
-                        }
-                    }
-                }
-            }
-        });
-
-        const notificationCtx = document.getElementById('notificationChart').getContext('2d');
-        notificationChart = new Chart(notificationCtx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Notifications Over Time',
-                    data: [],
-                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                    borderColor: 'rgba(54, 162, 235, 1)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.4
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {beginAtZero: true}
-                },
-                plugins: {
-                    legend: {
-                        labels: {
-                            color: document.body.classList.contains('dark-mode') ? '#ffffff' : '#333333'
-                        }
-                    }
-                }
-            }
+            });
         });
     }
 
-    function updateCharts(stats) {
+
+    function updateCharts(data) {
         if (accountChart) {
-            accountChart.data.labels = stats.accountStatsHistory.map(item => item.date);
-            accountChart.data.datasets[0].data = stats.accountStatsHistory.map(item => item.value);
+            const accountData = data.accountStatsHistory || [];
+            accountChart.data.labels = accountData.map(item => item.date);
+            accountChart.data.datasets[0].data = accountData.map(item => item.value);
             accountChart.update();
         }
 
         if (userChart) {
-            userChart.data.labels = stats.userStatsHistory.map(item => item.date);
-            userChart.data.datasets[0].data = stats.userStatsHistory.map(item => item.value);
+            const userData = data.userStatsHistory || [];
+            userChart.data.labels = userData.map(item => item.date);
+            userChart.data.datasets[0].data = userData.map(item => item.value);
             userChart.update();
         }
 
         if (checkChart) {
-            checkChart.data.labels = stats.checkStatsHistory.map(item => item.date);
-            checkChart.data.datasets[0].data = stats.checkStatsHistory.map(item => item.value);
+            const checkData = data.checkStatsHistory || [];
+            checkChart.data.labels = checkData.map(item => item.date);
+            checkChart.data.datasets[0].data = checkData.map(item => item.value);
             checkChart.update();
         }
 
         if (banChart) {
-            banChart.data.labels = stats.banStatsHistory.map(item => item.date);
-            banChart.data.datasets[0].data = stats.banStatsHistory.map(item => item.value);
+            const banData = data.banStatsHistory || [];
+            banChart.data.labels = banData.map(item => item.date);
+            banChart.data.datasets[0].data = banData.map(item => item.value);
             banChart.update();
         }
 
         if (notificationChart) {
-            notificationChart.data.labels = stats.notificationStatsHistory.map(item => item.date);
-            notificationChart.data.datasets[0].data = stats.notificationStatsHistory.map(item => item.value);
+            const notificationData = data.notificationStatsHistory || [];
+            notificationChart.data.labels = notificationData.map(item => item.date);
+            notificationChart.data.datasets[0].data = notificationData.map(item => item.value);
             notificationChart.update();
         }
     }
 
     function toggleStatChart(button) {
         const chartContainer = button.parentElement.querySelector('.chart-container');
+        const chartCanvas = chartContainer.querySelector('canvas');
         const statGroupId = button.parentElement.getAttribute('data-stat-group-id');
-        if (chartContainer.style.display === 'none' || chartContainer.style.display === '') {
-            chartContainer.style.display = 'block';
-            button.textContent = 'Hide Chart';
-            localStorage.setItem('chartVisible_' + statGroupId, 'visible');
-        } else {
-            chartContainer.style.display = 'none';
-            button.textContent = 'Show Chart';
-            localStorage.setItem('chartVisible_' + statGroupId, 'hidden');
+        const isHidden = chartContainer.style.display === 'none' || chartContainer.style.display === '';
+
+        chartContainer.style.display = isHidden ? 'block' : 'none';
+        button.textContent = isHidden ? 'Hide Chart' : 'Show Chart';
+        localStorage.setItem('chartVisible_' + statGroupId, isHidden ? 'visible' : 'hidden');
+
+        if (isHidden && chartCanvas && !charts[chartCanvas.id]) {
+            initializeChart(chartCanvas.id);
         }
     }
 
@@ -564,13 +546,146 @@
         });
     }
 
+    function loadInitialData() {
+        fetch('/admin/stats')
+            .then(response => response.json())
+            .then(data => {
+                updateStats();
+                updateCharts(data);
+            })
+            .catch(error => console.error('Error loading initial data:', error));
+    }
+
+    function updateSpecificStat(elementId, value) {
+        const element = document.getElementById(elementId);
+        if (element) {
+            const currentValue = parseInt(element.textContent);
+            if (currentValue !== value) {
+                element.textContent = value;
+                element.classList.add('highlight');
+                setTimeout(() => element.classList.remove('highlight'), 1000);
+            }
+        }
+    }
+
+    function addSearchFeature() {
+        const searchInput = document.createElement('input');
+        searchInput.type = 'text';
+        searchInput.placeholder = 'Search statistics...';
+        searchInput.className = 'search-input';
+        document.querySelector('.container').insertAdjacentElement('beforebegin', searchInput);
+
+        searchInput.addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            document.querySelectorAll('.stat-group').forEach(group => {
+                const text = group.textContent.toLowerCase();
+                group.style.display = text.includes(searchTerm) ? 'block' : 'none';
+            });
+        });
+    }
+
+    function addExportFeature() {
+        const exportButton = document.createElement('button');
+        exportButton.textContent = 'Export Stats';
+        exportButton.className = 'export-button';
+        document.querySelector('.container').insertAdjacentElement('beforebegin', exportButton);
+
+        exportButton.addEventListener('click', () => {
+            fetch('/admin/stats')
+                .then(response => response.json())
+                .then(data => {
+                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `dashboard-stats-${new Date().toISOString()}.json`;
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                });
+        });
+    }
+
+    function animateCharts() {
+        const charts = [accountChart, userChart, checkChart, banChart, notificationChart];
+        charts.forEach(chart => {
+            if (chart && chart.data.datasets[0].data.length > 0) {
+                const currentData = [...chart.data.datasets[0].data];
+                chart.data.datasets[0].data = new Array(currentData.length).fill(0);
+                chart.update('none');
+
+                currentData.forEach((value, index) => {
+                    setTimeout(() => {
+                        chart.data.datasets[0].data[index] = value;
+                        chart.update('none');
+                    }, index * 50);
+                });
+            }
+        });
+    }
+
+    const newStyles = `
+    .highlight {
+        transition: background-color 0.5s ease;
+        background-color: rgba(76, 175, 80, 0.3);
+    }
+
+    .search-input {
+        margin: 20px auto;
+        display: block;
+        padding: 10px;
+        width: 300px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        font-size: 16px;
+    }
+
+    .export-button {
+        margin: 20px;
+        padding: 10px 20px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+    }
+
+    .export-button:hover {
+        background-color: #45a049;
+    }
+
+    .dark-mode .search-input {
+        background-color: #333;
+        color: white;
+        border-color: #666;
+    }
+
+    .dark-mode .export-button {
+        background-color: #666;
+    }
+
+    .dark-mode .export-button:hover {
+        background-color: #777;
+    }
+`;
+
+    const styleSheet = document.createElement('style');
+    styleSheet.textContent = newStyles;
+    document.head.appendChild(styleSheet);
+
     document.addEventListener('DOMContentLoaded', () => {
         initializeDarkMode();
         initializeCharts();
         initializeChartVisibility();
-        updateStats();
+        loadInitialData();
         addDragAndDropListeners();
+        addSearchFeature();
+        addExportFeature();
         setInterval(updateStats, 60000);
+
+        document.querySelectorAll('.toggle-chart-btn').forEach(button => {
+            button.addEventListener('click', () => toggleStatChart(button));
+        });
     });
 </script>
 </body>

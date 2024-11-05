@@ -14,17 +14,6 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-func isServiceEnabled(provider string) bool {
-	switch provider {
-	case "ezcaptcha":
-		return os.Getenv("EZCAPTCHA_ENABLED") == "true"
-	case "2captcha":
-		return os.Getenv("TWOCAPTCHA_ENABLED") == "true"
-	default:
-		return false
-	}
-}
-
 func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	var enabledServices []string
 	if isServiceEnabled("ezcaptcha") {
@@ -139,6 +128,8 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		settings.CheckInterval = 15
 		settings.NotificationInterval = 12
 		settings.CustomSettings = true
+		settings.CaptchaBalance = balance
+		settings.LastBalanceCheck = time.Now()
 
 		if provider == "ezcaptcha" {
 			settings.EZCaptchaAPIKey = apiKey
@@ -166,11 +157,6 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	respondToInteraction(s, i, message)
-
-	go func() {
-		time.Sleep(5 * time.Second)
-		services.CheckAndNotifyBalance(s, userID, 0)
-	}()
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
@@ -183,5 +169,16 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	})
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction")
+	}
+}
+
+func isServiceEnabled(provider string) bool {
+	switch provider {
+	case "ezcaptcha":
+		return os.Getenv("EZCAPTCHA_ENABLED") == "true"
+	case "2captcha":
+		return os.Getenv("TWOCAPTCHA_ENABLED") == "true"
+	default:
+		return false
 	}
 }
