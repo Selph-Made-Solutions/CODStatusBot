@@ -135,9 +135,6 @@
             background: #cf3e17;
         }
 
-        .dragging {
-            opacity: 0.5;
-        }
 
         @media (max-width: 768px) {
             .container {
@@ -148,19 +145,58 @@
                 flex: 1 1 100%;
             }
         }
+
+        body, .stat-group, .toggle-chart-btn {
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        button:focus, input:focus {
+            outline: 2px solid #4CAF50;
+            outline-offset: 2px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                width: 95%;
+                gap: 15px;
+            }
+
+            .stat-group {
+                flex: 1 1 100%;
+                min-width: unset;
+            }
+
+            .search-input {
+                width: 90%;
+                max-width: 300px;
+            }
+        }
+
+        .loading {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+
+        .chart-container {
+            transition: height 0.3s ease;
+            min-height: 200px;
+        }
     </style>
 </head>
 <body>
-<header>
+<header role="banner">
     <h1>COD Status Bot Admin Dashboard</h1>
-    <a href="/admin/logout" class="logout-btn">Logout</a>
+    <a href="/admin/logout" class="logout-btn" role="button" aria-label="Logout">Logout</a>
 </header>
-<div style="text-align: center; margin: 10px 0;">
+<div style="text-align: center; margin: 10px 0;" role="group" aria-label="Theme Controls">
     <label for="theme-toggle">Dark Mode</label>
-    <input type="checkbox" id="theme-toggle" onclick="toggleDarkMode()" onkeydown="handleKeyDown(event)">
+    <input type="checkbox" id="theme-toggle" aria-label="Toggle dark mode" onclick="toggleDarkMode()"
+           onkeydown="handleKeyDown(event)">
 </div>
+
 <div class="container">
-    <div class="stat-group" draggable="true" data-stat-group-id="AccountStatistics">
+    <div class="stat-group" draggable="true" data-stat-group-id="AccountStatistics" role="region"
+         aria-label="Account Statistics">
         <h2><i class="fas fa-user"></i> Account Statistics</h2>
         <button class="toggle-chart-btn" onclick="toggleStatChart(this)">Show Chart</button>
         <div class="stat-item">Total Accounts: <span id="totalAccounts">{{.TotalAccounts}}</span></div>
@@ -172,7 +208,8 @@
             <canvas id="accountChart"></canvas>
         </div>
     </div>
-    <div class="stat-group" draggable="true" data-stat-group-id="UserStatistics">
+    <div class="stat-group" draggable="true" data-stat-group-id="UserStatistics" role="region"
+         aria-label="UserStatistics">
         <h2><i class="fas fa-users"></i> User Statistics</h2>
         <button class="toggle-chart-btn" onclick="toggleStatChart(this)">Show Chart</button>
         <div class="stat-item">Total Users: <span id="totalUsers">{{.TotalUsers}}</span></div>
@@ -184,7 +221,8 @@
             <canvas id="userChart"></canvas>
         </div>
     </div>
-    <div class="stat-group" draggable="true" data-stat-group-id="CheckStatistics">
+    <div class="stat-group" draggable="true" data-stat-group-id="CheckStatistics" role="region"
+         aria-label="CheckStatistics">
         <h2><i class="fas fa-check"></i> Check Statistics</h2>
         <button class="toggle-chart-btn" onclick="toggleStatChart(this)">Show Chart</button>
         <div class="stat-item">Checks Last Hour: <span id="checksLastHour">{{.ChecksLastHour}}</span></div>
@@ -195,7 +233,8 @@
             <canvas id="checkChart"></canvas>
         </div>
     </div>
-    <div class="stat-group" draggable="true" data-stat-group-id="BanStatistics">
+    <div class="stat-group" draggable="true" data-stat-group-id="BanStatistics" role="region"
+         aria-label="BanStatistics">
         <h2><i class="fas fa-ban"></i> Ban Statistics</h2>
         <button class="toggle-chart-btn" onclick="toggleStatChart(this)">Show Chart</button>
         <div class="stat-item">Total Bans: <span id="totalBans">{{.TotalBans}}</span></div>
@@ -206,7 +245,8 @@
             <canvas id="banChart"></canvas>
         </div>
     </div>
-    <div class="stat-group" draggable="true" data-stat-group-id="NotificationStatistics">
+    <div class="stat-group" draggable="true" data-stat-group-id="NotificationStatistics" role="region"
+         aria-label="NotificationStatistics">
         <h2><i class="fas fa-bell"></i> Notification Statistics</h2>
         <button class="toggle-chart-btn" onclick="toggleStatChart(this)">Show Chart</button>
         <div class="stat-item">Total Notifications: <span id="totalNotifications">{{.TotalNotifications}}</span></div>
@@ -219,59 +259,167 @@
 </div>
 <script>
 
-    const charts = {};
+    let accountChart, userChart, checkChart, banChart, notificationChart;
 
-    function initializeChart(chartId) {
-        const ctx = document.getElementById(chartId).getContext('2d');
-        const config = getChartConfig(chartId);
-        charts[chartId] = new Chart(ctx, config);
-        updateChartData(chartId);
-    }
+    function initializeCharts() {
+        const commonOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: 'rgba(200, 200, 200, 0.1)'
+                    }
+                },
+                x: {
+                    grid: {
+                        color: 'rgba(200, 200, 200, 0.1)'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: true
+                }
+            }
+        };
 
-    function getChartConfig(chartId) {
-        const isDarkMode = document.body.classList.contains('dark-mode');
-        const textColor = isDarkMode ? '#ffffff' : '#333333';
-
-        return {
+        const accountCtx = document.getElementById('accountChart').getContext('2d');
+        accountChart = new Chart(accountCtx, {
             type: 'line',
             data: {
                 labels: [],
                 datasets: [{
-                    label: getChartLabel(chartId),
+                    label: 'Accounts',
                     data: [],
-                    borderColor: getChartColor(chartId),
-                    backgroundColor: getChartBackgroundColor(chartId),
-                    tension: 0.4,
-                    fill: true
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    tension: 0.1
                 }]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {color: textColor}
-                    },
-                    x: {
-                        ticks: {color: textColor}
-                    }
-                },
-                plugins: {
-                    legend: {
-                        labels: {color: textColor}
-                    }
-                }
-            }
-        };
+            options: commonOptions
+        });
+
+        const userCtx = document.getElementById('userChart').getContext('2d');
+        userChart = new Chart(userCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Users',
+                    data: [],
+                    borderColor: 'rgba(153, 102, 255, 1)',
+                    tension: 0.1
+                }]
+            },
+            options: commonOptions
+        });
+
+        const checkCtx = document.getElementById('checkChart').getContext('2d');
+        checkChart = new Chart(checkCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Checks',
+                    data: [],
+                    borderColor: 'rgba(255, 159, 64, 1)',
+                    tension: 0.1
+                }]
+            },
+            options: commonOptions
+        });
+
+        const banCtx = document.getElementById('banChart').getContext('2d');
+        banChart = new Chart(banCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Bans',
+                    data: [],
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    tension: 0.1
+                }]
+            },
+            options: commonOptions
+        });
+
+        const notificationCtx = document.getElementById('notificationChart').getContext('2d');
+        notificationChart = new Chart(notificationCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Notifications',
+                    data: [],
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    tension: 0.1
+                }]
+            },
+            options: commonOptions
+        });
     }
 
-    let accountChart, userChart, checkChart, banChart, notificationChart;
+
+    const charts = {};
+
+    const chartConfig = {
+        accountChart: {
+            label: 'Total Accounts Over Time',
+            color: 'rgba(75, 192, 192, 1)',
+            bgColor: 'rgba(75, 192, 192, 0.2)'
+        },
+        userChart: {
+            label: 'Total Users Over Time',
+            color: 'rgba(255, 159, 64, 1)',
+            bgColor: 'rgba(255, 159, 64, 0.2)'
+        },
+        checkChart: {
+            label: 'Checks Over Time',
+            color: 'rgba(153, 102, 255, 1)',
+            bgColor: 'rgba(153, 102, 255, 0.2)'
+        },
+        banChart: {
+            label: 'Bans Over Time',
+            color: 'rgba(255, 99, 132, 1)',
+            bgColor: 'rgba(255, 99, 132, 0.2)'
+        },
+        notificationChart: {
+            label: 'Notifications Over Time',
+            color: 'rgba(54, 162, 235, 1)',
+            bgColor: 'rgba(54, 162, 235, 0.2)'
+        }
+    };
+
+
+    function initializeCharts() {
+        Object.entries(chartConfig).forEach(([chartId, config]) => {
+            const ctx = document.getElementById(chartId)?.getContext('2d');
+            if (!ctx) return;
+
+            charts[chartId] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: config.label,
+                        borderColor: config.color,
+                        backgroundColor: config.bgColor,
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: getChartOptions()
+            });
+        });
+    }
 
     function toggleDarkMode() {
         document.body.classList.toggle('dark-mode');
-        const isDarkMode = document.body.classList.contains('dark-mode');
-        localStorage.setItem('darkMode', isDarkMode ? 'enabled' : 'disabled');
+        const isDark = document.body.classList.contains('dark-mode');
+        localStorage.setItem('darkMode', isDark ? 'enabled' : 'disabled');
+        updateChartsTheme(isDark);
 
         Object.values(charts).forEach(chart => {
             if (chart) {
@@ -294,31 +442,31 @@
 
     function updateStats() {
         fetch('/admin/stats')
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById('totalAccounts').textContent = data.TotalAccounts;
-                document.getElementById('activeAccounts').textContent = data.ActiveAccounts;
-                document.getElementById('bannedAccounts').textContent = data.BannedAccounts;
-                document.getElementById('totalUsers').textContent = data.TotalUsers;
-                document.getElementById('usersWithCustomAPIKey').textContent = data.UsersWithCustomAPIKey;
-                document.getElementById('averageAccountsPerUser').textContent = data.AverageAccountsPerUser.toFixed(2);
-                document.getElementById('checksLastHour').textContent = data.ChecksLastHour;
-                document.getElementById('checksLast24Hours').textContent = data.ChecksLast24Hours;
-                document.getElementById('averageChecksPerDay').textContent = data.AverageChecksPerDay.toFixed(2);
-                document.getElementById('totalBans').textContent = data.TotalBans;
-                document.getElementById('recentBans').textContent = data.RecentBans;
-                document.getElementById('totalShadowbans').textContent = data.TotalShadowbans;
-                document.getElementById('totalTempbans').textContent = data.TotalTempbans;
-                document.getElementById('totalNotifications').textContent = data.TotalNotifications;
-                document.getElementById('recentNotifications').textContent = data.RecentNotifications;
-                Object.entries(data).forEach(([key, value]) => {
-                    updateSpecificStat(key, value);
-                });
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('totalAccounts').textContent = data.TotalAccounts;
+                    document.getElementById('activeAccounts').textContent = data.ActiveAccounts;
+                    document.getElementById('bannedAccounts').textContent = data.BannedAccounts;
+                    document.getElementById('totalUsers').textContent = data.TotalUsers;
+                    document.getElementById('usersWithCustomAPIKey').textContent = data.UsersWithCustomAPIKey;
+                    document.getElementById('averageAccountsPerUser').textContent = data.AverageAccountsPerUser.toFixed(2);
+                    document.getElementById('checksLastHour').textContent = data.ChecksLastHour;
+                    document.getElementById('checksLast24Hours').textContent = data.ChecksLast24Hours;
+                    document.getElementById('averageChecksPerDay').textContent = data.AverageChecksPerDay.toFixed(2);
+                    document.getElementById('totalBans').textContent = data.TotalBans;
+                    document.getElementById('recentBans').textContent = data.RecentBans;
+                    document.getElementById('totalShadowbans').textContent = data.TotalShadowbans;
+                    document.getElementById('totalTempbans').textContent = data.TotalTempbans;
+                    document.getElementById('totalNotifications').textContent = data.TotalNotifications;
+                    document.getElementById('recentNotifications').textContent = data.RecentNotifications;
+                    Object.entries(data).forEach(([key, value]) => {
+                        updateSpecificStat(key, value);
+                    });
 
-                updateCharts(data);
-                animateCharts();
-            })
-            .catch(error => console.error('Error:', error));
+                    updateCharts(data);
+                    animateCharts();
+                })
+                .catch(error => console.error('Error:', error));
     }
 
     function initializeDarkMode() {
@@ -329,6 +477,85 @@
             document.getElementById('theme-toggle').checked = true;
         }
     }
+
+
+    function updateChartsTheme(darkMode) {
+        const chartOptions = {
+            scales: {
+                y: {
+                    grid: {
+                        color: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                    },
+                    ticks: {
+                        color: darkMode ? '#fff' : '#666'
+                    }
+                },
+                x: {
+                    grid: {
+                        color: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                    },
+                    ticks: {
+                        color: darkMode ? '#fff' : '#666'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    labels: {
+                        color: darkMode ? '#fff' : '#666'
+                    }
+                }
+            }
+        };
+
+        [accountChart, userChart, checkChart, banChart, notificationChart].forEach(chart => {
+            if (chart) {
+                chart.options = {...chart.options, ...chartOptions};
+                chart.update();
+            }
+        });
+    }
+
+    async function loadInitialData() {
+        try {
+            initializeCharts(); // Initialize charts first
+            const response = await fetch('/admin/stats');
+            const data = await response.json();
+            updateCharts(data);
+        } catch (error) {
+            console.error('Error loading initial data:', error);
+        }
+    }
+
+    async function updateStats() {
+        try {
+            const response = await fetch('/admin/stats');
+            const data = await response.json();
+            updateCharts(data);
+            updateStatistics(data);
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+
+    function toggleDarkMode() {
+        const body = document.body;
+        const darkMode = body.classList.toggle('dark-mode');
+        updateChartsTheme(darkMode);
+        localStorage.setItem('darkMode', darkMode);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadInitialData();
+        setInterval(updateStats, 60000); // Update every minute
+
+        const darkMode = localStorage.getItem('darkMode') === 'true';
+        if (darkMode) {
+            document.body.classList.add('dark-mode');
+            updateChartsTheme(true);
+        }
+    });
+
 
     function initializeChartVisibility() {
         const statGroups = document.querySelectorAll('.stat-group');
@@ -348,119 +575,79 @@
         });
     }
 
-    function initializeCharts() {
-        const chartConfigs = {
-            accountChart: {
-                id: 'accountChart',
-                label: 'Total Accounts Over Time',
-                color: 'rgba(75, 192, 192, 1)',
-                bgColor: 'rgba(75, 192, 192, 0.2)'
-            },
-            userChart: {
-                id: 'userChart',
-                label: 'Total Users Over Time',
-                color: 'rgba(255, 159, 64, 1)',
-                bgColor: 'rgba(255, 159, 64, 0.2)'
-            },
-            checkChart: {
-                id: 'checkChart',
-                label: 'Checks Over Time',
-                color: 'rgba(153, 102, 255, 1)',
-                bgColor: 'rgba(153, 102, 255, 0.2)'
-            },
-            banChart: {
-                id: 'banChart',
-                label: 'Bans Over Time',
-                color: 'rgba(255, 99, 132, 1)',
-                bgColor: 'rgba(255, 99, 132, 0.2)'
-            },
-            notificationChart: {
-                id: 'notificationChart',
-                label: 'Notifications Over Time',
-                color: 'rgba(54, 162, 235, 1)',
-                bgColor: 'rgba(54, 162, 235, 0.2)'
-            }
-        };
-
-        Object.entries(chartConfigs).forEach(([chartVar, config]) => {
-            const ctx = document.getElementById(config.id).getContext('2d');
-            window[chartVar] = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [{
-                        label: config.label,
-                        data: [],
-                        backgroundColor: config.bgColor,
-                        borderColor: config.color,
-                        borderWidth: 2,
-                        fill: true,
-                        tension: 0.4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: {
-                                color: document.body.classList.contains('dark-mode') ? '#ffffff' : '#333333'
-                            }
-                        },
-                        x: {
-                            ticks: {
-                                color: document.body.classList.contains('dark-mode') ? '#ffffff' : '#333333'
-                            }
-                        }
-                    },
-                    plugins: {
-                        legend: {
-                            labels: {
-                                color: document.body.classList.contains('dark-mode') ? '#ffffff' : '#333333'
-                            }
-                        }
-                    }
-                }
-            });
-        });
+    async function fetchDashboardData() {
+        try {
+            const response = await fetch('/admin/stats');
+            if (!response.ok) throw new Error('Network response was not ok');
+            return await response.json();
+        } catch (error) {
+            console.error('Error fetching dashboard data:', error);
+            return null;
+        }
     }
 
+    function getChartOptions() {
+        const isDarkMode = document.body.classList.contains('dark-mode');
+        const textColor = isDarkMode ? '#ffffff' : '#333333';
+
+        return {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {color: textColor}
+                },
+                x: {
+                    ticks: {color: textColor}
+                }
+            },
+            plugins: {
+                legend: {
+                    labels: {color: textColor}
+                }
+            }
+        };
+    }
 
     function updateCharts(data) {
-        if (accountChart) {
-            const accountData = data.accountStatsHistory || [];
-            accountChart.data.labels = accountData.map(item => item.date);
-            accountChart.data.datasets[0].data = accountData.map(item => item.value);
-            accountChart.update();
+        if (!data) {
+            console.error('No data provided to updateCharts');
+            return;
         }
 
-        if (userChart) {
-            const userData = data.userStatsHistory || [];
-            userChart.data.labels = userData.map(item => item.date);
-            userChart.data.datasets[0].data = userData.map(item => item.value);
-            userChart.update();
-        }
+        try {
+            if (data.accountStatsHistory && accountChart) {
+                accountChart.data.labels = data.accountStatsHistory.map(item => item.date);
+                accountChart.data.datasets[0].data = data.accountStatsHistory.map(item => item.value);
+                accountChart.update();
+            }
 
-        if (checkChart) {
-            const checkData = data.checkStatsHistory || [];
-            checkChart.data.labels = checkData.map(item => item.date);
-            checkChart.data.datasets[0].data = checkData.map(item => item.value);
-            checkChart.update();
-        }
+            if (data.userStatsHistory && userChart) {
+                userChart.data.labels = data.userStatsHistory.map(item => item.date);
+                userChart.data.datasets[0].data = data.userStatsHistory.map(item => item.value);
+                userChart.update();
+            }
 
-        if (banChart) {
-            const banData = data.banStatsHistory || [];
-            banChart.data.labels = banData.map(item => item.date);
-            banChart.data.datasets[0].data = banData.map(item => item.value);
-            banChart.update();
-        }
+            if (data.checkStatsHistory && checkChart) {
+                checkChart.data.labels = data.checkStatsHistory.map(item => item.date);
+                checkChart.data.datasets[0].data = data.checkStatsHistory.map(item => item.value);
+                checkChart.update();
+            }
 
-        if (notificationChart) {
-            const notificationData = data.notificationStatsHistory || [];
-            notificationChart.data.labels = notificationData.map(item => item.date);
-            notificationChart.data.datasets[0].data = notificationData.map(item => item.value);
-            notificationChart.update();
+            if (data.banStatsHistory && banChart) {
+                banChart.data.labels = data.banStatsHistory.map(item => item.date);
+                banChart.data.datasets[0].data = data.banStatsHistory.map(item => item.value);
+                banChart.update();
+            }
+
+            if (data.notificationStatsHistory && notificationChart) {
+                notificationChart.data.labels = data.notificationStatsHistory.map(item => item.date);
+                notificationChart.data.datasets[0].data = data.notificationStatsHistory.map(item => item.value);
+                notificationChart.update();
+            }
+        } catch (error) {
+            console.error('Error updating charts:', error);
         }
     }
 
@@ -548,12 +735,12 @@
 
     function loadInitialData() {
         fetch('/admin/stats')
-            .then(response => response.json())
-            .then(data => {
-                updateStats();
-                updateCharts(data);
-            })
-            .catch(error => console.error('Error loading initial data:', error));
+                .then(response => response.json())
+                .then(data => {
+                    updateStats();
+                    updateCharts(data);
+                })
+                .catch(error => console.error('Error loading initial data:', error));
     }
 
     function updateSpecificStat(elementId, value) {
@@ -592,16 +779,16 @@
 
         exportButton.addEventListener('click', () => {
             fetch('/admin/stats')
-                .then(response => response.json())
-                .then(data => {
-                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `dashboard-stats-${new Date().toISOString()}.json`;
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                });
+                    .then(response => response.json())
+                    .then(data => {
+                        const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `dashboard-stats-${new Date().toISOString()}.json`;
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                    });
         });
     }
 
@@ -690,3 +877,4 @@
 </script>
 </body>
 </html>
+10
