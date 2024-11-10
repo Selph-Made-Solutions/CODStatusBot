@@ -30,6 +30,12 @@ func main() {
 		}
 	}()
 
+	if services.IsDonationsEnabled() {
+		logger.Log.Info("Donations system enabled")
+	} else {
+		logger.Log.Info("Donations system disabled")
+	}
+
 	if err := run(); err != nil {
 		logger.Log.WithError(err).Error("Bot encountered an error and is shutting down")
 		logger.Log.Fatal("Exiting due to error")
@@ -122,6 +128,9 @@ func loadEnvironmentVariables() error {
 	}
 
 	requiredEnvVars := []string{
+		"DONATIONS_ENABLED",
+		"BITCOIN_ADDRESS",
+		"CASHAPP_ID",
 		"DISCORD_TOKEN",
 		"DEVELOPER_ID",
 		"DB_USER",
