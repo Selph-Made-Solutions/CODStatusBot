@@ -216,6 +216,38 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 		}
 	}()
 
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				var users []models.UserSettings
+				if err := database.DB.Find(&users).Error; err != nil {
+					logger.Log.WithError(err).Error("Failed to fetch users for consolidated updates")
+					time.Sleep(time.Hour)
+					continue
+				}
+
+				for _, user := range users {
+					var accounts []models.Account
+					if err := database.DB.Where("user_id = ? AND is_check_disabled = ? AND is_expired_cookie = ?",
+						user.UserID, false, false).Find(&accounts).Error; err != nil {
+						logger.Log.WithError(err).Error("Failed to fetch accounts for user")
+						continue
+					}
+
+					if time.Since(user.LastDailyUpdateNotification) >=
+						time.Duration(user.NotificationInterval)*time.Hour {
+						services.SendConsolidatedDailyUpdate(s, user.UserID, user, accounts)
+					}
+				}
+
+				time.Sleep(time.Hour)
+			}
+		}
+	}()
+
 	go webserver.StartStatsCaching()
 	go services.ScheduleBalanceChecks(s)
 
