@@ -686,88 +686,87 @@ func UpdateNotificationTimestamp(userID string, notificationType string) error {
 	return database.DB.Save(&settings).Error
 }
 
-/*
-	func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettings models.UserSettings, accounts []models.Account) {
-		if len(accounts) == 0 {
-			return
-		}
-
-		userSettings, err := GetUserSettings(userID)
-		if err != nil {
-			logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
-			return
-		}
-
-		accountsByStatus := make(map[models.Status][]models.Account)
-		for _, account := range accounts {
+func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettings models.UserSettings, accounts []models.Account) {
+	if len(accounts) == 0 {
+		return
+	}
+	userSettings, err := GetUserSettings(userID)
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
+		return
+	}
+	accountsByStatus := make(map[models.Status][]models.Account)
+	for _, account := range accounts {
+		if !account.IsCheckDisabled && !account.IsExpiredCookie {
 			accountsByStatus[account.LastStatus] = append(accountsByStatus[account.LastStatus], account)
 		}
-
-		var embedFields []*discordgo.MessageEmbedField
-
-		embedFields = append(embedFields, &discordgo.MessageEmbedField{
-			Name: "Summary",
-			Value: fmt.Sprintf("Total Accounts: %d\nGood Standing: %d\nBanned: %d\nUnder Review: %d",
-				len(accounts),
-				len(accountsByStatus[models.StatusGood]),
-				len(accountsByStatus[models.StatusPermaban])+len(accountsByStatus[models.StatusTempban]),
-				len(accountsByStatus[models.StatusShadowban])),
-			Inline: false,
-		})
-
-		for status, statusAccounts := range accountsByStatus {
-			var description strings.Builder
-			for _, account := range statusAccounts {
-				if account.IsExpiredCookie {
-					description.WriteString(fmt.Sprintf("⚠ %s: Cookie expired\n", account.Title))
-					continue
-				}
-
-				timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
-				if err != nil {
-					description.WriteString(fmt.Sprintf("⛔ %s: Error checking expiration\n", account.Title))
-					continue
-				}
-
-				statusSymbol := GetStatusIcon(status)
-				description.WriteString(fmt.Sprintf("%s %s: %s\n", statusSymbol, account.Title,
-					formatAccountStatus(account, status, timeUntilExpiration)))
-			}
-
-			if description.Len() > 0 {
-				//goland:noinspection GoDeprecation
-				embedFields = append(embedFields, &discordgo.MessageEmbedField{
-					Name:   fmt.Sprintf("%s Accounts", strings.Title(string(status))),
-					Value:  description.String(),
-					Inline: false,
-				})
-			}
-		}
-
-		embed := &discordgo.MessageEmbed{
-			Title:       fmt.Sprintf("%.2f Hour Update - Account Status Report", userSettings.NotificationInterval),
-			Description: "Here's a consolidated update on your monitored accounts:",
-			Color:       0x00ff00,
-			Fields:      embedFields,
-			Timestamp:   time.Now().Format(time.RFC3339),
-			Footer: &discordgo.MessageEmbedFooter{
-				Text: "Use /checknow to check any account immediately",
-			},
-		}
-
-		err = SendNotification(s, accounts[0], embed, "", "daily_update")
-		if err != nil {
-			logger.Log.WithError(err).Errorf("Failed to send consolidated daily update for user %s", userID)
-		} else {
-			userSettings.LastDailyUpdateNotification = time.Now()
-			if err := database.DB.Save(&userSettings).Error; err != nil {
-				logger.Log.WithError(err).Errorf("Failed to update LastDailyUpdateNotification for user %s", userID)
-			}
-		}
-
-		checkAccountsNeedingAttention(s, accounts, userSettings)
 	}
-*/
+
+	var embedFields []*discordgo.MessageEmbedField
+
+	embedFields = append(embedFields, &discordgo.MessageEmbedField{
+		Name: "Summary",
+		Value: fmt.Sprintf("Total Accounts: %d\nGood Standing: %d\nBanned: %d\nUnder Review: %d",
+			len(accounts),
+			len(accountsByStatus[models.StatusGood]),
+			len(accountsByStatus[models.StatusPermaban])+len(accountsByStatus[models.StatusTempban]),
+			len(accountsByStatus[models.StatusShadowban])),
+		Inline: false,
+	})
+
+	for status, statusAccounts := range accountsByStatus {
+		var description strings.Builder
+		for _, account := range statusAccounts {
+			if account.IsExpiredCookie {
+				description.WriteString(fmt.Sprintf("⚠ %s: Cookie expired\n", account.Title))
+				continue
+			}
+
+			timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
+			if err != nil {
+				description.WriteString(fmt.Sprintf("⛔ %s: Error checking expiration\n", account.Title))
+				continue
+			}
+
+			statusSymbol := GetStatusIcon(status)
+			description.WriteString(fmt.Sprintf("%s %s: %s\n", statusSymbol, account.Title,
+				formatAccountStatus(account, status, timeUntilExpiration)))
+		}
+
+		if description.Len() > 0 {
+			//goland:noinspection GoDeprecation
+			embedFields = append(embedFields, &discordgo.MessageEmbedField{
+				Name:   fmt.Sprintf("%s Accounts", strings.Title(string(status))),
+				Value:  description.String(),
+				Inline: false,
+			})
+		}
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title:       fmt.Sprintf("%.2f Hour Update - Account Status Report", userSettings.NotificationInterval),
+		Description: "Here's a consolidated update on your monitored accounts:",
+		Color:       0x00ff00,
+		Fields:      embedFields,
+		Timestamp:   time.Now().Format(time.RFC3339),
+		Footer: &discordgo.MessageEmbedFooter{
+			Text: "Use /checknow to check any account immediately",
+		},
+	}
+
+	err = SendNotification(s, accounts[0], embed, "", "daily_update")
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to send consolidated daily update for user %s", userID)
+	} else {
+		userSettings.LastDailyUpdateNotification = time.Now()
+		if err := database.DB.Save(&userSettings).Error; err != nil {
+			logger.Log.WithError(err).Errorf("Failed to update LastDailyUpdateNotification for user %s", userID)
+		}
+	}
+
+	checkAccountsNeedingAttention(s, accounts, userSettings)
+}
+
 func isCriticalError(err error) bool {
 	criticalErrors := []string{
 		"invalid captcha API key",
