@@ -6,182 +6,7 @@
     <title>COD Status Bot Admin Dashboard</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        body, h1, h2, p, ul {
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f4f4;
-            color: #333;
-        }
-
-        header {
-            background: #35424a;
-            color: #ffffff;
-            padding: 10px 0;
-            position: relative;
-        }
-
-        header h1 {
-            margin: 0;
-            text-align: center;
-            font-size: 2em;
-        }
-
-        .logout-btn {
-            position: absolute;
-            right: 20px;
-            top: 15px;
-            background-color: #e8491d;
-            color: #ffffff;
-            padding: 10px 15px;
-            text-decoration: none;
-            border-radius: 5px;
-        }
-
-        .logout-btn:hover {
-            background-color: #cf3e17;
-        }
-
-        .container {
-            width: 90%;
-            margin: 20px auto;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-        }
-
-        .stat-group {
-            background: #fff;
-            padding: 20px;
-            border-radius: 5px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-            cursor: move;
-            flex: 1 1 calc(33% - 40px);
-            min-width: 300px;
-            position: relative;
-        }
-
-        .stat-group h2 {
-            color: #35424a;
-            margin-top: 0;
-            margin-bottom: 15px;
-            font-size: 1.5em;
-            border-bottom: 2px solid #4CAF50;
-            padding-bottom: 5px;
-        }
-
-        .stat-item {
-            margin-bottom: 10px;
-            font-size: 1.1em;
-        }
-
-        .toggle-chart-btn {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: #4CAF50;
-            color: #fff;
-            border: none;
-            padding: 5px 8px;
-            cursor: pointer;
-            border-radius: 3px;
-            font-size: 0.9em;
-        }
-
-        .toggle-chart-btn:hover {
-            background: #45a049;
-        }
-
-        .chart-container {
-            display: none;
-            margin-top: 15px;
-            width: 100%;
-            height: 200px;
-        }
-
-        .chart-container canvas {
-            width: 100% !important;
-            height: 100% !important;
-        }
-
-        body.dark-mode {
-            background-color: #121212;
-            color: #ffffff;
-        }
-
-        body.dark-mode header {
-            background: #1e1e1e;
-        }
-
-        body.dark-mode .stat-group {
-            background-color: #1e1e1e;
-            color: #ffffff;
-        }
-
-        body.dark-mode .stat-group h2 {
-            color: #ffffff;
-            border-bottom-color: #4CAF50;
-        }
-
-        body.dark-mode .toggle-chart-btn {
-            background: #e8491d;
-        }
-
-        body.dark-mode .toggle-chart-btn:hover {
-            background: #cf3e17;
-        }
-
-
-        @media (max-width: 768px) {
-            .container {
-                width: 95%;
-            }
-
-            .stat-group {
-                flex: 1 1 100%;
-            }
-        }
-
-        body, .stat-group, .toggle-chart-btn {
-            transition: background-color 0.3s ease, color 0.3s ease;
-        }
-
-        button:focus, input:focus {
-            outline: 2px solid #4CAF50;
-            outline-offset: 2px;
-        }
-
-        @media (max-width: 768px) {
-            .container {
-                width: 95%;
-                gap: 15px;
-            }
-
-            .stat-group {
-                flex: 1 1 100%;
-                min-width: unset;
-            }
-
-            .search-input {
-                width: 90%;
-                max-width: 300px;
-            }
-        }
-
-        .loading {
-            opacity: 0.7;
-            pointer-events: none;
-        }
-
-        .chart-container {
-            transition: height 0.3s ease;
-            min-height: 200px;
-        }
-    </style>
+    <link href="/static/css/dashboard.css" rel="stylesheet">
 </head>
 <body>
 <header role="banner">
@@ -193,7 +18,6 @@
     <input type="checkbox" id="theme-toggle" aria-label="Toggle dark mode" onclick="toggleDarkMode()"
            onkeydown="handleKeyDown(event)">
 </div>
-
 <div class="container">
     <div class="stat-group" draggable="true" data-stat-group-id="AccountStatistics" role="region"
          aria-label="Account Statistics">
@@ -258,146 +82,34 @@
     </div>
 </div>
 <script>
+    let charts = {};
 
-    let accountChart, userChart, checkChart, banChart, notificationChart;
-
-    function initializeCharts() {
-        const commonOptions = {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    grid: {
-                        color: 'rgba(200, 200, 200, 0.1)'
-                    }
-                },
-                x: {
-                    grid: {
-                        color: 'rgba(200, 200, 200, 0.1)'
-                    }
-                }
-            },
-            plugins: {
-                legend: {
-                    display: true
-                }
-            }
-        };
-
-        const accountCtx = document.getElementById('accountChart').getContext('2d');
-        accountChart = new Chart(accountCtx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Accounts',
-                    data: [],
-                    borderColor: 'rgba(75, 192, 192, 1)',
-                    tension: 0.1
-                }]
-            },
-            options: commonOptions
-        });
-
-        const userCtx = document.getElementById('userChart').getContext('2d');
-        userChart = new Chart(userCtx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Users',
-                    data: [],
-                    borderColor: 'rgba(153, 102, 255, 1)',
-                    tension: 0.1
-                }]
-            },
-            options: commonOptions
-        });
-
-        const checkCtx = document.getElementById('checkChart').getContext('2d');
-        checkChart = new Chart(checkCtx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Checks',
-                    data: [],
-                    borderColor: 'rgba(255, 159, 64, 1)',
-                    tension: 0.1
-                }]
-            },
-            options: commonOptions
-        });
-
-        const banCtx = document.getElementById('banChart').getContext('2d');
-        banChart = new Chart(banCtx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Bans',
-                    data: [],
-                    borderColor: 'rgba(255, 99, 132, 1)',
-                    tension: 0.1
-                }]
-            },
-            options: commonOptions
-        });
-
-        const notificationCtx = document.getElementById('notificationChart').getContext('2d');
-        notificationChart = new Chart(notificationCtx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Notifications',
-                    data: [],
-                    borderColor: 'rgba(54, 162, 235, 1)',
-                    tension: 0.1
-                }]
-            },
-            options: commonOptions
-        });
-    }
-
-
-    const charts = {};
-
-    const chartConfig = {
-        accountChart: {
-            label: 'Total Accounts Over Time',
-            color: 'rgba(75, 192, 192, 1)',
-            bgColor: 'rgba(75, 192, 192, 0.2)'
-        },
-        userChart: {
-            label: 'Total Users Over Time',
-            color: 'rgba(255, 159, 64, 1)',
-            bgColor: 'rgba(255, 159, 64, 0.2)'
-        },
-        checkChart: {
-            label: 'Checks Over Time',
-            color: 'rgba(153, 102, 255, 1)',
-            bgColor: 'rgba(153, 102, 255, 0.2)'
-        },
-        banChart: {
-            label: 'Bans Over Time',
-            color: 'rgba(255, 99, 132, 1)',
-            bgColor: 'rgba(255, 99, 132, 0.2)'
-        },
-        notificationChart: {
-            label: 'Notifications Over Time',
-            color: 'rgba(54, 162, 235, 1)',
-            bgColor: 'rgba(54, 162, 235, 0.2)'
-        }
+    const chartConfigs = {
+        accountChart: { label: 'Accounts', color: 'rgba(75, 192, 192, 1)', bgColor: 'rgba(75, 192, 192, 0.2)' },
+        userChart: { label: 'Users', color: 'rgba(153, 102, 255, 1)', bgColor: 'rgba(153, 102, 255, 0.2)' },
+        checkChart: { label: 'Checks', color: 'rgba(255, 159, 64, 1)', bgColor: 'rgba(255, 159, 64, 0.2)' },
+        banChart: { label: 'Bans', color: 'rgba(255, 99, 132, 1)', bgColor: 'rgba(255, 99, 132, 0.2)' },
+        notificationChart: { label: 'Notifications', color: 'rgba(54, 162, 235, 1)', bgColor: 'rgba(54, 162, 235, 0.2)' }
     };
 
-
     function initializeCharts() {
-        Object.entries(chartConfig).forEach(([chartId, config]) => {
-            const ctx = document.getElementById(chartId)?.getContext('2d');
-            if (!ctx) return;
+        if (!window.Chart) {
+            console.error('Chart.js not loaded');
+            return;
+        }
 
+        Object.values(charts).forEach(chart => {
+            if (chart) {
+                chart.destroy();
+            }
+        });
+        charts = {};
+
+        Object.entries(chartConfigs).forEach(([chartId, config]) => {
+            const canvas = document.getElementById(chartId);
+            if (!canvas) return;
+
+            const ctx = canvas.getContext('2d');
             charts[chartId] = new Chart(ctx, {
                 type: 'line',
                 data: {
@@ -406,6 +118,7 @@
                         label: config.label,
                         borderColor: config.color,
                         backgroundColor: config.bgColor,
+                        data: [],
                         tension: 0.4,
                         fill: true
                     }]
@@ -416,179 +129,91 @@
     }
 
     function toggleDarkMode() {
-        document.body.classList.toggle('dark-mode');
-        const isDark = document.body.classList.contains('dark-mode');
-        localStorage.setItem('darkMode', isDark ? 'enabled' : 'disabled');
+        const body = document.body;
+        const isDark = body.classList.toggle('dark-mode');
+        localStorage.setItem('darkMode', isDark);
         updateChartsTheme(isDark);
+    }
 
+    function updateChartsTheme(isDark) {
+        const textColor = isDark ? '#ffffff' : '#333333';
         Object.values(charts).forEach(chart => {
             if (chart) {
-                const textColor = isDarkMode ? '#ffffff' : '#333333';
                 chart.options.plugins.legend.labels.color = textColor;
                 chart.options.scales.x.ticks.color = textColor;
                 chart.options.scales.y.ticks.color = textColor;
+                chart.options.scales.x.grid.color = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+                chart.options.scales.y.grid.color = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
                 chart.update();
             }
         });
     }
 
-    function handleKeyDown(event) {
-        if (event.keyCode === 32 || event.keyCode === 13) {
-            event.preventDefault();
-            this.checked = !this.checked;
-            toggleDarkMode();
-        }
+    function toggleStatChart(button) {
+        const chartContainer = button.parentElement.querySelector('.chart-container');
+        const statGroupId = button.parentElement.getAttribute('data-stat-group-id');
+        const isHidden = chartContainer.style.display === 'none' || chartContainer.style.display === '';
+
+        chartContainer.style.display = isHidden ? 'block' : 'none';
+        button.textContent = isHidden ? 'Hide Chart' : 'Show Chart';
+        localStorage.setItem(`chartVisible_${statGroupId}`, isHidden ? 'visible' : 'hidden');
     }
 
-    function updateStats() {
-        fetch('/admin/stats')
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('totalAccounts').textContent = data.TotalAccounts;
-                    document.getElementById('activeAccounts').textContent = data.ActiveAccounts;
-                    document.getElementById('bannedAccounts').textContent = data.BannedAccounts;
-                    document.getElementById('totalUsers').textContent = data.TotalUsers;
-                    document.getElementById('usersWithCustomAPIKey').textContent = data.UsersWithCustomAPIKey;
-                    document.getElementById('averageAccountsPerUser').textContent = data.AverageAccountsPerUser.toFixed(2);
-                    document.getElementById('checksLastHour').textContent = data.ChecksLastHour;
-                    document.getElementById('checksLast24Hours').textContent = data.ChecksLast24Hours;
-                    document.getElementById('averageChecksPerDay').textContent = data.AverageChecksPerDay.toFixed(2);
-                    document.getElementById('totalBans').textContent = data.TotalBans;
-                    document.getElementById('recentBans').textContent = data.RecentBans;
-                    document.getElementById('totalShadowbans').textContent = data.TotalShadowbans;
-                    document.getElementById('totalTempbans').textContent = data.TotalTempbans;
-                    document.getElementById('totalNotifications').textContent = data.TotalNotifications;
-                    document.getElementById('recentNotifications').textContent = data.RecentNotifications;
-                    Object.entries(data).forEach(([key, value]) => {
-                        updateSpecificStat(key, value);
-                    });
-
-                    updateCharts(data);
-                    animateCharts();
-                })
-                .catch(error => console.error('Error:', error));
-    }
-
-    function initializeDarkMode() {
-        const darkModeState = localStorage.getItem('darkMode');
-        if (darkModeState === 'enabled') {
-            document.body.classList.add('dark-mode');
-            document.querySelectorAll('.stat-group').forEach(group => group.classList.add('dark-mode'));
-            document.getElementById('theme-toggle').checked = true;
-        }
-    }
-
-
-    function updateChartsTheme(darkMode) {
-        const chartOptions = {
-            scales: {
-                y: {
-                    grid: {
-                        color: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
-                    },
-                    ticks: {
-                        color: darkMode ? '#fff' : '#666'
-                    }
-                },
-                x: {
-                    grid: {
-                        color: darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
-                    },
-                    ticks: {
-                        color: darkMode ? '#fff' : '#666'
-                    }
-                }
-            },
-            plugins: {
-                legend: {
-                    labels: {
-                        color: darkMode ? '#fff' : '#666'
-                    }
-                }
-            }
-        };
-
-        [accountChart, userChart, checkChart, banChart, notificationChart].forEach(chart => {
-            if (chart) {
-                chart.options = {...chart.options, ...chartOptions};
-                chart.update();
-            }
-        });
-    }
-
-    async function loadInitialData() {
-        try {
-            initializeCharts(); // Initialize charts first
-            const response = await fetch('/admin/stats');
-            const data = await response.json();
-            updateCharts(data);
-        } catch (error) {
-            console.error('Error loading initial data:', error);
-        }
-    }
-
-    async function updateStats() {
-        try {
-            const response = await fetch('/admin/stats');
-            const data = await response.json();
-            updateCharts(data);
-            updateStatistics(data);
-        } catch (error) {
-            console.error('Error:', error);
-        }
-    }
-
-    function toggleDarkMode() {
-        const body = document.body;
-        const darkMode = body.classList.toggle('dark-mode');
-        updateChartsTheme(darkMode);
-        localStorage.setItem('darkMode', darkMode);
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-        loadInitialData();
-        setInterval(updateStats, 60000); // Update every minute
-
-        const darkMode = localStorage.getItem('darkMode') === 'true';
-        if (darkMode) {
-            document.body.classList.add('dark-mode');
-            updateChartsTheme(true);
-        }
-    });
-
-
-    function initializeChartVisibility() {
+    function initializeDragAndDrop() {
         const statGroups = document.querySelectorAll('.stat-group');
         statGroups.forEach(group => {
-            const statGroupId = group.getAttribute('data-stat-group-id');
-            const chartContainer = group.querySelector('.chart-container');
-            const toggleButton = group.querySelector('.toggle-chart-btn');
-            const visibilityState = localStorage.getItem('chartVisible_' + statGroupId);
-
-            if (visibilityState === 'visible') {
-                chartContainer.style.display = 'block';
-                toggleButton.textContent = 'Hide Chart';
-            } else {
-                chartContainer.style.display = 'none';
-                toggleButton.textContent = 'Show Chart';
-            }
+            group.setAttribute('draggable', true);
+            group.addEventListener('dragstart', handleDragStart);
+            group.addEventListener('dragover', handleDragOver);
+            group.addEventListener('drop', handleDrop);
+            group.addEventListener('dragend', handleDragEnd);
         });
     }
 
-    async function fetchDashboardData() {
-        try {
-            const response = await fetch('/admin/stats');
-            if (!response.ok) throw new Error('Network response was not ok');
-            return await response.json();
-        } catch (error) {
-            console.error('Error fetching dashboard data:', error);
-            return null;
-        }
+    function addSearchFeature() {
+        const searchInput = document.createElement('input');
+        searchInput.type = 'text';
+        searchInput.placeholder = 'Search statistics...';
+        searchInput.className = 'search-input';
+
+        searchInput.addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            document.querySelectorAll('.stat-group').forEach(group => {
+                const text = group.textContent.toLowerCase();
+                group.style.display = text.includes(searchTerm) ? 'block' : 'none';
+            });
+        });
+
+        document.querySelector('.container').insertAdjacentElement('beforebegin', searchInput);
+    }
+
+    function addExportFeature() {
+        const exportButton = document.createElement('button');
+        exportButton.textContent = 'Export Stats';
+        exportButton.className = 'export-button';
+
+        exportButton.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/admin/stats');
+                const data = await response.json();
+                const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `dashboard-stats-${new Date().toISOString()}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                console.error('Export failed:', error);
+            }
+        });
+
+        document.querySelector('.container').insertAdjacentElement('beforebegin', exportButton);
     }
 
     function getChartOptions() {
-        const isDarkMode = document.body.classList.contains('dark-mode');
-        const textColor = isDarkMode ? '#ffffff' : '#333333';
+        const isDark = document.body.classList.contains('dark-mode');
+        const textColor = isDark ? '#ffffff' : '#333333';
 
         return {
             responsive: true,
@@ -596,10 +221,16 @@
             scales: {
                 y: {
                     beginAtZero: true,
-                    ticks: {color: textColor}
+                    ticks: {color: textColor},
+                    grid: {
+                        color: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                    }
                 },
                 x: {
-                    ticks: {color: textColor}
+                    ticks: {color: textColor},
+                    grid: {
+                        color: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                    }
                 }
             },
             plugins: {
@@ -610,271 +241,125 @@
         };
     }
 
-    function updateCharts(data) {
-        if (!data) {
-            console.error('No data provided to updateCharts');
-            return;
-        }
-
+    async function updateStats() {
         try {
-            if (data.accountStatsHistory && accountChart) {
-                accountChart.data.labels = data.accountStatsHistory.map(item => item.date);
-                accountChart.data.datasets[0].data = data.accountStatsHistory.map(item => item.value);
-                accountChart.update();
-            }
+            const response = await fetch('/admin/stats');
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const data = await response.json();
 
-            if (data.userStatsHistory && userChart) {
-                userChart.data.labels = data.userStatsHistory.map(item => item.date);
-                userChart.data.datasets[0].data = data.userStatsHistory.map(item => item.value);
-                userChart.update();
-            }
+            Object.entries(data).forEach(([key, value]) => {
+                const element = document.getElementById(key.toLowerCase());
+                if (element) element.textContent = value;
+            });
 
-            if (data.checkStatsHistory && checkChart) {
-                checkChart.data.labels = data.checkStatsHistory.map(item => item.date);
-                checkChart.data.datasets[0].data = data.checkStatsHistory.map(item => item.value);
-                checkChart.update();
-            }
-
-            if (data.banStatsHistory && banChart) {
-                banChart.data.labels = data.banStatsHistory.map(item => item.date);
-                banChart.data.datasets[0].data = data.banStatsHistory.map(item => item.value);
-                banChart.update();
-            }
-
-            if (data.notificationStatsHistory && notificationChart) {
-                notificationChart.data.labels = data.notificationStatsHistory.map(item => item.date);
-                notificationChart.data.datasets[0].data = data.notificationStatsHistory.map(item => item.value);
-                notificationChart.update();
+            if (data.accountStatsHistory) {
+                Object.entries(charts).forEach(([chartId, chart]) => {
+                    const historyKey = chartId.replace('Chart', 'StatsHistory');
+                    if (data[historyKey]) {
+                        chart.data.labels = data[historyKey].map(item => item.date);
+                        chart.data.datasets[0].data = data[historyKey].map(item => item.value);
+                        chart.update();
+                    }
+                });
             }
         } catch (error) {
-            console.error('Error updating charts:', error);
+            console.error('Error updating stats:', error);
         }
     }
 
-    function toggleStatChart(button) {
-        const chartContainer = button.parentElement.querySelector('.chart-container');
-        const chartCanvas = chartContainer.querySelector('canvas');
-        const statGroupId = button.parentElement.getAttribute('data-stat-group-id');
-        const isHidden = chartContainer.style.display === 'none' || chartContainer.style.display === '';
+    function handleDrop(e) {
+        e.preventDefault();
+        e.stopPropagation();
 
-        chartContainer.style.display = isHidden ? 'block' : 'none';
-        button.textContent = isHidden ? 'Hide Chart' : 'Show Chart';
-        localStorage.setItem('chartVisible_' + statGroupId, isHidden ? 'visible' : 'hidden');
+        const draggedHTML = e.dataTransfer.getData('text/html');
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = draggedHTML;
+        const draggedElement = tempDiv.firstChild;
 
-        if (isHidden && chartCanvas && !charts[chartCanvas.id]) {
-            initializeChart(chartCanvas.id);
+        this.parentNode.insertBefore(draggedElement, this);
+
+        const originalElement = document.querySelector(`[data-stat-group-id="${draggedElement.getAttribute('data-stat-group-id')}"]`);
+        if (originalElement !== draggedElement) {
+            originalElement.remove();
+        }
+
+        draggedElement.addEventListener('dragstart', handleDragStart);
+        draggedElement.addEventListener('dragover', handleDragOver);
+        draggedElement.addEventListener('drop', handleDrop);
+        draggedElement.addEventListener('dragend', handleDragEnd);
+
+        saveStatGroupPositions();
+
+        const chartCanvas = draggedElement.querySelector('canvas');
+        if (chartCanvas) {
+            const chartId = chartCanvas.id;
+            if (charts[chartId]) {
+                charts[chartId].destroy();
+            }
+            initializeCharts();
+            updateStats();
         }
     }
-
-    let dragSrcEl = null;
 
     function handleDragStart(e) {
-        this.classList.add('dragging');
-        dragSrcEl = this;
+        this.style.opacity = '0.4';
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/html', this.outerHTML);
     }
 
     function handleDragOver(e) {
-        if (e.preventDefault) {
-            e.preventDefault();
-        }
+        e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
-        return false;
-    }
-
-    function handleDragEnter(e) {
-        this.classList.add('over');
-    }
-
-    function handleDragLeave(e) {
-        this.classList.remove('over');
-    }
-
-    function handleDrop(e) {
-        if (e.stopPropagation) {
-            e.stopPropagation();
-        }
-        if (dragSrcEl !== this) {
-            this.parentNode.removeChild(dragSrcEl);
-            const dropHTML = e.dataTransfer.getData('text/html');
-            this.insertAdjacentHTML('beforebegin', dropHTML);
-            const dropElem = this.previousSibling;
-            addDragAndDropListenersToElement(dropElem);
-            initializeCharts();
-            initializeChartVisibility();
-            updateStats();
-        }
-        this.classList.remove('over');
-        return false;
     }
 
     function handleDragEnd(e) {
-        this.classList.remove('dragging');
-        const items = document.querySelectorAll('.stat-group');
-        items.forEach(item => {
-            item.classList.remove('over');
+        this.style.opacity = '1';
+    }
+
+    function saveStatGroupPositions() {
+        const positions = {};
+        document.querySelectorAll('.stat-group').forEach((group, index) => {
+            positions[group.getAttribute('data-stat-group-id')] = index;
         });
+        localStorage.setItem('statGroupPositions', JSON.stringify(positions));
     }
 
-    function addDragAndDropListenersToElement(element) {
-        element.addEventListener('dragstart', handleDragStart, false);
-        element.addEventListener('dragenter', handleDragEnter, false);
-        element.addEventListener('dragover', handleDragOver, false);
-        element.addEventListener('dragleave', handleDragLeave, false);
-        element.addEventListener('drop', handleDrop, false);
-        element.addEventListener('dragend', handleDragEnd, false);
-    }
+    function restoreStatGroupPositions() {
+        const positions = JSON.parse(localStorage.getItem('statGroupPositions') || '{}');
+        const container = document.querySelector('.container');
+        const groups = Array.from(document.querySelectorAll('.stat-group'));
 
-    function addDragAndDropListeners() {
-        const items = document.querySelectorAll('.stat-group');
-        items.forEach(item => {
-            addDragAndDropListenersToElement(item);
+        const sortedGroups = Object.entries(positions)
+                .sort((a, b) => a[1] - b[1])
+                .map(([id]) => groups.find(g => g.getAttribute('data-stat-group-id') === id))
+                .filter(Boolean);
+
+        sortedGroups.forEach(group => {
+            container.appendChild(group);
         });
+
+        initializeCharts();
+        updateStats();
     }
 
-    function loadInitialData() {
-        fetch('/admin/stats')
-                .then(response => response.json())
-                .then(data => {
-                    updateStats();
-                    updateCharts(data);
-                })
-                .catch(error => console.error('Error loading initial data:', error));
+    function syncDarkModeUI() {
+        const isDark = localStorage.getItem('darkMode') === 'true';
+        document.body.classList.toggle('dark-mode', isDark);
+        document.getElementById('theme-toggle').checked = isDark;
+        updateChartsTheme(isDark);
     }
 
-    function updateSpecificStat(elementId, value) {
-        const element = document.getElementById(elementId);
-        if (element) {
-            const currentValue = parseInt(element.textContent);
-            if (currentValue !== value) {
-                element.textContent = value;
-                element.classList.add('highlight');
-                setTimeout(() => element.classList.remove('highlight'), 1000);
-            }
-        }
-    }
-
-    function addSearchFeature() {
-        const searchInput = document.createElement('input');
-        searchInput.type = 'text';
-        searchInput.placeholder = 'Search statistics...';
-        searchInput.className = 'search-input';
-        document.querySelector('.container').insertAdjacentElement('beforebegin', searchInput);
-
-        searchInput.addEventListener('input', (e) => {
-            const searchTerm = e.target.value.toLowerCase();
-            document.querySelectorAll('.stat-group').forEach(group => {
-                const text = group.textContent.toLowerCase();
-                group.style.display = text.includes(searchTerm) ? 'block' : 'none';
-            });
-        });
-    }
-
-    function addExportFeature() {
-        const exportButton = document.createElement('button');
-        exportButton.textContent = 'Export Stats';
-        exportButton.className = 'export-button';
-        document.querySelector('.container').insertAdjacentElement('beforebegin', exportButton);
-
-        exportButton.addEventListener('click', () => {
-            fetch('/admin/stats')
-                    .then(response => response.json())
-                    .then(data => {
-                        const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `dashboard-stats-${new Date().toISOString()}.json`;
-                        a.click();
-                        window.URL.revokeObjectURL(url);
-                    });
-        });
-    }
-
-    function animateCharts() {
-        const charts = [accountChart, userChart, checkChart, banChart, notificationChart];
-        charts.forEach(chart => {
-            if (chart && chart.data.datasets[0].data.length > 0) {
-                const currentData = [...chart.data.datasets[0].data];
-                chart.data.datasets[0].data = new Array(currentData.length).fill(0);
-                chart.update('none');
-
-                currentData.forEach((value, index) => {
-                    setTimeout(() => {
-                        chart.data.datasets[0].data[index] = value;
-                        chart.update('none');
-                    }, index * 50);
-                });
-            }
-        });
-    }
-
-    const newStyles = `
-    .highlight {
-        transition: background-color 0.5s ease;
-        background-color: rgba(76, 175, 80, 0.3);
-    }
-
-    .search-input {
-        margin: 20px auto;
-        display: block;
-        padding: 10px;
-        width: 300px;
-        border: 1px solid #ccc;
-        border-radius: 5px;
-        font-size: 16px;
-    }
-
-    .export-button {
-        margin: 20px;
-        padding: 10px 20px;
-        background-color: #4CAF50;
-        color: white;
-        border: none;
-        border-radius: 5px;
-        cursor: pointer;
-        font-size: 16px;
-    }
-
-    .export-button:hover {
-        background-color: #45a049;
-    }
-
-    .dark-mode .search-input {
-        background-color: #333;
-        color: white;
-        border-color: #666;
-    }
-
-    .dark-mode .export-button {
-        background-color: #666;
-    }
-
-    .dark-mode .export-button:hover {
-        background-color: #777;
-    }
-`;
-
-    const styleSheet = document.createElement('style');
-    styleSheet.textContent = newStyles;
-    document.head.appendChild(styleSheet);
 
     document.addEventListener('DOMContentLoaded', () => {
-        initializeDarkMode();
         initializeCharts();
-        initializeChartVisibility();
-        loadInitialData();
-        addDragAndDropListeners();
+        initializeDragAndDrop();
         addSearchFeature();
         addExportFeature();
+        restoreStatGroupPositions();
+        syncDarkModeUI();
+        updateStats();
         setInterval(updateStats, 60000);
-
-        document.querySelectorAll('.toggle-chart-btn').forEach(button => {
-            button.addEventListener('click', () => toggleStatChart(button));
-        });
     });
 </script>
 </body>
 </html>
-10
