@@ -14,7 +14,12 @@ import (
 	"github.com/patrickmn/go-cache"
 )
 
-const defaultCooldown = 1 * time.Hour
+const (
+	defaultCooldown       = 1 * time.Hour
+	defaultNotifyInterval = 24 * time.Hour
+	minNotifyInterval     = 1 * time.Hour
+	maxNotifyInterval     = 72 * time.Hour
+)
 
 var (
 	checkCircle    = os.Getenv("CHECKCIRCLE")
@@ -703,7 +708,6 @@ func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettin
 	}
 
 	var embedFields []*discordgo.MessageEmbedField
-
 	embedFields = append(embedFields, &discordgo.MessageEmbedField{
 		Name: "Summary",
 		Value: fmt.Sprintf("Total Accounts: %d\nGood Standing: %d\nBanned: %d\nUnder Review: %d",
