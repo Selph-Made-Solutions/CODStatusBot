@@ -75,9 +75,8 @@ func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		creationDate := time.Unix(account.Created, 0).Format("2006-01-02")
 		lastCheckTime := time.Unix(account.LastCheck, 0).Format("2006-01-02 15:04:05")
 
-		isVIP, _ := services.CheckVIPStatus(account.SSOCookie)
 		vipStatus := "No"
-		if isVIP {
+		if account.IsVIP {
 			vipStatus = "Yes ✓"
 		}
 

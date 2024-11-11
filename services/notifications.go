@@ -806,22 +806,22 @@ func formatAccountStatus(account models.Account, status models.Status, timeUntil
 
 	switch status {
 	case models.StatusGood:
-		statusDesc.WriteString(fmt.Sprintf("%s Good standing | Expires in %s", checkCircle, FormatDuration(timeUntilExpiration)))
+		statusDesc.WriteString(fmt.Sprintf("Good standing | Expires in %s", FormatDuration(timeUntilExpiration)))
 	case models.StatusPermaban:
-		statusDesc.WriteString(fmt.Sprintf("%s Permanently banned", banCircle))
+		statusDesc.WriteString("Permanently banned")
 	case models.StatusShadowban:
-		statusDesc.WriteString(fmt.Sprintf("%s Under review", infoCircle))
+		statusDesc.WriteString("Under review")
 	case models.StatusTempban:
 		var latestBan models.Ban
 		if err := database.DB.Where("account_id = ?", account.ID).
 			Order("created_at DESC").
 			First(&latestBan).Error; err == nil {
-			statusDesc.WriteString(fmt.Sprintf("%s Temporarily banned (%s remaining)", stopWatch, latestBan.TempBanDuration))
+			statusDesc.WriteString(fmt.Sprintf("Temporarily banned (%s remaining)", latestBan.TempBanDuration))
 		} else {
-			statusDesc.WriteString(fmt.Sprintf("%s Temporarily banned (duration unknown)", stopWatch))
+			statusDesc.WriteString("Temporarily banned (duration unknown)")
 		}
 	default:
-		statusDesc.WriteString(fmt.Sprintf("%s Unknown status", questionCircle))
+		statusDesc.WriteString("Unknown status")
 	}
 
 	if isVIP, err := CheckVIPStatus(account.SSOCookie); err == nil {

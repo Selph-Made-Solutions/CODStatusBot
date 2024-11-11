@@ -183,9 +183,17 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 
 	var accountsToUpdate []models.Account
 	var accountsToNotify []models.Account
+	var accountsForDailyUpdate []models.Account
+
+	now := time.Now()
+	shouldSendDaily := time.Since(userSettings.LastDailyUpdateNotification) >=
+		time.Duration(userSettings.NotificationInterval)*time.Hour
 
 	for _, account := range accounts {
 		if !shouldCheckAccount(account, userSettings) {
+			if !account.IsCheckDisabled && !account.IsExpiredCookie {
+				accountsForDailyUpdate = append(accountsForDailyUpdate, account)
+			}
 			continue
 		}
 
@@ -200,7 +208,6 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 			continue
 		}
 
-		now := time.Now()
 		account.LastCheck = now.Unix()
 		account.LastSuccessfulCheck = now
 		account.ConsecutiveErrors = 0
@@ -212,6 +219,7 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 		}
 
 		accountsToUpdate = append(accountsToUpdate, account)
+		accountsForDailyUpdate = append(accountsForDailyUpdate, account)
 	}
 
 	if len(accountsToUpdate) > 0 {
@@ -224,6 +232,10 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 
 	if len(accountsToNotify) > 0 {
 		processNotifications(s, accountsToNotify, userSettings)
+	}
+
+	if shouldSendDaily && len(accountsForDailyUpdate) > 0 {
+		SendConsolidatedDailyUpdate(s, userID, userSettings, accountsForDailyUpdate)
 	}
 }
 
@@ -413,9 +425,12 @@ func shouldCheckAccount(account models.Account, settings models.UserSettings) bo
 		}
 	}
 
-	return now.After(nextCheckTime)
-}
+	if settings.EZCaptchaAPIKey != "" || settings.TwoCaptchaAPIKey != "" {
+		return now.After(nextCheckTime)
+	}
 
+	return now.After(nextCheckTime) && time.Since(time.Unix(account.LastCheck, 0)) >= defaultRateLimit
+}
 func hasStatusChanged(account models.Account, newStatus models.Status) bool {
 	if account.LastStatus == models.StatusUnknown {
 		return true

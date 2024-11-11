@@ -19,16 +19,9 @@ import (
 )
 
 const (
-	maxRetryAttempts    = 3
-	retryDelay          = 5 * time.Second
-	checkTimeout        = 30 * time.Second // TODO: fix this to be used
-	maxConcurrentChecks = 5                // TODO: fix this to be used
-
-	maxConsecutiveErrors          = 5
-	balanceNotificationThreshold  = 1000           // TODO: fix this to be used
-	maxUserErrorNotifications     = 3              // TODO: fix this to be used
-	userErrorNotificationCooldown = 24 * time.Hour // TODO: fix this to be used
-	balanceNotificationInterval   = 24 * time.Hour // TODO: fix this to be used
+	maxRetryAttempts     = 3
+	retryDelay           = 5 * time.Second
+	maxConsecutiveErrors = 5
 )
 
 var (
