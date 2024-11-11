@@ -301,21 +301,6 @@
         }
     }
 
-    function handleDragStart(e) {
-        this.style.opacity = '0.4';
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/html', this.outerHTML);
-    }
-
-    function handleDragOver(e) {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-    }
-
-    function handleDragEnd(e) {
-        this.style.opacity = '1';
-    }
-
     function saveStatGroupPositions() {
         const positions = {};
         document.querySelectorAll('.stat-group').forEach((group, index) => {
@@ -349,6 +334,51 @@
         updateChartsTheme(isDark);
     }
 
+    function getDragAfterElement(container, y) {
+        const draggableElements = [...container.querySelectorAll('.stat-group:not(.dragging)')]
+
+        return draggableElements.reduce((closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = y - box.top - box.height / 2;
+
+            if (offset < 0 && offset > closest.offset) {
+                return { offset: offset, element: child };
+            } else {
+                return closest;
+            }
+        }, { offset: Number.NEGATIVE_INFINITY }).element;
+    }
+
+    function handleDragEnd(e) {
+        this.classList.remove('dragging');
+        this.style.opacity = '1';
+        saveStatGroupPositions();
+        initializeCharts();
+        updateStats();
+    }
+
+    function handleDragStart(e) {
+        this.classList.add('dragging');
+        this.style.opacity = '0.4';
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/html', this.outerHTML);
+    }
+
+    function handleDragOver(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const draggable = document.querySelector('.dragging');
+        if (!draggable) return;
+
+        const container = document.querySelector('.container');
+        const afterElement = getDragAfterElement(container, e.clientY);
+
+        if (afterElement) {
+            container.insertBefore(draggable, afterElement);
+        } else {
+            container.appendChild(draggable);
+        }
+    }
 
     document.addEventListener('DOMContentLoaded', () => {
         initializeCharts();
