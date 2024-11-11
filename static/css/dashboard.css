@@ -88,6 +88,8 @@ header h1 {
 }
 
 .chart-container {
+    transition: height 0.3s ease;
+    min-height: 200px;
     display: none;
     margin-top: 15px;
     width: 100%;
@@ -166,9 +168,4 @@ button:focus, input:focus {
 .loading {
     opacity: 0.7;
     pointer-events: none;
-}
-
-.chart-container {
-    transition: height 0.3s ease;
-    min-height: 200px;
 }
