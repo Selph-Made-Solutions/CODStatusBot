@@ -14,7 +14,12 @@ import (
 	"github.com/patrickmn/go-cache"
 )
 
-const defaultCooldown = 1 * time.Hour
+const (
+	defaultCooldown       = 1 * time.Hour
+	defaultNotifyInterval = 24 * time.Hour
+	minNotifyInterval     = 1 * time.Hour
+	maxNotifyInterval     = 72 * time.Hour
+)
 
 var (
 	checkCircle    = os.Getenv("CHECKCIRCLE")
@@ -103,6 +108,10 @@ func GetCooldownDuration(userSettings models.UserSettings, notificationType stri
 	}
 }
 
+func IsDonationsEnabled() bool {
+	return os.Getenv("DONATIONS_ENABLED") == "true"
+}
+
 func GetNotificationChannel(s *discordgo.Session, account models.Account, userSettings models.UserSettings) (string, error) {
 	if userSettings.NotificationType == "dm" {
 		channel, err := s.UserChannelCreate(account.UserID)
@@ -158,6 +167,60 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 
 		if apiKey == os.Getenv("EZCAPTCHA_CLIENT_KEY") {
 			if balance < getBalanceThreshold(userSettings.PreferredCaptchaProvider) {
+				var fields []*discordgo.MessageEmbedField
+
+				fields = append(fields, &discordgo.MessageEmbedField{
+					Name: "Option 1: Use Your Own API Key (Recommended)",
+					Value: "Get your own API key using `/setcaptchaservice` for:\n" +
+						"• Faster check intervals\n" +
+						"• No rate limits\n" +
+						"• More account slots",
+					Inline: false,
+				})
+
+				if IsDonationsEnabled() {
+					bitcoinAddress := os.Getenv("BITCOIN_ADDRESS")
+					cashappID := os.Getenv("CASHAPP_ID")
+
+					if bitcoinAddress != "" || cashappID != "" {
+						donationText := "If you'd like to help keep the default API key funded:\n"
+						if bitcoinAddress != "" {
+							donationText += fmt.Sprintf("Bitcoin: %s\n", bitcoinAddress)
+						}
+						if cashappID != "" {
+							donationText += fmt.Sprintf("CashApp: %s", cashappID)
+						}
+
+						fields = append(fields, &discordgo.MessageEmbedField{
+							Name:   "Option 2: Help Support the Default API Key",
+							Value:  donationText,
+							Inline: false,
+						})
+					}
+				}
+
+				embed := &discordgo.MessageEmbed{
+					Title: "Default API Key Balance Low",
+					Description: fmt.Sprintf("The bot's default API key balance is currently low (%.2f points). "+
+						"To ensure uninterrupted service, consider the following options:", balance),
+					Color:     0xFFA500,
+					Fields:    fields,
+					Timestamp: time.Now().Format(time.RFC3339),
+					Footer: &discordgo.MessageEmbedFooter{
+						Text: "Thank you for using COD Status Bot!",
+					},
+				}
+
+				var account models.Account
+				if err := database.DB.Where("user_id = ?", userID).First(&account).Error; err != nil {
+					logger.Log.WithError(err).Error("Failed to get account for balance notification")
+					return
+				}
+
+				if err := SendNotification(s, account, embed, "", "default_key_balance"); err != nil {
+					logger.Log.WithError(err).Error("Failed to send default key balance notification")
+				}
+
 				NotifyAdminWithCooldown(s, fmt.Sprintf("Default API key balance is low: %.2f", balance), time.Hour*6)
 			}
 			return
@@ -628,88 +691,86 @@ func UpdateNotificationTimestamp(userID string, notificationType string) error {
 	return database.DB.Save(&settings).Error
 }
 
-/*
-	func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettings models.UserSettings, accounts []models.Account) {
-		if len(accounts) == 0 {
-			return
-		}
-
-		userSettings, err := GetUserSettings(userID)
-		if err != nil {
-			logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
-			return
-		}
-
-		accountsByStatus := make(map[models.Status][]models.Account)
-		for _, account := range accounts {
+func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettings models.UserSettings, accounts []models.Account) {
+	if len(accounts) == 0 {
+		return
+	}
+	userSettings, err := GetUserSettings(userID)
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
+		return
+	}
+	accountsByStatus := make(map[models.Status][]models.Account)
+	for _, account := range accounts {
+		if !account.IsCheckDisabled && !account.IsExpiredCookie {
 			accountsByStatus[account.LastStatus] = append(accountsByStatus[account.LastStatus], account)
 		}
-
-		var embedFields []*discordgo.MessageEmbedField
-
-		embedFields = append(embedFields, &discordgo.MessageEmbedField{
-			Name: "Summary",
-			Value: fmt.Sprintf("Total Accounts: %d\nGood Standing: %d\nBanned: %d\nUnder Review: %d",
-				len(accounts),
-				len(accountsByStatus[models.StatusGood]),
-				len(accountsByStatus[models.StatusPermaban])+len(accountsByStatus[models.StatusTempban]),
-				len(accountsByStatus[models.StatusShadowban])),
-			Inline: false,
-		})
-
-		for status, statusAccounts := range accountsByStatus {
-			var description strings.Builder
-			for _, account := range statusAccounts {
-				if account.IsExpiredCookie {
-					description.WriteString(fmt.Sprintf("⚠ %s: Cookie expired\n", account.Title))
-					continue
-				}
-
-				timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
-				if err != nil {
-					description.WriteString(fmt.Sprintf("⛔ %s: Error checking expiration\n", account.Title))
-					continue
-				}
-
-				statusSymbol := GetStatusIcon(status)
-				description.WriteString(fmt.Sprintf("%s %s: %s\n", statusSymbol, account.Title,
-					formatAccountStatus(account, status, timeUntilExpiration)))
-			}
-
-			if description.Len() > 0 {
-				//goland:noinspection GoDeprecation
-				embedFields = append(embedFields, &discordgo.MessageEmbedField{
-					Name:   fmt.Sprintf("%s Accounts", strings.Title(string(status))),
-					Value:  description.String(),
-					Inline: false,
-				})
-			}
-		}
-
-		embed := &discordgo.MessageEmbed{
-			Title:       fmt.Sprintf("%.2f Hour Update - Account Status Report", userSettings.NotificationInterval),
-			Description: "Here's a consolidated update on your monitored accounts:",
-			Color:       0x00ff00,
-			Fields:      embedFields,
-			Timestamp:   time.Now().Format(time.RFC3339),
-			Footer: &discordgo.MessageEmbedFooter{
-				Text: "Use /checknow to check any account immediately",
-			},
-		}
-
-		err = SendNotification(s, accounts[0], embed, "", "daily_update")
-		if err != nil {
-			logger.Log.WithError(err).Errorf("Failed to send consolidated daily update for user %s", userID)
-		} else {
-			userSettings.LastDailyUpdateNotification = time.Now()
-			if err := database.DB.Save(&userSettings).Error; err != nil {
-				logger.Log.WithError(err).Errorf("Failed to update LastDailyUpdateNotification for user %s", userID)
-			}
-		}
-
-		checkAccountsNeedingAttention(s, accounts, userSettings)
 	}
-*/
+
+	var embedFields []*discordgo.MessageEmbedField
+	embedFields = append(embedFields, &discordgo.MessageEmbedField{
+		Name: "Summary",
+		Value: fmt.Sprintf("Total Accounts: %d\nGood Standing: %d\nBanned: %d\nUnder Review: %d",
+			len(accounts),
+			len(accountsByStatus[models.StatusGood]),
+			len(accountsByStatus[models.StatusPermaban])+len(accountsByStatus[models.StatusTempban]),
+			len(accountsByStatus[models.StatusShadowban])),
+		Inline: false,
+	})
+
+	for status, statusAccounts := range accountsByStatus {
+		var description strings.Builder
+		for _, account := range statusAccounts {
+			if account.IsExpiredCookie {
+				description.WriteString(fmt.Sprintf("⚠ %s: Cookie expired\n", account.Title))
+				continue
+			}
+
+			timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
+			if err != nil {
+				description.WriteString(fmt.Sprintf("⛔ %s: Error checking expiration\n", account.Title))
+				continue
+			}
+
+			statusSymbol := GetStatusIcon(status)
+			description.WriteString(fmt.Sprintf("%s %s: %s\n", statusSymbol, account.Title,
+				formatAccountStatus(account, status, timeUntilExpiration)))
+		}
+
+		if description.Len() > 0 {
+			//goland:noinspection GoDeprecation
+			embedFields = append(embedFields, &discordgo.MessageEmbedField{
+				Name:   fmt.Sprintf("%s Accounts", strings.Title(string(status))),
+				Value:  description.String(),
+				Inline: false,
+			})
+		}
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title:       fmt.Sprintf("%.2f Hour Update - Account Status Report", userSettings.NotificationInterval),
+		Description: "Here's a consolidated update on your monitored accounts:",
+		Color:       0x00ff00,
+		Fields:      embedFields,
+		Timestamp:   time.Now().Format(time.RFC3339),
+		Footer: &discordgo.MessageEmbedFooter{
+			Text: "Use /checknow to check any account immediately",
+		},
+	}
+
+	err = SendNotification(s, accounts[0], embed, "", "daily_update")
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to send consolidated daily update for user %s", userID)
+	} else {
+		userSettings.LastDailyUpdateNotification = time.Now()
+		if err := database.DB.Save(&userSettings).Error; err != nil {
+			logger.Log.WithError(err).Errorf("Failed to update LastDailyUpdateNotification for user %s", userID)
+		}
+	}
+
+	checkAccountsNeedingAttention(s, accounts, userSettings)
+}
+
 func isCriticalError(err error) bool {
 	criticalErrors := []string{
 		"invalid captcha API key",

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -38,6 +39,17 @@ var (
 	cachedDiscordStats     DiscordStats
 	cachedDiscordStatsLock sync.RWMutex
 )
+
+func initRateLimiter() {
+	var rate = 1.0
+	rateStr := os.Getenv("STATS_RATE_LIMIT")
+	if rateStr != "" {
+		if parsedRate, err := strconv.ParseFloat(rateStr, 64); err == nil {
+			rate = parsedRate
+		}
+	}
+	statsLimiter = tollbooth.NewLimiter(rate, &limiter.ExpirableOptions{DefaultExpirationTTL: time.Hour})
+}
 
 type Stats struct {
 	TotalAccounts            int
@@ -83,7 +95,7 @@ func init() {
 		logger.Log.WithError(err).Error("Error loading .env file")
 	}
 
-	statsLimiter = tollbooth.NewLimiter(1, &limiter.ExpirableOptions{DefaultExpirationTTL: time.Hour})
+	initRateLimiter()
 	sessionKey := os.Getenv("SESSION_KEY")
 	if sessionKey == "" {
 		logger.Log.Error("SESSION_KEY not set in environment variables")
@@ -157,7 +169,58 @@ func updateCachedStats() {
 		return
 	}
 
-	botstats, err := fetchDiscordStats()
+	go func() {
+		var accountStats []HistoricalData
+		accountStats, err = getHistoricalData("accounts")
+		if err == nil {
+			cachedStatsLock.Lock()
+			cachedStats.AccountStatsHistory = accountStats
+			cachedStatsLock.Unlock()
+		}
+	}()
+
+	go func() {
+		var userStats []HistoricalData
+		userStats, err = getHistoricalData("users")
+		if err == nil {
+			cachedStatsLock.Lock()
+			cachedStats.UserStatsHistory = userStats
+			cachedStatsLock.Unlock()
+		}
+	}()
+
+	go func() {
+		var checkStats []HistoricalData
+		checkStats, err = getHistoricalData("checks")
+		if err == nil {
+			cachedStatsLock.Lock()
+			cachedStats.CheckStatsHistory = checkStats
+			cachedStatsLock.Unlock()
+		}
+	}()
+
+	go func() {
+		var banStats []HistoricalData
+		banStats, err = getHistoricalData("bans")
+		if err == nil {
+			cachedStatsLock.Lock()
+			cachedStats.BanStatsHistory = banStats
+			cachedStatsLock.Unlock()
+		}
+	}()
+
+	go func() {
+		var notificationStats []HistoricalData
+		notificationStats, err = getHistoricalData("notifications")
+		if err == nil {
+			cachedStatsLock.Lock()
+			cachedStats.NotificationStatsHistory = notificationStats
+			cachedStatsLock.Unlock()
+		}
+	}()
+
+	var botstats DiscordStats
+	botstats, err = fetchDiscordStats()
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to fetch Discord botstats")
 		return
@@ -169,7 +232,6 @@ func updateCachedStats() {
 	cachedDiscordStats = botstats
 	cachedStatsLock.Unlock()
 	cachedDiscordStatsLock.Unlock()
-
 }
 
 func GetCachedStats() Stats {
@@ -549,25 +611,26 @@ func getBanDataForChart() ([]string, []int, error) {
 		Type  string
 	}
 
+	thirtyDaysAgo := time.Now().AddDate(0, 0, -30)
 	err := database.DB.Model(&models.Ban{}).
 		Select("DATE(created_at) as date, COUNT(*) as count, status as type").
-		Where("created_at > ?", time.Now().AddDate(0, 0, -30)).
+		Where("created_at > ?", thirtyDaysAgo).
 		Group("DATE(created_at), status").
 		Order("date").
 		Scan(&banData).Error
+
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to fetch ban data: %w", err)
 	}
 
-	var dates []string
-	var counts []int
-
+	dates := make(map[string]bool)
 	shadowbanCounts := make(map[string]int)
 	permaBanCounts := make(map[string]int)
 	tempBanCounts := make(map[string]int)
 
 	for _, data := range banData {
 		dateStr := data.Date.Format("2006-01-02")
+		dates[dateStr] = true
 		switch data.Type {
 		case string(models.StatusShadowban):
 			shadowbanCounts[dateStr] += data.Count
@@ -578,72 +641,83 @@ func getBanDataForChart() ([]string, []int, error) {
 		}
 	}
 
-	for dateStr := range shadowbanCounts {
-		dates = append(dates, dateStr)
-		totalCount := shadowbanCounts[dateStr] + permaBanCounts[dateStr] + tempBanCounts[dateStr]
-		counts = append(counts, totalCount)
+	var datesList []string
+	var countsList []int
+
+	for date := range dates {
+		datesList = append(datesList, date)
+		totalCount := shadowbanCounts[date] + permaBanCounts[date] + tempBanCounts[date]
+		countsList = append(countsList, totalCount)
 	}
 
-	sort.Strings(dates)
+	sort.Strings(datesList)
 
-	return dates, counts, nil
+	return datesList, countsList, nil
 }
 
 func getHistoricalData(statType string) ([]HistoricalData, error) {
 	var data []HistoricalData
-	var err error
+	thirtyDaysAgo := time.Now().AddDate(0, 0, -30)
 
 	switch statType {
 	case "accounts":
-		err = database.DB.Raw(`
-			SELECT DATE(FROM_UNIXTIME(created)) as date, COUNT(*) as value
-			FROM accounts
-			WHERE created > ?
-			GROUP BY date
-			ORDER BY date
-		`, time.Now().AddDate(0, 0, -30).Unix()).Scan(&data).Error
+		err := database.DB.Raw(`
+            SELECT DATE(FROM_UNIXTIME(created)) as date,
+                   COUNT(*) as value
+            FROM accounts
+            WHERE created > ?
+            GROUP BY date
+            ORDER BY date
+        `, thirtyDaysAgo.Unix()).Scan(&data).Error
+		return data, err
 
 	case "users":
-		err = database.DB.Raw(`
-			SELECT DATE(created_at) as date, COUNT(*) as value
-			FROM user_settings
-			WHERE created_at > ?
-			GROUP BY date
-			ORDER BY date
-		`, time.Now().AddDate(0, 0, -30)).Scan(&data).Error
+		err := database.DB.Raw(`
+            SELECT DATE(created_at) as date,
+                   COUNT(*) as value
+            FROM user_settings
+            WHERE created_at > ?
+            GROUP BY date
+            ORDER BY date
+        `, thirtyDaysAgo).Scan(&data).Error
+		return data, err
 
 	case "checks":
-		err = database.DB.Raw(`
-			SELECT DATE(FROM_UNIXTIME(last_check)) as date, COUNT(*) as value
-			FROM accounts
-			WHERE last_check > ?
-			GROUP BY date
-			ORDER BY date
-		`, time.Now().AddDate(0, 0, -30).Unix()).Scan(&data).Error
+		err := database.DB.Raw(`
+            SELECT DATE(FROM_UNIXTIME(last_check)) as date,
+                   COUNT(*) as value
+            FROM accounts
+            WHERE last_check > ?
+            GROUP BY date
+            ORDER BY date
+        `, thirtyDaysAgo.Unix()).Scan(&data).Error
+		return data, err
 
 	case "bans":
-		err = database.DB.Raw(`
-			SELECT DATE(created_at) as date, COUNT(*) as value
-			FROM bans
-			WHERE created_at > ?
-			GROUP BY date
-			ORDER BY date
-		`, time.Now().AddDate(0, 0, -30)).Scan(&data).Error
+		err := database.DB.Raw(`
+            SELECT DATE(created_at) as date,
+                   COUNT(*) as value
+            FROM bans
+            WHERE created_at > ?
+            GROUP BY date
+            ORDER BY date
+        `, thirtyDaysAgo).Scan(&data).Error
+		return data, err
 
 	case "notifications":
-		err = database.DB.Raw(`
-					SELECT DATE(FROM_UNIXTIME(last_notification)) as date, COUNT(*) as value
-					FROM accounts
-					WHERE last_notification > ?
-					GROUP BY date
-					ORDER BY date
-				`, time.Now().AddDate(0, 0, -30).Unix()).Scan(&data).Error
+		err := database.DB.Raw(`
+            SELECT DATE(FROM_UNIXTIME(last_notification)) as date,
+                   COUNT(*) as value
+            FROM accounts
+            WHERE last_notification > ?
+            GROUP BY date
+            ORDER BY date
+        `, thirtyDaysAgo.Unix()).Scan(&data).Error
+		return data, err
 
 	default:
-		return nil, nil
+		return nil, fmt.Errorf("unknown stat type: %s", statType)
 	}
-
-	return data, err
 }
 
 func fetchDiscordStats() (DiscordStats, error) {
