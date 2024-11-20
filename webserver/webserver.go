@@ -10,11 +10,14 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/services"
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
+	"github.com/sirupsen/logrus"
 
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
@@ -114,6 +117,40 @@ func StartAdminDashboard() *http.Server {
 
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Frame-Options", "DENY")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.Header().Set("X-XSS-Protection", "1; mode=block")
+			w.Header().Set("Referrer-Policy", "strict-origin-private-when-cross-origin")
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+
+			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline';")
+
+			if !strings.HasPrefix(r.URL.Path, "/static/") {
+				w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+				w.Header().Set("Pragma", "no-cache")
+			}
+
+			startTime := time.Now()
+			logger.Log.WithFields(logrus.Fields{
+				"method":     r.Method,
+				"path":       r.URL.Path,
+				"remote_ip":  r.RemoteAddr,
+				"user_agent": r.UserAgent(),
+			}).Info("Incoming request")
+
+			next.ServeHTTP(w, r)
+
+			duration := time.Since(startTime)
+			logger.Log.WithFields(logrus.Fields{
+				"method":      r.Method,
+				"path":        r.URL.Path,
+				"duration_ms": duration.Milliseconds(),
+			}).Info("Request completed")
+		})
+	})
+
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != "/" && r.URL.Path[len(r.URL.Path)-1] != '/' {
 				http.Redirect(w, r, r.URL.Path+"/", http.StatusMovedPermanently)
 				return
@@ -121,6 +158,14 @@ func StartAdminDashboard() *http.Server {
 			next.ServeHTTP(w, r)
 		})
 	})
+
+	r.HandleFunc("/health/", HealthCheckHandler).Methods("GET")
+
+	staticFileServer := http.FileServer(http.Dir(os.Getenv("STATIC_DIR")))
+	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=31536000")
+		staticFileServer.ServeHTTP(w, r)
+	})))
 
 	r.HandleFunc("/", HomeHandler)
 	r.HandleFunc("/help/", HelpHandler)
@@ -132,15 +177,15 @@ func StartAdminDashboard() *http.Server {
 	r.HandleFunc("/admin/stats/", AuthMiddleware(StatsHandler))
 	r.HandleFunc("/api/server-count/", ServerCountHandler)
 
-	staticDir := os.Getenv("STATIC_DIR")
-	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
-
 	port := os.Getenv("ADMIN_PORT")
 
 	server := &http.Server{
 		Addr:              ":" + port,
 		Handler:           r,
 		ReadHeaderTimeout: 20 * time.Second,
+		WriteTimeout:      20 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1MB
 	}
 
 	go func() {
@@ -151,6 +196,33 @@ func StartAdminDashboard() *http.Server {
 	}()
 
 	return server
+}
+
+func HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
+	dbHealthy := true
+	if err := database.DB.Exec("SELECT 1").Error; err != nil {
+		dbHealthy = false
+	}
+
+	var accounts int64
+	database.DB.Model(&models.Account{}).Count(&accounts)
+
+	health := map[string]interface{}{
+		"status":    "ok",
+		"timestamp": time.Now().Format(time.RFC3339),
+		"version":   "3.10.0",
+		"services": map[string]interface{}{
+			"database": map[string]interface{}{
+				"status":   dbHealthy,
+				"accounts": accounts,
+			},
+			"ezcaptcha_enabled": services.IsServiceEnabled("ezcaptcha"),
+			"2captcha_enabled":  services.IsServiceEnabled("2captcha"),
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(health)
 }
 
 func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
