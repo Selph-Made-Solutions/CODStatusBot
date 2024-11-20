@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -33,6 +34,7 @@ const (
 )
 
 var (
+	isDevelopment          bool
 	statsLimiter           *limiter.Limiter
 	cachedStats            Stats
 	cachedStatsLock        sync.RWMutex
@@ -41,6 +43,7 @@ var (
 	store                  *sessions.CookieStore
 	cachedDiscordStats     DiscordStats
 	cachedDiscordStatsLock sync.RWMutex
+	templatesDir           string
 )
 
 func initRateLimiter() {
@@ -98,18 +101,28 @@ func init() {
 		logger.Log.WithError(err).Error("Error loading .env file")
 	}
 
+	isDevelopment = os.Getenv("ENVIRONMENT") == "development"
+
 	initRateLimiter()
 	sessionKey := os.Getenv("SESSION_KEY")
 	if sessionKey == "" {
 		logger.Log.Error("SESSION_KEY not set in environment variables")
 	}
+
 	store = sessions.NewCookieStore([]byte(sessionKey))
 	store.Options = &sessions.Options{
 		Path:     "/",
 		MaxAge:   3600,
 		HttpOnly: true,
-		Secure:   false,
+		Secure:   !isDevelopment,
+		SameSite: http.SameSiteLaxMode,
 	}
+
+	templatesDir = os.Getenv("TEMPLATES_DIR")
+	if templatesDir == "" {
+		templatesDir = "templates"
+	}
+
 }
 
 func StartAdminDashboard() *http.Server {
@@ -117,13 +130,22 @@ func StartAdminDashboard() *http.Server {
 
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !isDevelopment {
+				if proto := r.Header.Get("X-Forwarded-Proto"); proto != "https" {
+					url := "https://" + r.Host + r.URL.Path
+					if r.URL.RawQuery != "" {
+						url += "?" + r.URL.RawQuery
+					}
+					http.Redirect(w, r, url, http.StatusPermanentRedirect)
+					return
+				}
+
+				w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+			}
+
 			w.Header().Set("X-Frame-Options", "DENY")
 			w.Header().Set("X-Content-Type-Options", "nosniff")
 			w.Header().Set("X-XSS-Protection", "1; mode=block")
-			w.Header().Set("Referrer-Policy", "strict-origin-private-when-cross-origin")
-			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
-
-			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline';")
 
 			if !strings.HasPrefix(r.URL.Path, "/static/") {
 				w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
@@ -151,9 +173,11 @@ func StartAdminDashboard() *http.Server {
 
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/" && r.URL.Path[len(r.URL.Path)-1] != '/' {
-				http.Redirect(w, r, r.URL.Path+"/", http.StatusMovedPermanently)
-				return
+			if !strings.HasPrefix(r.URL.Path, "/static/") && !strings.Contains(r.URL.Path, ".") {
+				if r.URL.Path != "/" && r.URL.Path[len(r.URL.Path)-1] != '/' {
+					http.Redirect(w, r, r.URL.Path+"/", http.StatusMovedPermanently)
+					return
+				}
 			}
 			next.ServeHTTP(w, r)
 		})
@@ -161,10 +185,18 @@ func StartAdminDashboard() *http.Server {
 
 	r.HandleFunc("/health/", HealthCheckHandler).Methods("GET")
 
-	staticFileServer := http.FileServer(http.Dir(os.Getenv("STATIC_DIR")))
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "public, max-age=31536000")
-		staticFileServer.ServeHTTP(w, r)
+		if strings.HasSuffix(r.URL.Path, ".css") ||
+			strings.HasSuffix(r.URL.Path, ".js") {
+			w.Header().Set("Cache-Control", "public, max-age=31536000")
+		}
+
+		staticDir := os.Getenv("STATIC_DIR")
+		if staticDir == "" {
+			staticDir = "static"
+		}
+
+		http.FileServer(http.Dir(staticDir)).ServeHTTP(w, r)
 	})))
 
 	r.HandleFunc("/", HomeHandler)
@@ -185,7 +217,7 @@ func StartAdminDashboard() *http.Server {
 		ReadHeaderTimeout: 20 * time.Second,
 		WriteTimeout:      20 * time.Second,
 		IdleTimeout:       120 * time.Second,
-		MaxHeaderBytes:    1 << 20, // 1MB
+		MaxHeaderBytes:    1 << 20,
 	}
 
 	go func() {
@@ -212,12 +244,12 @@ func HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
 		"timestamp": time.Now().Format(time.RFC3339),
 		"version":   "3.10.0",
 		"services": map[string]interface{}{
+			"ezcaptcha_enabled": services.IsServiceEnabled("ezcaptcha"),
+			"2captcha_enabled":  services.IsServiceEnabled("2captcha"),
 			"database": map[string]interface{}{
 				"status":   dbHealthy,
 				"accounts": accounts,
 			},
-			"ezcaptcha_enabled": services.IsServiceEnabled("ezcaptcha"),
-			"2captcha_enabled":  services.IsServiceEnabled("2captcha"),
 		},
 	}
 
@@ -229,7 +261,7 @@ func AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		session, _ := store.Get(r, "admin-session")
 		if auth, ok := session.Values["authenticated"].(bool); !ok || !auth {
-			http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+			http.Redirect(w, r, "/admin/login/", http.StatusSeeOther)
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -357,7 +389,7 @@ func StatsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func TermsHandler(w http.ResponseWriter, _ *http.Request) {
-	tmpl, err := template.ParseFiles("templates/terms.html")
+	tmpl, err := template.ParseFiles(filepath.Join(templatesDir, "terms.html"))
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to parse terms template")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -371,7 +403,7 @@ func TermsHandler(w http.ResponseWriter, _ *http.Request) {
 }
 
 func PolicyHandler(w http.ResponseWriter, _ *http.Request) {
-	tmpl, err := template.ParseFiles("templates/policy.html")
+	tmpl, err := template.ParseFiles(filepath.Join(templatesDir, "policy.html"))
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to parse policy template")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -385,7 +417,7 @@ func PolicyHandler(w http.ResponseWriter, _ *http.Request) {
 }
 
 func HomeHandler(w http.ResponseWriter, _ *http.Request) {
-	tmpl, err := template.ParseFiles("templates/index.html")
+	tmpl, err := template.ParseFiles(filepath.Join(templatesDir, "index.html"))
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to parse index template")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -399,7 +431,7 @@ func HomeHandler(w http.ResponseWriter, _ *http.Request) {
 }
 
 func HelpHandler(w http.ResponseWriter, _ *http.Request) {
-	tmpl, err := template.ParseFiles("templates/help.html")
+	tmpl, err := template.ParseFiles(filepath.Join(templatesDir, "help.html"))
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to parse help template")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -419,11 +451,11 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/login/", http.StatusSeeOther)
 }
 
 func LoginHandler(w http.ResponseWriter, r *http.Request) {
-	tmpl, err := template.ParseFiles("templates/login.html")
+	tmpl, err := template.ParseFiles(filepath.Join(templatesDir, "login.html"))
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to parse login template")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -447,7 +479,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 				return
 			}
-			http.Redirect(w, r, "/admin", http.StatusSeeOther)
+			http.Redirect(w, r, "/admin/", http.StatusSeeOther)
 			return
 		}
 		err := tmpl.Execute(w, map[string]string{"Error": "Invalid credentials"})
@@ -481,7 +513,7 @@ func checkCredentials(username, password string) bool {
 func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	session, _ := store.Get(r, "admin-session")
 	if auth, ok := session.Values["authenticated"].(bool); !ok || !auth {
-		http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+		http.Redirect(w, r, "/admin/login/", http.StatusSeeOther)
 		return
 	}
 
@@ -498,7 +530,7 @@ func DashboardHandler(w http.ResponseWriter, r *http.Request) {
 
 	logger.Log.WithField("stats", stats).Info("Retrieved cached stats")
 
-	tmpl, err := template.ParseFiles("templates/dashboard.html")
+	tmpl, err := template.ParseFiles(filepath.Join(templatesDir, "dashboard.html"))
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to parse dashboard template")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
