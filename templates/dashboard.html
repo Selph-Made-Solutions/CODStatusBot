@@ -85,12 +85,53 @@
     let charts = {};
 
     const chartConfigs = {
-        accountChart: { label: 'Accounts', color: 'rgba(75, 192, 192, 1)', bgColor: 'rgba(75, 192, 192, 0.2)' },
-        userChart: { label: 'Users', color: 'rgba(153, 102, 255, 1)', bgColor: 'rgba(153, 102, 255, 0.2)' },
-        checkChart: { label: 'Checks', color: 'rgba(255, 159, 64, 1)', bgColor: 'rgba(255, 159, 64, 0.2)' },
-        banChart: { label: 'Bans', color: 'rgba(255, 99, 132, 1)', bgColor: 'rgba(255, 99, 132, 0.2)' },
-        notificationChart: { label: 'Notifications', color: 'rgba(54, 162, 235, 1)', bgColor: 'rgba(54, 162, 235, 0.2)' }
+        accountChart: {
+            label: 'Accounts',
+            datasets: [{
+                label: 'Total Accounts',
+                color: 'rgba(75, 192, 192, 1)',
+                bgColor: 'rgba(75, 192, 192, 0.2)'
+            }, {
+                label: 'Active Accounts',
+                color: 'rgba(54, 162, 235, 1)',
+                bgColor: 'rgba(54, 162, 235, 0.2)'
+            }, {label: 'Banned Accounts', color: 'rgba(255, 99, 132, 1)', bgColor: 'rgba(255, 99, 132, 0.2)'}]
+        },
+        userChart: {
+            datasets: [{
+                label: 'Total Users',
+                color: 'rgba(153, 102, 255, 1)',
+                bgColor: 'rgba(153, 102, 255, 0.2)'
+            }, {label: 'Users with Custom API Key', color: 'rgba(255, 159, 64, 1)', bgColor: 'rgba(255, 159, 64, 0.2)'}]
+        },
+        checkChart: {
+            datasets: [{
+                label: 'Hourly Checks',
+                color: 'rgba(255, 159, 64, 1)',
+                bgColor: 'rgba(255, 159, 64, 0.2)',
+                borderDash: [5, 5]
+            }, {label: 'Daily Checks', color: 'rgba(75, 192, 192, 1)', bgColor: 'rgba(75, 192, 192, 0.2)'}]
+        },
+        notificationChart: {
+            datasets: [{
+                label: 'Total Notifications',
+                color: 'rgba(54, 162, 235, 1)',
+                bgColor: 'rgba(54, 162, 235, 0.2)'
+            }, {label: 'Recent Notifications', color: 'rgba(255, 206, 86, 1)', bgColor: 'rgba(255, 206, 86, 0.2)'}]
+        },
+        banChart: {
+            datasets: [{
+                label: 'Total Bans',
+                color: 'rgba(255, 99, 132, 1)',
+                bgColor: 'rgba(255, 99, 132, 0.2)'
+            }, {
+                label: 'Shadowbans',
+                color: 'rgba(153, 102, 255, 1)',
+                bgColor: 'rgba(153, 102, 255, 0.2)'
+            }, {label: 'Temporary Bans', color: 'rgba(255, 159, 64, 1)', bgColor: 'rgba(255, 159, 64, 0.2)'}]
+        }
     };
+
 
     function initializeCharts() {
         if (!window.Chart) {
@@ -114,16 +155,29 @@
                 type: 'line',
                 data: {
                     labels: [],
-                    datasets: [{
-                        label: config.label,
-                        borderColor: config.color,
-                        backgroundColor: config.bgColor,
+                    datasets: config.datasets.map(dataset => ({
+                        label: dataset.label,
+                        borderColor: dataset.color,
+                        backgroundColor: dataset.bgColor,
+                        borderDash: dataset.borderDash || [],
                         data: [],
                         tension: 0.4,
                         fill: true
-                    }]
+                    }))
                 },
-                options: getChartOptions()
+                options: {
+                    ...getChartOptions(),
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        tooltip: {
+                            enabled: true,
+                            mode: 'index'
+                        }
+                    }
+                }
             });
         });
     }
@@ -342,11 +396,11 @@
             const offset = y - box.top - box.height / 2;
 
             if (offset < 0 && offset > closest.offset) {
-                return { offset: offset, element: child };
+                return {offset: offset, element: child};
             } else {
                 return closest;
             }
-        }, { offset: Number.NEGATIVE_INFINITY }).element;
+        }, {offset: Number.NEGATIVE_INFINITY}).element;
     }
 
     function handleDragEnd(e) {

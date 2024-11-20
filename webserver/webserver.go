@@ -58,32 +58,33 @@ func initRateLimiter() {
 }
 
 type Stats struct {
-	TotalAccounts            int
-	ActiveAccounts           int
-	BannedAccounts           int
-	PermaBannedAccounts      int
-	ShadowBannedAccounts     int
-	TotalUsers               int
-	ChecksLastHour           int
-	ChecksLast24Hours        int
-	TotalBans                int
-	RecentBans               int
-	AverageChecksPerDay      float64
+	TotalAccounts            int     // Total accounts in the database
+	ActiveAccounts           int     // Accounts that have checked in the last 24 hours
+	BannedAccounts           int     // Total of all ban types
+	PermaBannedAccounts      int     // Permanent bans
+	ShadowBannedAccounts     int     // Shadow bans
+	TempBannedAccounts       int     // Temporary bans
+	TotalUsers               int     // Total users in the database
+	ChecksLastHour           int     // Checks in the last hour
+	ChecksLast24Hours        int     // Checks in the last 24 hours
+	TotalBans                int     // Total bans in the database
+	RecentBans               int     // Recent bans in the last 24 hours
+	AverageChecksPerDay      float64 // Average checks per day
 	TotalNotifications       int
-	RecentNotifications      int
-	UsersWithCustomAPIKey    int
-	AverageAccountsPerUser   float64
-	OldestAccount            time.Time
-	NewestAccount            time.Time
-	TotalShadowbans          int
-	TotalTempbans            int
-	BanDates                 []string         `json:"banDates"`
-	BanCounts                []int            `json:"banCounts"`
-	AccountStatsHistory      []HistoricalData `json:"accountStatsHistory"`
-	UserStatsHistory         []HistoricalData `json:"userStatsHistory"`
-	CheckStatsHistory        []HistoricalData `json:"checkStatsHistory"`
-	BanStatsHistory          []HistoricalData `json:"banStatsHistory"`
-	NotificationStatsHistory []HistoricalData `json:"notificationStatsHistory"`
+	RecentNotifications      int              // Recent notifications in the last 24 hours
+	UsersWithCustomAPIKey    int              // Users with a custom API key
+	AverageAccountsPerUser   float64          // Average accounts per user
+	OldestAccount            time.Time        // Oldest account in the database
+	NewestAccount            time.Time        // Newest account in the database
+	TotalShadowbans          int              // Total shadow bans in the database
+	TotalTempbans            int              // Total temporary bans in the database
+	BanDates                 []string         `json:"banDates"`                 // Dates of bans
+	BanCounts                []int            `json:"banCounts"`                // Counts of bans on each date
+	AccountStatsHistory      []HistoricalData `json:"accountStatsHistory"`      // Historical data for accounts
+	UserStatsHistory         []HistoricalData `json:"userStatsHistory"`         // Historical data for users
+	CheckStatsHistory        []HistoricalData `json:"checkStatsHistory"`        //	Historical data for checks
+	BanStatsHistory          []HistoricalData `json:"banStatsHistory"`          // Historical data for bans
+	NotificationStatsHistory []HistoricalData `json:"notificationStatsHistory"` // Historical data for notifications
 }
 
 type HistoricalData struct {
@@ -552,9 +553,10 @@ func getStats() (Stats, error) {
 
 	stats.TotalAccounts, _ = getTotalAccounts()
 	stats.ActiveAccounts, _ = getActiveAccounts()
-	stats.BannedAccounts = stats.PermaBannedAccounts + stats.ShadowBannedAccounts
 	stats.PermaBannedAccounts, _ = getPermaBannedAccounts()
 	stats.ShadowBannedAccounts, _ = getShadowBannedAccounts()
+	stats.TempBannedAccounts, _ = getTempBannedAccounts()
+	stats.BannedAccounts = stats.PermaBannedAccounts + stats.ShadowBannedAccounts + stats.TempBannedAccounts
 	stats.TotalUsers, _ = getTotalUsers()
 	stats.ChecksLastHour, _ = getChecksInTimeRange(1 * time.Hour)
 	stats.ChecksLast24Hours, _ = getChecksInTimeRange(24 * time.Hour)
@@ -599,6 +601,12 @@ func getPermaBannedAccounts() (int, error) {
 func getShadowBannedAccounts() (int, error) {
 	var count int64
 	err := database.DB.Model(&models.Account{}).Where("is_shadowbanned = ?", true).Count(&count).Error
+	return int(count), err
+}
+
+func getTempBannedAccounts() (int, error) {
+	var count int64
+	err := database.DB.Model(&models.Account{}).Where("status = ?", models.StatusTempban).Count(&count).Error
 	return int(count), err
 }
 
