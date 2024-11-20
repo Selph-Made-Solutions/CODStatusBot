@@ -80,7 +80,7 @@ func run() error {
 	}
 	logger.Log.Info("Database initialized successfully")
 
-	server := webserver.StartAdminDashboard()
+	//server := webserver.StartAdminDashboard()
 
 	var err error
 	discord, err = bot.StartBot()
@@ -104,9 +104,10 @@ func run() error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := server.Shutdown(ctx); err != nil {
-		logger.Log.WithError(err).Error("Error shutting down webpage server")
-	}
+
+	// if err := server.Shutdown(ctx); err != nil {
+	//	logger.Log.WithError(err).Error("Error shutting down webpage server")
+	// }
 
 	if err := discord.Close(); err != nil {
 		logger.Log.WithError(err).Error("Error closing Discord session")
@@ -248,7 +249,7 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 		}
 	}()
 
-	go webserver.StartStatsCaching()
+	//go webserver.StartStatsCaching()
 	go services.ScheduleBalanceChecks(s)
 
 	go func() {
