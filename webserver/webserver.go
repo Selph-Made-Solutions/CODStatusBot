@@ -110,16 +110,27 @@ func init() {
 }
 
 func StartAdminDashboard() *http.Server {
-	r := mux.NewRouter()
+	r := mux.NewRouter().StrictSlash(true)
+
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/" && r.URL.Path[len(r.URL.Path)-1] != '/' {
+				http.Redirect(w, r, r.URL.Path+"/", http.StatusMovedPermanently)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
+
 	r.HandleFunc("/", HomeHandler)
-	r.HandleFunc("/help", HelpHandler)
-	r.HandleFunc("/terms", TermsHandler)
-	r.HandleFunc("/policy", PolicyHandler)
-	r.HandleFunc("/admin/login", LoginHandler)
-	r.HandleFunc("/admin/logout", LogoutHandler)
-	r.HandleFunc("/admin", AuthMiddleware(DashboardHandler))
-	r.HandleFunc("/admin/stats", AuthMiddleware(StatsHandler))
-	r.HandleFunc("/api/server-count", ServerCountHandler)
+	r.HandleFunc("/help/", HelpHandler)
+	r.HandleFunc("/terms/", TermsHandler)
+	r.HandleFunc("/policy/", PolicyHandler)
+	r.HandleFunc("/admin/login/", LoginHandler)
+	r.HandleFunc("/admin/logout/", LogoutHandler)
+	r.HandleFunc("/admin/", AuthMiddleware(DashboardHandler))
+	r.HandleFunc("/admin/stats/", AuthMiddleware(StatsHandler))
+	r.HandleFunc("/api/server-count/", ServerCountHandler)
 
 	staticDir := os.Getenv("STATIC_DIR")
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
