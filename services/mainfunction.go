@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	maxRetryAttempts     = 3
-	retryDelay           = 5 * time.Second
+	// maxRetryAttempts     = 3
+	// retryDelay           = 5 * time.Second
 	maxConsecutiveErrors = 5
 )
 
@@ -324,21 +324,6 @@ func getStatusFields(account models.Account, status models.Status) []*discordgo.
 		}
 	}
 
-	// TODO: why is this here? is it duplicated we only need to check vip 1 time once it is set in database for the account
-	/*
-		if isVIP, err := CheckVIPStatus(account.SSOCookie); err == nil {
-			vipStatus := "No"
-			if isVIP {
-				vipStatus = "Yes"
-			}
-			fields = append(fields, &discordgo.MessageEmbedField{
-				Name:   "VIP Status",
-				Value:  vipStatus,
-				Inline: true,
-			})
-		}
-	*/
-
 	if account.Created > 0 {
 		creationDate := time.Unix(account.Created, 0)
 		accountAge := time.Since(creationDate)
@@ -402,33 +387,6 @@ func disableAccount(s *discordgo.Session, account models.Account, reason string)
 
 	NotifyUserAboutDisabledAccount(s, account, reason)
 }
-
-// TODO: remove  after ensuring it is not used
-/*
-func updateAccountStatus(s *discordgo.Session, account models.Account, result models.Status) {
-	DBMutex.Lock()
-	defer DBMutex.Unlock()
-
-	lastStatus := account.LastStatus
-	now := time.Now()
-	account.LastCheck = now.Unix()
-	account.IsExpiredCookie = false
-	if err := database.DB.Save(&account).Error; err != nil {
-		logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
-		return
-	}
-
-	if result != lastStatus {
-		lastStatusChange := time.Unix(account.LastStatusChange, 0)
-		if now.Sub(lastStatusChange).Hours() >= statusChangeCooldown {
-			userSettings, _ := GetUserSettings(account.UserID)
-			HandleStatusChange(s, account, result, userSettings)
-		} else {
-			logger.Log.Infof("Skipping status change notification for account %s (cooldown)", account.Title)
-		}
-	}
-}
-*/
 
 func ScheduleTempBanNotification(s *discordgo.Session, account models.Account, duration string) {
 	parts := strings.Split(duration, ",")
