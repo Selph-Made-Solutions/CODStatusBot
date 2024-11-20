@@ -602,13 +602,6 @@ func getShadowBannedAccounts() (int, error) {
 	return int(count), err
 }
 
-/*
-	func getTotalShadowbans() (int, error) {
-		var count int64
-		err := database.DB.Model(&models.Ban{}).Where("status = ?", models.StatusShadowban).Count(&count).Error
-		return int(count), err
-	}
-*/
 func getTotalUsers() (int, error) {
 	var count int64
 	err := database.DB.Model(&models.UserSettings{}).Count(&count).Error
