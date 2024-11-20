@@ -15,7 +15,6 @@ import (
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bradselph/CODStatusBot/services"
-	"github.com/bradselph/CODStatusBot/webserver"
 	"github.com/bwmarrin/discordgo"
 
 	"github.com/joho/godotenv"
@@ -80,8 +79,6 @@ func run() error {
 	}
 	logger.Log.Info("Database initialized successfully")
 
-	//server := webserver.StartAdminDashboard()
-
 	var err error
 	discord, err = bot.StartBot()
 	if err != nil {
@@ -101,13 +98,6 @@ func run() error {
 	logger.Log.Info("Shutting down COD Status Bot...")
 
 	cancelPeriodicTasks()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// if err := server.Shutdown(ctx); err != nil {
-	//	logger.Log.WithError(err).Error("Error shutting down webpage server")
-	// }
 
 	if err := discord.Close(); err != nil {
 		logger.Log.WithError(err).Error("Error closing Discord session")
@@ -249,7 +239,6 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 		}
 	}()
 
-	//go webserver.StartStatsCaching()
 	go services.ScheduleBalanceChecks(s)
 
 	go func() {
