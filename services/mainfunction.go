@@ -19,8 +19,6 @@ import (
 )
 
 const (
-	// maxRetryAttempts     = 3
-	// retryDelay           = 5 * time.Second
 	maxConsecutiveErrors = 5
 )
 
