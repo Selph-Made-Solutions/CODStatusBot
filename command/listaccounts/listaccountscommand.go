@@ -13,9 +13,9 @@ import (
 )
 
 var (
-	checkCircle    = os.Getenv("CHECKCIRCLE")
-	banCircle      = os.Getenv("BANCIRCLE")
-	infoCircle     = os.Getenv("INFOCIRCLE")
+	//	checkCircle    = os.Getenv("CHECKCIRCLE")
+	banCircle = os.Getenv("BANCIRCLE")
+	//	infoCircle     = os.Getenv("INFOCIRCLE")
 	stopWatch      = os.Getenv("STOPWATCH")
 	questionCircle = os.Getenv("QUESTIONCIRCLE")
 )
