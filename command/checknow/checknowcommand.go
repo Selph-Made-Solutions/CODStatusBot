@@ -5,7 +5,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/bradselph/CODStatusBot/database"
@@ -17,9 +16,9 @@ import (
 )
 
 var (
-	rateLimiter     = make(map[string]time.Time)
-	rateLimiterLock sync.Mutex
-	rateLimit       time.Duration
+	//	rateLimiter     = make(map[string]time.Time)
+	//	rateLimiterLock sync.Mutex
+	rateLimit time.Duration
 )
 
 func init() {
