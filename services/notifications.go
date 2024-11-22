@@ -11,14 +11,13 @@ import (
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bwmarrin/discordgo"
-	"github.com/patrickmn/go-cache"
 )
 
 const (
-	defaultCooldown       = 1 * time.Hour
-	defaultNotifyInterval = 24 * time.Hour
-	minNotifyInterval     = 1 * time.Hour
-	maxNotifyInterval     = 72 * time.Hour
+	defaultCooldown = 1 * time.Hour
+	//	defaultNotifyInterval = 24 * time.Hour
+	//	minNotifyInterval     = 1 * time.Hour
+	//	maxNotifyInterval     = 72 * time.Hour
 )
 
 var (
@@ -28,10 +27,10 @@ var (
 	stopWatch      = os.Getenv("STOPWATCH")
 	questionCircle = os.Getenv("QUESTIONCIRCLE")
 
-	userNotificationMutex      sync.Mutex
-	userNotificationTimestamps = make(map[string]map[string]time.Time)
-	adminNotificationCache     = cache.New(5*time.Minute, 10*time.Minute)
-	notificationConfigs        = map[string]NotificationConfig{
+	//	userNotificationMutex      sync.Mutex
+	//	userNotificationTimestamps = make(map[string]map[string]time.Time)
+	//	adminNotificationCache     = cache.New(5*time.Minute, 10*time.Minute)
+	notificationConfigs = map[string]NotificationConfig{
 		"channel_change":       {Type: "channel_change", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 4},
 		"status_change":        {Type: "status_change", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 4},
 		"permaban":             {Type: "permaban", Cooldown: 24 * time.Hour, AllowConsolidated: false, MaxPerHour: 2},
@@ -65,10 +64,10 @@ type NotificationConfig struct {
 }
 
 var (
-	globalLimiter           = NewNotificationLimiter()
-	maxNotificationsPerHour = 4
-	maxNotificationsPerDay  = 10
-	minNotificationInterval = 5 * time.Minute
+	globalLimiter = NewNotificationLimiter()
+	//	maxNotificationsPerHour = 4
+	//	maxNotificationsPerDay  = 10
+	//	minNotificationInterval = 5 * time.Minute
 )
 
 func NotifyAdmin(s *discordgo.Session, message string) {
