@@ -16,12 +16,11 @@ import (
 )
 
 var (
-	checkURL         = os.Getenv("CHECK_ENDPOINT")       // account status check endpoint.
-	profileURL       = os.Getenv("PROFILE_ENDPOINT")     // Endpoint for retrieving profile information
-	checkVIP         = os.Getenv("CHECK_VIP_ENDPOINT")   // Endpoint for checking VIP status
-	redeemCodeURL    = os.Getenv("REDEEM_CODE_ENDPOINT") // Endpoint for redeeming codes
-	recaptchaSiteKey = os.Getenv("RECAPTCHA_SITE_KEY")   // Site key for reCAPTCHA
-	recaptchaURL     = os.Getenv("RECAPTCHA_URL")        // URL for reCAPTCHA
+	checkURL         = os.Getenv("CHECK_ENDPOINT")     // account status check endpoint.
+	profileURL       = os.Getenv("PROFILE_ENDPOINT")   // Endpoint for retrieving profile information
+	checkVIP         = os.Getenv("CHECK_VIP_ENDPOINT") // Endpoint for checking VIP status
+	recaptchaSiteKey = os.Getenv("RECAPTCHA_SITE_KEY") // Site key for reCAPTCHA
+	recaptchaURL     = os.Getenv("RECAPTCHA_URL")      // URL for reCAPTCHA
 )
 
 type AccountValidationResult struct {
@@ -77,10 +76,15 @@ func VerifySSOCookie(ssoCookie string) bool {
 }
 
 func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models.Status, error) {
+	// Lock database operations for operation
+	DBMutex.Lock()
+	defer DBMutex.Unlock()
 	logger.Log.Info("Starting CheckAccount function")
 
+	// Validate user exists and has permission to check accounts
 	userSettings, err := GetUserSettings(userID)
 	if err != nil {
+		logger.Log.WithError(err).WithField("userID", userID).Error("Failed to get user settings")
 		if isCriticalError(err) {
 			logger.Log.WithError(err).Error("Critical error getting user settings")
 			return models.StatusUnknown, fmt.Errorf("critical error: %w", err)
@@ -88,22 +92,32 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 		return models.StatusUnknown, fmt.Errorf("failed to get user settings: %w", err)
 	}
 
+	// Validate captcha service availability
 	if !IsServiceEnabled("ezcaptcha") && !IsServiceEnabled("2captcha") {
 		return models.StatusUnknown, fmt.Errorf("no captcha services are currently enabled")
 	}
 
+	// Handle captcha provider fallback
 	if !IsServiceEnabled(userSettings.PreferredCaptchaProvider) {
 		if IsServiceEnabled("ezcaptcha") {
-			userSettings.PreferredCaptchaProvider = ezcap
+			// userSettings.PreferredCaptchaProvider = ezcap
+			userSettings.PreferredCaptchaProvider = "ezcaptcha"
 			database.DB.Save(&userSettings)
 		} else if IsServiceEnabled("2captcha") {
-			userSettings.PreferredCaptchaProvider = twocap
+			// userSettings.PreferredCaptchaProvider = twocap
+			userSettings.PreferredCaptchaProvider = "2captcha"
 			database.DB.Save(&userSettings)
 		} else {
 			return models.StatusUnknown, fmt.Errorf("no captcha services are currently enabled")
 		}
 	}
 
+	// Verify user hasn't exceeded rate limit
+	if !checkActionRateLimit(userID, fmt.Sprintf("check_account_%s", userID), time.Hour) { // Experimental
+		return models.StatusUnknown, fmt.Errorf("rate limit exceeded for user %s", userID) // Experimental
+	} // Experimental
+
+	// Get captcha solver with retry logic
 	solver, err := GetCaptchaSolver(userID)
 	if err != nil {
 		if isCriticalError(err) {
@@ -117,54 +131,78 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 		return models.StatusUnknown, fmt.Errorf("failed to create captcha solver: %w", err)
 	}
 
-	gRecaptchaResponse, err := solver.SolveReCaptchaV2(recaptchaSiteKey, recaptchaURL)
-	if err != nil {
+	// Solve reCAPTCHA with retry logic
+	var gRecaptchaResponse string
+	maxRetries := 3
+	for i := 0; i < maxRetries; i++ {
+		gRecaptchaResponse, err = solver.SolveReCaptchaV2(recaptchaSiteKey, recaptchaURL)
+		if err == nil {
+			break
+		}
 		if strings.Contains(err.Error(), "insufficient balance") {
 			if err := DisableUserCaptcha(nil, userID, "Insufficient balance"); err != nil {
 				logger.Log.WithError(err).Error("Failed to disable user captcha service")
 			}
 			return models.StatusUnknown, fmt.Errorf("insufficient captcha balance")
 		}
-		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %w", err)
+		if i < maxRetries-1 {
+			time.Sleep(time.Duration(i+1) * time.Second)
+		}
+	}
+	if err != nil {
+		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA after %d attempts: %w", maxRetries, err)
 	}
 
 	logger.Log.Info("Successfully received reCAPTCHA response")
 
+	// Construct request URL
 	checkRequest := fmt.Sprintf("%s?locale=en&g-cc=%s", checkURL, gRecaptchaResponse)
 	logger.Log.WithField("url", checkRequest).Info("Constructed account check request")
 
+	// Create request headers
 	req, err := http.NewRequest("GET", checkRequest, nil)
 	if err != nil {
 		return models.StatusUnknown, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
+	// Add all required headers
 	headers := GenerateHeaders(ssoCookie)
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
 	logger.Log.WithField("headers", headers).Info("Set request headers")
 
+	// Configure client with timeouts and settings
 	client := &http.Client{
 		Timeout: 120 * time.Second,
+		Transport: &http.Transport{ // Experimental
+			TLSHandshakeTimeout:   10 * time.Second, // Experimental
+			ResponseHeaderTimeout: 30 * time.Second, // Experimental
+			ExpectContinueTimeout: 1 * time.Second,  // Experimental
+			MaxIdleConnsPerHost:   10,               // Experimental
+			DisableCompression:    false,            // Experimental
+		},
 	}
 
+	// Request with retry logic
 	var resp *http.Response
 	var body []byte
-	maxRetries := 3
+	maxAPIRetries := 3
+	var lastError error
 
-	for i := 0; i < maxRetries; i++ {
-		logger.Log.Infof("Sending HTTP request to check account (attempt %d/%d)", i+1, maxRetries)
+	for i := 0; i < maxAPIRetries; i++ {
+		logger.Log.Infof("Sending HTTP request to check account (attempt %d/%d)", i+1, maxAPIRetries)
 		resp, err = client.Do(req)
 		if err != nil {
-			if i == maxRetries-1 {
-				return models.StatusUnknown, fmt.Errorf("failed to send HTTP request after %d attempts: %w", maxRetries, err)
+			lastError = err
+			if i < maxAPIRetries-1 {
+				time.Sleep(time.Duration(i+1) * time.Second)
+				continue
 			}
-			time.Sleep(time.Duration(i+1) * time.Second)
-			continue
+			return models.StatusUnknown, fmt.Errorf("failed to send HTTP request after %d attempts: %w", maxAPIRetries, lastError)
 		}
 		defer func(Body io.ReadCloser) {
-			err := Body.Close()
-			if err != nil {
+			if err := Body.Close(); err != nil {
 				logger.Log.WithError(err).Error("Failed to close response body")
 			}
 		}(resp.Body)
@@ -173,17 +211,19 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 
 		body, err = io.ReadAll(resp.Body)
 		if err != nil {
-			if i == maxRetries-1 {
-				return models.StatusUnknown, fmt.Errorf("failed to read response body after %d attempts: %w", maxRetries, err)
+			lastError = err
+			if i < maxAPIRetries-1 {
+				time.Sleep(time.Duration(i+1) * time.Second)
+				continue
 			}
-			time.Sleep(time.Duration(i+1) * time.Second)
-			continue
+			return models.StatusUnknown, fmt.Errorf("failed to read response body after %d attempts: %w", maxAPIRetries, lastError)
 		}
 		break
 	}
 
 	logger.Log.WithField("body", string(body)).Info("Read response body")
 
+	// Handle error responses
 	var errorResponse struct {
 		Timestamp string `json:"timestamp"`
 		Path      string `json:"path"`
@@ -200,6 +240,12 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 		}
 	}
 
+	// Handle empty response
+	if string(body) == "" {
+		return models.StatusInvalidCookie, nil
+	}
+
+	// Parse response data
 	var data struct {
 		Error     string `json:"error"`
 		Success   string `json:"success"`
@@ -211,19 +257,17 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 		} `json:"bans"`
 	}
 
-	if string(body) == "" {
-		return models.StatusInvalidCookie, nil
-	}
-
 	if err := json.Unmarshal(body, &data); err != nil {
 		return models.StatusUnknown, fmt.Errorf("failed to decode JSON response: %w", err)
 	}
 	logger.Log.WithField("data", data).Info("Parsed ban data")
 
+	// Update captcha usage tracking
 	if err := UpdateCaptchaUsage(userID); err != nil {
 		logger.Log.WithError(err).Error("Failed to update captcha usage")
 	}
 
+	// Determine account status
 	if len(data.Bans) == 0 {
 		logger.Log.Info("No bans found, account status is good")
 		return models.StatusGood, nil
@@ -379,6 +423,7 @@ func CheckVIPStatus(ssoCookie string) (bool, error) {
 	return data.VIP, nil
 }
 
+/*
 func RedeemCode(ssoCookie, code string) (string, error) {
 	logger.Log.Infof("Attempting to redeem code: %s", code)
 
@@ -437,20 +482,33 @@ func RedeemCode(ssoCookie, code string) (string, error) {
 	logger.Log.Warnf("Unexpected response body: %s", bodyStr)
 	return "", fmt.Errorf("failed to redeem code: unexpected response")
 }
+*/
 
 func ValidateAndGetAccountInfo(ssoCookie string) (*AccountValidationResult, error) {
+	// Create request with timeouts
 	req, err := http.NewRequest("GET", profileURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create profile request: %w", err)
 	}
 
+	// Add all headers
 	headers := GenerateHeaders(ssoCookie)
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
 
+	// client with timeouts
 	client := &http.Client{
 		Timeout: 60 * time.Second,
+		Transport: &http.Transport{ // Experimental
+			TLSHandshakeTimeout:   10 * time.Second, // Experimental
+			ResponseHeaderTimeout: 30 * time.Second, // Experimental
+			ExpectContinueTimeout: 1 * time.Second,  // Experimental
+			MaxIdleConnsPerHost:   10,               // Experimental
+			DisableCompression:    false,            // Experimental
+			IdleConnTimeout:       90 * time.Second, // Experimental
+			DisableKeepAlives:     false,            // Experimental
+		}, // Experimental
 	}
 
 	resp, err := client.Do(req)
@@ -458,21 +516,23 @@ func ValidateAndGetAccountInfo(ssoCookie string) (*AccountValidationResult, erro
 		return nil, fmt.Errorf("failed to send profile request: %w", err)
 	}
 	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
+		if err := Body.Close(); err != nil {
 			logger.Log.WithError(err).Error("Failed to close response body")
 		}
 	}(resp.Body)
 
+	// Check response status
 	if resp.StatusCode != http.StatusOK {
 		return &AccountValidationResult{IsValid: false}, nil
 	}
 
+	// Parse data with validation
 	var profileData map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&profileData); err != nil {
 		return nil, fmt.Errorf("failed to decode profile response: %w", err)
 	}
 
+	// Parse creation date
 	createdStr, ok := profileData["created"].(string)
 	if !ok {
 		return nil, fmt.Errorf("invalid creation date format")
@@ -483,15 +543,22 @@ func ValidateAndGetAccountInfo(ssoCookie string) (*AccountValidationResult, erro
 		return nil, fmt.Errorf("failed to parse creation date: %w", err)
 	}
 
+	// Check VIP status
 	isVIP, err := CheckVIPStatus(ssoCookie)
 	if err != nil {
 		logger.Log.WithError(err).Warn("Failed to check VIP status, defaulting to false")
 		isVIP = false
 	}
 
+	// Decode cookie for expiration
 	expirationTimestamp, err := DecodeSSOCookie(ssoCookie)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode SSO cookie: %w", err)
+	}
+
+	// Check for expired cookie
+	if time.Now().Unix() > expirationTimestamp {
+		return &AccountValidationResult{IsValid: false}, nil
 	}
 
 	return &AccountValidationResult{
