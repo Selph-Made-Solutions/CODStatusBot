@@ -122,12 +122,15 @@ func (u *UserSettings) EnsureMapsInitialized() {
 	}
 }
 
+/*
 func (u *UserSettings) BeforeCreate(tx *gorm.DB) error {
 	u.EnsureMapsInitialized()
 	return nil
 }
-
+*/
+/*
 func (u *UserSettings) AfterFind(tx *gorm.DB) error {
 	u.EnsureMapsInitialized()
 	return nil
 }
+*/
