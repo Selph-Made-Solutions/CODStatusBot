@@ -11,3 +11,4 @@ qodana.yaml
 qodana.sarif.json
 notes
 /.sonarlint
+/other capstuff
