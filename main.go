@@ -44,10 +44,13 @@ func main() {
 func run() error {
 	logger.Log.Info("Starting COD Status Bot...")
 
-	if err := loadEnvironmentVariables(); err != nil {
-		return fmt.Errorf("failed to load environment variables: %w", err)
+	if err := godotenv.Load(); err != nil {
+		return fmt.Errorf("failed to load .env file: %w", err)
 	}
-	logger.Log.Info("Environment variables loaded successfully")
+
+	if err := services.InitializeConfig(); err != nil {
+		return fmt.Errorf("failed to initialize configuration: %w", err)
+	}
 
 	if !services.IsServiceEnabled("ezcaptcha") && !services.IsServiceEnabled("2captcha") {
 		logger.Log.Warn("Starting bot with no captcha services enabled - functionality will be limited")
@@ -55,29 +58,23 @@ func run() error {
 		var enabledServices []string
 		if services.IsServiceEnabled("ezcaptcha") {
 			enabledServices = append(enabledServices, "EZCaptcha")
-			logger.Log.Info("EZCaptcha service enabled")
+			if services.VerifyEZCaptchaConfig() {
+				logger.Log.Info("EZCaptcha service enabled and configured correctly")
+			} else {
+				logger.Log.Error("EZCaptcha service enabled but configuration is invalid")
+			}
 		}
 		if services.IsServiceEnabled("2captcha") {
 			enabledServices = append(enabledServices, "2Captcha")
-			logger.Log.Info("2Captcha service enabled")
+			logger.Log.Info("2Captcha service enabled and configured correctly")
 		}
 		logger.Log.Infof("Enabled captcha services: %s", strings.Join(enabledServices, ", "))
 	}
-
-	if err := services.LoadEnvironmentVariables(); err != nil {
-		return fmt.Errorf("failed to initialize EZ-Captcha service: %w", err)
-	}
-	logger.Log.Info("EZ-Captcha service initialized successfully")
 
 	if err := database.Databaselogin(); err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 	logger.Log.Info("Database connection established successfully")
-
-	if err := initializeDatabase(); err != nil {
-		return fmt.Errorf("failed to initialize database: %w", err)
-	}
-	logger.Log.Info("Database initialized successfully")
 
 	var err error
 	discord, err = bot.StartBot()
@@ -113,9 +110,30 @@ func run() error {
 
 func loadEnvironmentVariables() error {
 	logger.Log.Info("Loading environment variables...")
-	if err := godotenv.Load(); err != nil {
-		logger.Log.WithError(err).Error("Error loading .env file")
-		return fmt.Errorf("error loading .env file: %w", err)
+	envPaths := []string{
+		".env",
+		"../.env",
+		"../../.env",
+		os.Getenv("ENV_FILE"),
+	}
+
+	var loaded bool
+	var lastErr error
+
+	for _, path := range envPaths {
+		if err := godotenv.Load(path); err == nil {
+			loaded = true
+			logger.Log.Infof("Loaded environment from: %s", path)
+			break
+		} else {
+			lastErr = err
+			logger.Log.Debugf("Tried loading .env from %s: %v", path, err)
+		}
+	}
+
+	if !loaded {
+		logger.Log.WithError(lastErr).Error("Failed to load .env file from any location")
+		return fmt.Errorf("failed to load .env file: %w", lastErr)
 	}
 
 	requiredEnvVars := []string{
@@ -168,11 +186,21 @@ func loadEnvironmentVariables() error {
 		"QUESTIONCIRCLE",
 	}
 
+	missingVars := []string{}
 	for _, envVar := range requiredEnvVars {
 		if os.Getenv(envVar) == "" {
-			return fmt.Errorf("%s is not set in the environment", envVar)
+			missingVars = append(missingVars, envVar)
 		}
 	}
+
+	if len(missingVars) > 0 {
+		return fmt.Errorf("missing required environment variables: %s", strings.Join(missingVars, ", "))
+	}
+
+	logger.Log.Info("Environment variables loaded successfully")
+	logger.Log.Debugf("PROFILE_ENDPOINT: %s", os.Getenv("PROFILE_ENDPOINT"))
+	logger.Log.Debugf("CHECK_ENDPOINT: %s", os.Getenv("CHECK_ENDPOINT"))
+	logger.Log.Debugf("CHECK_VIP_ENDPOINT: %s", os.Getenv("CHECK_VIP_ENDPOINT"))
 
 	return nil
 }

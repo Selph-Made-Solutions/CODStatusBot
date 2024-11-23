@@ -13,16 +13,30 @@ import (
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
+	"github.com/sirupsen/logrus"
+)
+
+const (
+	defaultProfileEndpoint = "https://support.activision.com/api/profile?accts=false"
 )
 
 var (
-	checkURL         = os.Getenv("CHECK_ENDPOINT")       // account status check endpoint.
-	profileURL       = os.Getenv("PROFILE_ENDPOINT")     // Endpoint for retrieving profile information
-	checkVIP         = os.Getenv("CHECK_VIP_ENDPOINT")   // Endpoint for checking VIP status
-	redeemCodeURL    = os.Getenv("REDEEM_CODE_ENDPOINT") // Endpoint for redeeming codes
-	recaptchaSiteKey = os.Getenv("RECAPTCHA_SITE_KEY")   // Site key for reCAPTCHA
-	recaptchaURL     = os.Getenv("RECAPTCHA_URL")        // URL for reCAPTCHA
+	checkURL         string
+	profileURL       string
+	checkVIP         string
+	recaptchaSiteKey string
+	recaptchaURL     string
 )
+
+/*
+var (
+	checkURL         = os.Getenv("CHECK_ENDPOINT")     // account status check endpoint.
+	profileURL       = os.Getenv("PROFILE_ENDPOINT")   // Endpoint for retrieving profile information
+	checkVIP         = os.Getenv("CHECK_VIP_ENDPOINT") // Endpoint for checking VIP status
+	recaptchaSiteKey = os.Getenv("RECAPTCHA_SITE_KEY") // Site key for reCAPTCHA
+	recaptchaURL     = os.Getenv("RECAPTCHA_URL")      // URL for reCAPTCHA
+)
+*/
 
 type AccountValidationResult struct {
 	IsValid     bool
@@ -32,48 +46,102 @@ type AccountValidationResult struct {
 	ProfileData map[string]interface{}
 }
 
+func init() {
+	checkURL = os.Getenv("CHECK_ENDPOINT")
+	profileURL = os.Getenv("PROFILE_ENDPOINT")
+	checkVIP = os.Getenv("CHECK_VIP_ENDPOINT")
+	recaptchaSiteKey = os.Getenv("RECAPTCHA_SITE_KEY")
+	recaptchaURL = os.Getenv("RECAPTCHA_URL")
+
+	if profileURL == "" {
+		profileURL = defaultProfileEndpoint
+		logger.Log.Warn("PROFILE_ENDPOINT not set in environment, using default value")
+	}
+
+	if !strings.HasPrefix(profileURL, "http://") && !strings.HasPrefix(profileURL, "https://") {
+		logger.Log.Errorf("Invalid profile URL: %s", profileURL)
+		profileURL = defaultProfileEndpoint
+	}
+
+	logger.Log.Infof("Initialized profile URL: %s", profileURL)
+}
+
 func VerifySSOCookie(ssoCookie string) bool {
-	logger.Log.Infof("Verifying SSO cookie: %s", ssoCookie)
-	req, err := http.NewRequest("GET", profileURL, nil)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error creating verification request")
+	logger.Log.Infof("Starting SSO cookie verification for cookie: %s", ssoCookie)
+
+	if profileURL == "" {
+		logger.Log.Error("Profile URL is not set")
 		return false
 	}
-	headers := GenerateHeaders(ssoCookie)
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
+
 	client := &http.Client{
-		Timeout: 60 * time.Second,
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error sending verification request")
-		return false
+		Timeout: 120 * time.Second,
 	}
 
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
+	maxRetries := 3
+	var lastError error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		req, err := http.NewRequest("GET", profileURL, nil)
 		if err != nil {
-			logger.Log.WithError(err).Error("Error closing response body")
+			lastError = fmt.Errorf("error creating verification request (attempt %d/%d): %w", attempt, maxRetries, err)
+			logger.Log.WithError(err).Error("Error creating verification request")
+			continue
 		}
-	}(resp.Body)
 
-	if resp.StatusCode != http.StatusOK {
-		logger.Log.Errorf("Invalid SSOCookie, status code: %d", resp.StatusCode)
-		return false
+		headers := GenerateHeaders(ssoCookie)
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+
+		logger.Log.Infof("Sending verification request to: %s (attempt %d/%d)", profileURL, attempt, maxRetries)
+		resp, err := client.Do(req)
+		if err != nil {
+			lastError = fmt.Errorf("error sending verification request (attempt %d/%d): %w", attempt, maxRetries, err)
+			logger.Log.WithError(err).Error("Error sending verification request")
+			time.Sleep(time.Duration(attempt) * time.Second)
+			continue
+		}
+
+		if resp != nil && resp.Body != nil {
+			defer func() {
+				if err := resp.Body.Close(); err != nil {
+					logger.Log.WithError(err).Error("Error closing response body")
+				}
+			}()
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			lastError = fmt.Errorf("invalid status code (attempt %d/%d): %d", attempt, maxRetries, resp.StatusCode)
+			logger.Log.WithFields(logrus.Fields{
+				"statusCode": resp.StatusCode,
+				"attempt":    attempt,
+			}).Error("Invalid status code in SSO verification")
+			time.Sleep(time.Duration(attempt) * time.Second)
+			continue
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			lastError = fmt.Errorf("error reading response body (attempt %d/%d): %w", attempt, maxRetries, err)
+			logger.Log.WithError(err).Error("Error reading response body")
+			time.Sleep(time.Duration(attempt) * time.Second)
+			continue
+		}
+
+		if len(body) == 0 {
+			lastError = fmt.Errorf("empty response body (attempt %d/%d)", attempt, maxRetries)
+			logger.Log.Error("Empty response body in SSO verification")
+			time.Sleep(time.Duration(attempt) * time.Second)
+			continue
+		}
+
+		logger.Log.Info("SSO cookie verified successfully")
+		return true
 	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error reading verification response body")
-		return false
-	}
-	if len(body) == 0 {
-		logger.Log.Error("Invalid SSOCookie, response body is empty")
-		return false
-	}
-	logger.Log.Info("SSO cookie verified successfully")
-	return true
+
+	logger.Log.WithError(lastError).Error("SSO cookie verification failed after all retries")
+	return false
 }
 
 func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models.Status, error) {
