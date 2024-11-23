@@ -129,6 +129,7 @@ func (s *EZCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 			"websiteURL":  pageURL,
 			"websiteKey":  siteKey,
 			"isInvisible": false,
+			"sa":          siteAction,
 		},
 	}
 
