@@ -89,6 +89,28 @@ func IsServiceEnabled(provider string) bool {
 	}
 }
 
+func VerifyEZCaptchaConfig() bool {
+	if clientKey == "" || ezappID == "" || siteAction == "" {
+		logger.Log.Error("Missing required EZCaptcha configuration")
+		logger.Log.Debugf("clientKey set: %v", clientKey != "")
+		logger.Log.Debugf("ezappID set: %v", ezappID != "")
+		logger.Log.Debugf("siteAction set: %v", siteAction != "")
+		return false
+	}
+
+	if recaptchaSiteKey == "" {
+		logger.Log.Error("RECAPTCHA_SITE_KEY is not set")
+		return false
+	}
+	if recaptchaURL == "" {
+		logger.Log.Error("RECAPTCHA_URL is not set")
+		return false
+	}
+
+	logger.Log.Info("EZCaptcha configuration verified successfully")
+	return true
+}
+
 func NewCaptchaSolver(apiKey, provider string) (CaptchaSolver, error) {
 	if !IsServiceEnabled(provider) {
 		return nil, fmt.Errorf("captcha service %s is currently disabled", provider)
