@@ -2,7 +2,6 @@ package bot
 
 import (
 	"errors"
-	"os"
 	"strings"
 
 	"github.com/bradselph/CODStatusBot/command"
@@ -19,6 +18,7 @@ import (
 	"github.com/bradselph/CODStatusBot/command/setnotifications"
 	"github.com/bradselph/CODStatusBot/command/togglecheck"
 	"github.com/bradselph/CODStatusBot/command/updateaccount"
+	"github.com/bradselph/CODStatusBot/config"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bwmarrin/discordgo"
 )
@@ -26,15 +26,13 @@ import (
 var discord *discordgo.Session
 
 func StartBot() (*discordgo.Session, error) {
-	envToken := os.Getenv("DISCORD_TOKEN")
-	if envToken == "" {
-		err := errors.New("DISCORD_TOKEN environment variable not set")
-		logger.Log.WithError(err).WithField("env", "DISCORD_TOKEN").Error()
-		return nil, err
+	cfg := config.Get()
+	if cfg.DiscordToken == "" {
+		return nil, errors.New("Discord token not configured")
 	}
 
 	var err error
-	discord, err = discordgo.New("Bot " + envToken)
+	discord, err = discordgo.New("Bot " + cfg.DiscordToken)
 	if err != nil {
 		return nil, err
 	}
@@ -69,8 +67,6 @@ func StartBot() (*discordgo.Session, error) {
 func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.ModalSubmitData().CustomID
 	switch {
-	//case customID == "claim_reward_modal":
-	//	claimreward.HandleModalSubmit(s, i)
 	case strings.HasPrefix(customID, "set_notifications_modal_"):
 		setnotifications.HandleModalSubmit(s, i)
 	case customID == "set_captcha_service_modal":
@@ -91,10 +87,6 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
 	switch {
-	//case customID == "claim_reward_manual" || strings.HasPrefix(customID, "claim_reward_preset_"):
-	//	claimreward.HandleRewardChoice(s, i)
-	//case strings.HasPrefix(customID, "claim_account_") || strings.HasPrefix(customID, "claim_all_"):
-	//	claimreward.HandleClaimSelection(s, i)
 	case customID == "listaccounts":
 		listaccounts.CommandListAccounts(s, i)
 	case strings.HasPrefix(customID, "feedback_"):
