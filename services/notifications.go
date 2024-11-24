@@ -11,6 +11,7 @@ import (
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bwmarrin/discordgo"
+	"github.com/patrickmn/go-cache"
 )
 
 const (
@@ -21,16 +22,15 @@ const (
 )
 
 var (
-	checkCircle    = os.Getenv("CHECKCIRCLE")
-	banCircle      = os.Getenv("BANCIRCLE")
-	infoCircle     = os.Getenv("INFOCIRCLE")
-	stopWatch      = os.Getenv("STOPWATCH")
-	questionCircle = os.Getenv("QUESTIONCIRCLE")
-
-	//	userNotificationMutex      sync.Mutex
-	//	userNotificationTimestamps = make(map[string]map[string]time.Time)
-	//	adminNotificationCache     = cache.New(5*time.Minute, 10*time.Minute)
-	notificationConfigs = map[string]NotificationConfig{
+	checkCircle                = os.Getenv("CHECKCIRCLE")
+	banCircle                  = os.Getenv("BANCIRCLE")
+	infoCircle                 = os.Getenv("INFOCIRCLE")
+	stopWatch                  = os.Getenv("STOPWATCH")
+	questionCircle             = os.Getenv("QUESTIONCIRCLE")
+	userNotificationMutex      sync.Mutex
+	userNotificationTimestamps = make(map[string]map[string]time.Time)
+	adminNotificationCache     = cache.New(5*time.Minute, 10*time.Minute)
+	notificationConfigs        = map[string]NotificationConfig{
 		"channel_change":       {Type: "channel_change", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 4},
 		"status_change":        {Type: "status_change", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 4},
 		"permaban":             {Type: "permaban", Cooldown: 24 * time.Hour, AllowConsolidated: false, MaxPerHour: 2},
