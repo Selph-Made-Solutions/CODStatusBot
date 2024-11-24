@@ -12,3 +12,4 @@ qodana.sarif.json
 notes
 /.sonarlint
 /other capstuff
+config.env
