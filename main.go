@@ -6,11 +6,11 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/bradselph/CODStatusBot/bot"
+	"github.com/bradselph/CODStatusBot/config"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
@@ -28,13 +28,13 @@ func main() {
 			logger.Log.Errorf("Recovered from panic: %v\n%s", r, debug.Stack())
 		}
 	}()
-
-	if services.IsDonationsEnabled() {
-		logger.Log.Info("Donations system enabled")
-	} else {
-		logger.Log.Info("Donations system disabled")
-	}
-
+	/*
+		if services.IsDonationsEnabled() {
+			logger.Log.Info("Donations system enabled")
+		} else {
+			logger.Log.Info("Donations system disabled")
+		}
+	*/
 	if err := run(); err != nil {
 		logger.Log.WithError(err).Error("Bot encountered an error and is shutting down")
 		logger.Log.Fatal("Exiting due to error")
@@ -44,19 +44,23 @@ func main() {
 func run() error {
 	logger.Log.Info("Starting COD Status Bot...")
 
-	if err := godotenv.Load(); err != nil {
-		return fmt.Errorf("failed to load .env file: %w", err)
+	if err := godotenv.Load("config.env"); err != nil {
+		return fmt.Errorf("failed to load config.env file: %w", err)
 	}
 
-	if err := services.InitializeConfig(); err != nil {
-		return fmt.Errorf("failed to initialize configuration: %w", err)
+	// Load configuration
+	if err := config.Load(); err != nil {
+		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	if !services.IsServiceEnabled("ezcaptcha") && !services.IsServiceEnabled("2captcha") {
+	cfg := config.Get()
+
+	// Log enabled captcha services
+	if !cfg.EZCaptchaEnabled && !cfg.TwoCaptchaEnabled {
 		logger.Log.Warn("Starting bot with no captcha services enabled - functionality will be limited")
 	} else {
 		var enabledServices []string
-		if services.IsServiceEnabled("ezcaptcha") {
+		if cfg.EZCaptchaEnabled {
 			enabledServices = append(enabledServices, "EZCaptcha")
 			if services.VerifyEZCaptchaConfig() {
 				logger.Log.Info("EZCaptcha service enabled and configured correctly")
@@ -64,18 +68,20 @@ func run() error {
 				logger.Log.Error("EZCaptcha service enabled but configuration is invalid")
 			}
 		}
-		if services.IsServiceEnabled("2captcha") {
+		if cfg.TwoCaptchaEnabled {
 			enabledServices = append(enabledServices, "2Captcha")
 			logger.Log.Info("2Captcha service enabled and configured correctly")
 		}
-		logger.Log.Infof("Enabled captcha services: %s", strings.Join(enabledServices, ", "))
+		logger.Log.Infof("Enabled captcha services: %v", enabledServices)
 	}
 
+	// Connect to database
 	if err := database.Databaselogin(); err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 	logger.Log.Info("Database connection established successfully")
 
+	// Start Discord bot
 	var err error
 	discord, err = bot.StartBot()
 	if err != nil {
@@ -83,11 +89,13 @@ func run() error {
 	}
 	logger.Log.Info("Discord bot started successfully")
 
+	// Start periodic tasks
 	periodicTasksCtx, cancelPeriodicTasks := context.WithCancel(context.Background())
 	go startPeriodicTasks(periodicTasksCtx, discord)
 
 	logger.Log.Info("COD Status Bot startup complete")
 
+	// Wait for shutdown signal
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
@@ -108,120 +116,10 @@ func run() error {
 	return nil
 }
 
-func loadEnvironmentVariables() error {
-	logger.Log.Info("Loading environment variables...")
-	envPaths := []string{
-		".env",
-		"../.env",
-		"../../.env",
-		os.Getenv("ENV_FILE"),
-	}
-
-	var loaded bool
-	var lastErr error
-
-	for _, path := range envPaths {
-		if err := godotenv.Load(path); err == nil {
-			loaded = true
-			logger.Log.Infof("Loaded environment from: %s", path)
-			break
-		} else {
-			lastErr = err
-			logger.Log.Debugf("Tried loading .env from %s: %v", path, err)
-		}
-	}
-
-	if !loaded {
-		logger.Log.WithError(lastErr).Error("Failed to load .env file from any location")
-		return fmt.Errorf("failed to load .env file: %w", lastErr)
-	}
-
-	requiredEnvVars := []string{
-		"DONATIONS_ENABLED",
-		"BITCOIN_ADDRESS",
-		"CASHAPP_ID",
-		"DISCORD_TOKEN",
-		"DEVELOPER_ID",
-		"DB_USER",
-		"DB_PASSWORD",
-		"DB_NAME",
-		"DB_HOST",
-		"DB_PORT",
-		"DB_VAR",
-		"EZCAPTCHA_ENABLED",
-		"TWOCAPTCHA_ENABLED",
-		"MAX_RETRIES",
-		"RECAPTCHA_SITE_KEY",
-		"RECAPTCHA_URL",
-		"SITE_ACTION",
-		"EZAPPID",
-		"EZCAPTCHA_CLIENT_KEY",
-		"SOFT_ID",
-		"COOLDOWN_DURATION",
-		"CHECK_INTERVAL",
-		"NOTIFICATION_INTERVAL",
-		"SLEEP_DURATION",
-		"COOKIE_CHECK_INTERVAL_PERMABAN",
-		"STATUS_CHANGE_COOLDOWN",
-		"GLOBAL_NOTIFICATION_COOLDOWN",
-		"COOKIE_EXPIRATION_WARNING",
-		"TEMP_BAN_UPDATE_INTERVAL",
-		"CHECK_ENDPOINT",
-		"PROFILE_ENDPOINT",
-		"CHECK_VIP_ENDPOINT",
-		"REDEEM_CODE_ENDPOINT",
-		"SESSION_KEY",
-		"STATIC_DIR",
-		"ADMIN_PORT",
-		"ADMIN_USERNAME",
-		"ADMIN_PASSWORD",
-		"CHECK_NOW_RATE_LIMIT",
-		"DEFAULT_RATE_LIMIT",
-		"DEFAULT_USER_MAXACCOUNTS",
-		"PREM_USER_MAXACCOUNTS",
-		"CHECKCIRCLE",
-		"BANCIRCLE",
-		"INFOCIRCLE",
-		"STOPWATCH",
-		"QUESTIONCIRCLE",
-	}
-
-	missingVars := []string{}
-	for _, envVar := range requiredEnvVars {
-		if os.Getenv(envVar) == "" {
-			missingVars = append(missingVars, envVar)
-		}
-	}
-
-	if len(missingVars) > 0 {
-		return fmt.Errorf("missing required environment variables: %s", strings.Join(missingVars, ", "))
-	}
-
-	logger.Log.Info("Environment variables loaded successfully")
-	logger.Log.Debugf("PROFILE_ENDPOINT: %s", os.Getenv("PROFILE_ENDPOINT"))
-	logger.Log.Debugf("CHECK_ENDPOINT: %s", os.Getenv("CHECK_ENDPOINT"))
-	logger.Log.Debugf("CHECK_VIP_ENDPOINT: %s", os.Getenv("CHECK_VIP_ENDPOINT"))
-
-	return nil
-}
-
-func initializeDatabase() error {
-	if err := database.DB.AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{}); err != nil {
-		return fmt.Errorf("failed to migrate database tables: %w", err)
-	}
-
-	var accounts []models.Account
-	database.DB.Find(&accounts)
-	for _, account := range accounts {
-		if account.LastStatus == models.StatusShadowban {
-			account.IsShadowbanned = true
-			database.DB.Save(&account)
-		}
-	}
-	return nil
-}
-
 func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
+	cfg := config.Get()
+
+	// Account checking task
 	go func() {
 		for {
 			select {
@@ -229,12 +127,12 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 				return
 			default:
 				services.CheckAccounts(s)
-				sleepDuration := time.Duration(services.GetEnvInt("SLEEP_DURATION", 3)) * time.Minute
-				time.Sleep(sleepDuration)
+				time.Sleep(time.Duration(cfg.SleepDuration) * time.Minute)
 			}
 		}
 	}()
 
+	// Daily updates task
 	go func() {
 		for {
 			select {
@@ -257,7 +155,7 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 					}
 
 					if time.Since(user.LastDailyUpdateNotification) >=
-						time.Duration(user.NotificationInterval)*time.Hour {
+						time.Duration(cfg.NotificationInterval)*time.Hour {
 						services.SendConsolidatedDailyUpdate(s, user.UserID, user, accounts)
 					}
 				}
@@ -267,8 +165,10 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 		}
 	}()
 
+	// Balance checking task
 	go services.ScheduleBalanceChecks(s)
 
+	// Global announcements task
 	go func() {
 		for {
 			select {
