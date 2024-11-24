@@ -8,36 +8,18 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
-	"strconv"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/config"
 	"github.com/bradselph/CODStatusBot/logger"
 )
 
 func LoadEnvironmentVariables() error {
-	clientKey = os.Getenv("EZCAPTCHA_CLIENT_KEY")
-	ezappID = os.Getenv("EZAPPID")
-	softID = os.Getenv("SOFT_ID")
-	siteAction = os.Getenv("SITE_ACTION")
-	ezCapBalMinStr := os.Getenv("EZCAPBALMIN")
-	twoCapBalMinStr := os.Getenv("TWOCAPBALMIN")
+	cfg := config.Get()
 
-	var err error
-	ezCapBalMin, err = strconv.ParseFloat(ezCapBalMinStr, 64)
-	if err != nil {
-		ezCapBalMin = 100
-		logger.Log.Warnf("Failed to parse EZCAPBALMIN, using default value: %v", ezCapBalMin)
-	}
-
-	twoCapBalMin, err = strconv.ParseFloat(twoCapBalMinStr, 64)
-	if err != nil {
-		twoCapBalMin = 0.10
-		logger.Log.Warnf("Failed to parse TWOCAPBALMIN, using default value: %v", twoCapBalMin)
-	}
-
-	if clientKey == "" || ezappID == "" || softID == "" || siteAction == "" {
-		return fmt.Errorf("EZCAPTCHA_CLIENT_KEY, EZAPPID, SOFT_ID, or SITE_ACTION is not set in the environment")
+	if cfg.EZCaptchaClientKey == "" || cfg.EZAppID == "" ||
+		cfg.SoftID == "" || cfg.SiteAction == "" {
+		return fmt.Errorf("required captcha configuration values not set")
 	}
 
 	return nil
@@ -79,30 +61,33 @@ const (
 )
 
 func IsServiceEnabled(provider string) bool {
+	cfg := config.Get()
 	switch provider {
 	case ezcap:
-		return os.Getenv("EZCAPTCHA_ENABLED") == "true"
+		return cfg.EZCaptchaEnabled
 	case twocap:
-		return os.Getenv("TWOCAPTCHA_ENABLED") == "true"
+		return cfg.TwoCaptchaEnabled
 	default:
 		return false
 	}
 }
 
 func VerifyEZCaptchaConfig() bool {
-	if clientKey == "" || ezappID == "" || siteAction == "" {
+	cfg := config.Get()
+
+	if cfg.EZCaptchaClientKey == "" || cfg.EZAppID == "" || cfg.SiteAction == "" {
 		logger.Log.Error("Missing required EZCaptcha configuration")
-		logger.Log.Debugf("clientKey set: %v", clientKey != "")
-		logger.Log.Debugf("ezappID set: %v", ezappID != "")
-		logger.Log.Debugf("siteAction set: %v", siteAction != "")
+		logger.Log.Debugf("clientKey set: %v", cfg.EZCaptchaClientKey != "")
+		logger.Log.Debugf("ezappID set: %v", cfg.EZAppID != "")
+		logger.Log.Debugf("siteAction set: %v", cfg.SiteAction != "")
 		return false
 	}
 
-	if recaptchaSiteKey == "" {
+	if cfg.RecaptchaSiteKey == "" {
 		logger.Log.Error("RECAPTCHA_SITE_KEY is not set")
 		return false
 	}
-	if recaptchaURL == "" {
+	if cfg.RecaptchaURL == "" {
 		logger.Log.Error("RECAPTCHA_URL is not set")
 		return false
 	}
@@ -143,6 +128,16 @@ func (s *TwoCaptchaSolver) SolveReCaptchaV2(siteKey, pageURL string) (string, er
 }
 
 func (s *EZCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
+	cfg := config.Get()
+
+	if s.EzappID == "" {
+		return "", fmt.Errorf("EzappID is not configured")
+	}
+
+	if cfg.SiteAction == "" {
+		return "", fmt.Errorf("site action is not configured")
+	}
+
 	payload := map[string]interface{}{
 		"clientKey": s.APIKey,
 		"appId":     s.EzappID,
@@ -151,7 +146,7 @@ func (s *EZCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 			"websiteURL":  pageURL,
 			"websiteKey":  siteKey,
 			"isInvisible": false,
-			"sa":          siteAction,
+			"sa":          cfg.SiteAction,
 		},
 	}
 
@@ -318,11 +313,12 @@ func sendRequest(url string, payload interface{}) ([]byte, error) {
 }
 
 func getBalanceThreshold(provider string) float64 {
+	cfg := config.Get()
 	switch provider {
 	case ezcap:
-		return ezCapBalMin
+		return cfg.EZCapBalMin
 	case twocap:
-		return twoCapBalMin
+		return cfg.TwoCapBalMin
 	default:
 		return 0
 	}
