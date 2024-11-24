@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/config"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
@@ -103,6 +104,8 @@ func getActionLimit(action string) int {
 }
 
 func processUserAccounts(s *discordgo.Session, userID string, accounts []models.Account) {
+	cfg := config.Get()
+
 	userSettings, err := GetUserSettings(userID)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
@@ -121,7 +124,7 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 
 	now := time.Now()
 	shouldSendDaily := time.Since(userSettings.LastDailyUpdateNotification) >=
-		time.Duration(userSettings.NotificationInterval)*time.Hour
+		time.Duration(cfg.NotificationInterval)*time.Hour
 
 	for _, account := range accounts {
 		if !shouldCheckAccount(account, userSettings) {
@@ -203,6 +206,7 @@ func notifyUserOfServiceIssue(s *discordgo.Session, userID string, err error) {
 }
 
 func shouldCheckAccount(account models.Account, settings models.UserSettings) bool {
+	cfg := config.Get()
 	now := time.Now()
 
 	if account.IsCheckDisabled {
@@ -216,11 +220,11 @@ func shouldCheckAccount(account models.Account, settings models.UserSettings) bo
 
 	var nextCheckTime time.Time
 	if account.IsPermabanned {
-		nextCheckTime = time.Unix(account.LastCheck, 0).Add(time.Duration(cookieCheckIntervalPermaban) * time.Hour)
+		nextCheckTime = time.Unix(account.LastCheck, 0).Add(time.Duration(cfg.CookieCheckIntervalPermaban) * time.Hour)
 	} else {
 		checkInterval := settings.CheckInterval
 		if checkInterval < 1 {
-			checkInterval = GetEnvInt("CHECK_INTERVAL", 15)
+			checkInterval = cfg.CheckInterval
 		}
 		nextCheckTime = time.Unix(account.LastCheck, 0).Add(time.Duration(checkInterval) * time.Minute)
 	}
@@ -236,8 +240,9 @@ func shouldCheckAccount(account models.Account, settings models.UserSettings) bo
 		return now.After(nextCheckTime)
 	}
 
-	return now.After(nextCheckTime) && time.Since(time.Unix(account.LastCheck, 0)) >= defaultRateLimit
+	return now.After(nextCheckTime) && time.Since(time.Unix(account.LastCheck, 0)) >= cfg.DefaultRateLimit
 }
+
 func hasStatusChanged(account models.Account, newStatus models.Status) bool {
 	if account.LastStatus == models.StatusUnknown {
 		return true
