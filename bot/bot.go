@@ -18,7 +18,7 @@ import (
 	"github.com/bradselph/CODStatusBot/command/setnotifications"
 	"github.com/bradselph/CODStatusBot/command/togglecheck"
 	"github.com/bradselph/CODStatusBot/command/updateaccount"
-	"github.com/bradselph/CODStatusBot/config"
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bwmarrin/discordgo"
 )
@@ -26,13 +26,13 @@ import (
 var discord *discordgo.Session
 
 func StartBot() (*discordgo.Session, error) {
-	cfg := config.Get()
-	if cfg.DiscordToken == "" {
+	cfg := configuration.Get()
+	if cfg.Discord.Token == "" {
 		return nil, errors.New("Discord token not configured")
 	}
 
 	var err error
-	discord, err = discordgo.New("Bot " + cfg.DiscordToken)
+	discord, err = discordgo.New("Bot " + cfg.Discord.Token)
 	if err != nil {
 		return nil, err
 	}

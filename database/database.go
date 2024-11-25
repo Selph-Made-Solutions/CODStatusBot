@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/bradselph/CODStatusBot/config"
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 	"gorm.io/driver/mysql"
@@ -16,21 +16,23 @@ var DB *gorm.DB
 func Databaselogin() error {
 	logger.Log.Info("Connecting to database...")
 
-	cfg := config.Get()
-	if cfg.DBUser == "" || cfg.DBPassword == "" || cfg.DBHost == "" ||
-		cfg.DBPort == "" || cfg.DBName == "" || cfg.DBVar == "" {
+	cfg := configuration.Get()
+	dbConfig := cfg.Database
+
+	if dbConfig.User == "" || dbConfig.Password == "" || dbConfig.Host == "" ||
+		dbConfig.Port == "" || dbConfig.Name == "" || dbConfig.Var == "" {
 		err := errors.New("one or more database configuration values not set")
 		logger.Log.WithError(err).WithField("Bot Startup ", "database configuration ").Error()
 		return err
 	}
 
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s%s",
-		cfg.DBUser,
-		cfg.DBPassword,
-		cfg.DBHost,
-		cfg.DBPort,
-		cfg.DBName,
-		cfg.DBVar)
+		dbConfig.User,
+		dbConfig.Password,
+		dbConfig.Host,
+		dbConfig.Port,
+		dbConfig.Name,
+		dbConfig.Var)
 
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
