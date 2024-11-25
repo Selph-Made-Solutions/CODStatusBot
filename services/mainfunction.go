@@ -11,31 +11,33 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bradselph/CODStatusBot/config"
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bwmarrin/discordgo"
-	"github.com/joho/godotenv"
 )
 
 const (
-	maxConsecutiveErrors = 5
+	maxConsecutiveErrors    = 5
+	cookieExpirationWarning = 24
 )
 
 var (
 	DBMutex sync.Mutex
 )
 
+// TODO: Shouldn't this be in the removed since we moved to the new config?
+
 func init() {
-	cfg := config.Get()
+	cfg := configuration.Get()
 	logger.Log.Infof("Loaded rate limits and intervals: CHECK_INTERVAL=%.2f, NOTIFICATION_INTERVAL=%.2f, "+
 		"COOLDOWN_DURATION=%.2f, SLEEP_DURATION=%d, COOKIE_CHECK_INTERVAL_PERMABAN=%.2f, "+
 		"STATUS_CHANGE_COOLDOWN=%.2f, GLOBAL_NOTIFICATION_COOLDOWN=%.2f, COOKIE_EXPIRATION_WARNING=%.2f, "+
 		"TEMP_BAN_UPDATE_INTERVAL=%.2f, CHECK_NOW_RATE_LIMIT=%v, DEFAULT_RATE_LIMIT=%v",
-		cfg.CheckInterval, cfg.NotificationInterval, cfg.CooldownDuration, cfg.SleepDuration,
-		cfg.CookieCheckIntervalPermaban, cfg.StatusChangeCooldown, cfg.GlobalNotificationCooldown,
-		cfg.CookieExpirationWarning, cfg.TempBanUpdateInterval, cfg.CheckNowRateLimit, cfg.DefaultRateLimit)
+		cfg.Intervals.Check, cfg.Intervals.Notification, cfg.Intervals.Cooldown, cfg.Intervals.Sleep,
+		cfg.Intervals.PermaBanCheck, cfg.Intervals.StatusChange, cfg.Intervals.GlobalNotification,
+		cfg.Intervals.CookieExpiration, cfg.Intervals.TempBanUpdate, cfg.RateLimits.CheckNow, cfg.RateLimits.Default)
 }
 
 func GetEnvFloat(key string, fallback float64) float64 {
@@ -92,8 +94,6 @@ func CheckAccounts(s *discordgo.Session) {
 }
 
 func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus models.Status, userSettings models.UserSettings) {
-	cfg := config.Get()
-
 	if account.IsPermabanned && newStatus == models.StatusPermaban {
 		if account.LastNotification != 0 {
 			logger.Log.Debugf("Account %s already notified of permaban, skipping notification", account.Title)
@@ -109,6 +109,7 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 	DBMutex.Lock()
 	defer DBMutex.Unlock()
 
+	cfg := configuration.Get()
 	now := time.Now()
 	lastStatusChange := time.Unix(account.LastStatusChange, 0)
 	if now.Sub(lastStatusChange) < time.Duration(userSettings.StatusChangeCooldown)*time.Hour {
@@ -222,8 +223,9 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 }
 
 func getAffectedGames(ssoCookie string) string {
-	cfg := config.Get()
-	req, err := http.NewRequest("GET", cfg.CheckEndpoint, nil)
+	cfg := configuration.Get()
+
+	req, err := http.NewRequest("GET", cfg.API.CheckEndpoint, nil)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to create request for affected games")
 		return "All Games"

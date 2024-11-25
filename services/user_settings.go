@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
@@ -14,36 +15,14 @@ import (
 
 var defaultSettings models.UserSettings
 
+// TODO: Shouldn't this be in the removed since we moved to the new config?
 func init() {
-	checkInterval, err := strconv.Atoi(os.Getenv("CHECK_INTERVAL"))
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to parse CHECK_INTERVAL, using default of 15 minutes")
-		checkInterval = 15
-	}
-
-	defaultInterval, err := strconv.ParseFloat(os.Getenv("NOTIFICATION_INTERVAL"), 64)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to parse NOTIFICATION_INTERVAL from .env, using default of 24 hours")
-		defaultInterval = 24
-	}
-
-	cooldownDuration, err := strconv.ParseFloat(os.Getenv("COOLDOWN_DURATION"), 64)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to parse COOLDOWN_DURATION, using default of 6 hours")
-		cooldownDuration = 6
-	}
-
-	statusChangeCooldown, err := strconv.ParseFloat(os.Getenv("STATUS_CHANGE_COOLDOWN"), 64)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to parse STATUS_CHANGE_COOLDOWN, using default of 1 hour")
-		statusChangeCooldown = 1
-	}
-
+	cfg := configuration.Get()
 	defaultSettings = models.UserSettings{
-		CheckInterval:            checkInterval,
-		NotificationInterval:     defaultInterval,
-		CooldownDuration:         cooldownDuration,
-		StatusChangeCooldown:     statusChangeCooldown,
+		CheckInterval:            cfg.Intervals.Check,
+		NotificationInterval:     cfg.Intervals.Notification,
+		CooldownDuration:         cfg.Intervals.Cooldown,
+		StatusChangeCooldown:     cfg.Intervals.StatusChange,
 		NotificationType:         "channel",
 		PreferredCaptchaProvider: "ezcaptcha",
 	}
@@ -79,21 +58,7 @@ func GetUserSettings(userID string) (models.UserSettings, error) {
 		settings.PreferredCaptchaProvider = defaultSettings.PreferredCaptchaProvider
 	}
 
-	if settings.NotificationTimes == nil {
-		settings.NotificationTimes = make(map[string]time.Time)
-	}
-	if settings.ActionCounts == nil {
-		settings.ActionCounts = make(map[string]int)
-	}
-	if settings.LastActionTimes == nil {
-		settings.LastActionTimes = make(map[string]time.Time)
-	}
-	if settings.LastCommandTimes == nil {
-		settings.LastCommandTimes = make(map[string]time.Time)
-	}
-	if settings.RateLimitExpiration == nil {
-		settings.RateLimitExpiration = make(map[string]time.Time)
-	}
+	settings.EnsureMapsInitialized()
 
 	if result.RowsAffected > 0 {
 		if err := database.DB.Save(&settings).Error; err != nil {
@@ -113,11 +78,13 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 		return "", 0, result.Error
 	}
 
+	cfg := configuration.Get()
+
 	switch settings.PreferredCaptchaProvider {
 	case "2captcha":
-		if !IsServiceEnabled("2captcha") {
+		if !cfg.CaptchaService.TwoCaptcha.Enabled {
 			logger.Log.Warn("Attempt to use disabled 2captcha service")
-			if IsServiceEnabled("ezcaptcha") {
+			if cfg.CaptchaService.EZCaptcha.Enabled {
 				settings.PreferredCaptchaProvider = "ezcaptcha"
 				if settings.EZCaptchaAPIKey != "" {
 					isValid, balance, err := ValidateCaptchaKey(settings.EZCaptchaAPIKey, "ezcaptcha")
@@ -144,7 +111,7 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 			return settings.TwoCaptchaAPIKey, balance, nil
 		}
 	case "ezcaptcha":
-		if !IsServiceEnabled("ezcaptcha") {
+		if !cfg.CaptchaService.EZCaptcha.Enabled {
 			return "", 0, fmt.Errorf("ezcaptcha service is currently disabled")
 		}
 		if settings.EZCaptchaAPIKey != "" {
@@ -159,8 +126,8 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 		}
 	}
 
-	if settings.PreferredCaptchaProvider == "ezcaptcha" && IsServiceEnabled("ezcaptcha") {
-		defaultKey := os.Getenv("EZCAPTCHA_CLIENT_KEY")
+	if settings.PreferredCaptchaProvider == "ezcaptcha" && cfg.CaptchaService.EZCaptcha.Enabled {
+		defaultKey := cfg.CaptchaService.EZCaptcha.ClientKey
 		isValid, _, err := ValidateCaptchaKey(defaultKey, "ezcaptcha")
 		if err != nil {
 			return "", 0, err
