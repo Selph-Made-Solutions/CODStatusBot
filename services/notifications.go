@@ -40,6 +40,8 @@ var (
 	}
 )
 
+var globalLimiter = NewNotificationLimiter()
+
 type NotificationLimiter struct {
 	sync.RWMutex
 	userCounts map[string]*NotificationState
@@ -59,18 +61,11 @@ type NotificationConfig struct {
 	MaxPerHour        int
 }
 
-var (
-	globalLimiter = NewNotificationLimiter()
-	//maxNotificationsPerHour = 4
-	//maxNotificationsPerDay  = 10
-	//minNotificationInterval = 5 * time.Minute
-)
-
 func NotifyAdmin(s *discordgo.Session, message string) {
 	cfg := configuration.Get()
 	adminID := cfg.Discord.DeveloperID
 	if adminID == "" {
-		logger.Log.Error("DEVELOPER_ID not set in environment variables")
+		logger.Log.Error("DEVELOPER_ID not set in configuration")
 		return
 	}
 
@@ -159,53 +154,20 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 	}
 
 	if balance == 0 {
-		var err error
 		apiKey, balance, err := GetUserCaptchaKey(userID)
 		if err != nil {
 			logger.Log.WithError(err).Error("Failed to get captcha balance")
 			return
 		}
 
-		if apiKey == os.Getenv("EZCAPTCHA_CLIENT_KEY") {
-			if balance < getBalanceThreshold(userSettings.PreferredCaptchaProvider) {
-				var fields []*discordgo.MessageEmbedField
-
-				fields = append(fields, &discordgo.MessageEmbedField{
-					Name: "Option 1: Use Your Own API Key (Recommended)",
-					Value: "Get your own API key using `/setcaptchaservice` for:\n" +
-						"• Faster check intervals\n" +
-						"• No rate limits\n" +
-						"• More account slots",
-					Inline: false,
-				})
-
-				if IsDonationsEnabled() {
-					bitcoinAddress := os.Getenv("BITCOIN_ADDRESS")
-					cashappID := os.Getenv("CASHAPP_ID")
-
-					if bitcoinAddress != "" || cashappID != "" {
-						donationText := "If you'd like to help keep the default API key funded:\n"
-						if bitcoinAddress != "" {
-							donationText += fmt.Sprintf("Bitcoin: %s\n", bitcoinAddress)
-						}
-						if cashappID != "" {
-							donationText += fmt.Sprintf("CashApp: %s", cashappID)
-						}
-
-						fields = append(fields, &discordgo.MessageEmbedField{
-							Name:   "Option 2: Help Support the Default API Key",
-							Value:  donationText,
-							Inline: false,
-						})
-					}
-				}
-
+		if apiKey == cfg.CaptchaService.EZCaptcha.ClientKey {
+			if balance < cfg.CaptchaService.EZCaptcha.BalanceMin {
 				embed := &discordgo.MessageEmbed{
 					Title: "Default API Key Balance Low",
 					Description: fmt.Sprintf("The bot's default API key balance is currently low (%.2f points). "+
 						"To ensure uninterrupted service, consider the following options:", balance),
 					Color:     0xFFA500,
-					Fields:    fields,
+					Fields:    getBalanceWarningFields(cfg.Donations),
 					Timestamp: time.Now().Format(time.RFC3339),
 					Footer: &discordgo.MessageEmbedFooter{
 						Text: "Thank you for using COD Status Bot!",
@@ -228,18 +190,20 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 		}
 	}
 
-	// TODO: is this not in the new centralized config?
 	var threshold float64
-	switch userSettings.PreferredCaptchaProvider {
-	case "ezcaptcha":
+	if userSettings.PreferredCaptchaProvider == "ezcaptcha" {
 		threshold = cfg.CaptchaService.EZCaptcha.BalanceMin
-	case "2captcha":
+	} else if userSettings.PreferredCaptchaProvider == "2captcha" {
 		threshold = cfg.CaptchaService.TwoCaptcha.BalanceMin
-	default:
+	} else {
 		return
 	}
 
-	if balance < threshold {
+	balanceThreshold := cfg.CaptchaService.EZCaptcha.BalanceMin
+
+	if balance < balanceThreshold {
+		embed := createUserBalanceWarningEmbed(userSettings.PreferredCaptchaProvider, balance, balanceThreshold)
+
 		embed := &discordgo.MessageEmbed{
 			Title: fmt.Sprintf("Low %s Balance Alert", userSettings.PreferredCaptchaProvider),
 			Description: fmt.Sprintf("Your %s balance is currently %.2f points, which is below the recommended threshold of %.2f points.",
@@ -438,13 +402,12 @@ func (nl *NotificationLimiter) CanSendNotification(userID string) bool {
 
 	var maxPerHour int
 	var minInterval time.Duration
-
-	// TODO: Shouldn't this be in the new centralized config also?
+	cfg := configuration.Get()
 	if userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != "" {
-		maxPerHour = 10
+		maxPerHour = cfg.RateLimits.PremiumMaxAccounts
 		minInterval = time.Minute * 5
 	} else {
-		maxPerHour = 4
+		maxPerHour = cfg.RateLimits.DefaultMaxAccounts
 		minInterval = time.Minute * 15
 	}
 
@@ -529,10 +492,10 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 	return nil
 }
 
-// TODO: Shouldn't this be using the new centralized config?
 func NotifyAdminWithCooldown(s *discordgo.Session, message string, cooldownDuration time.Duration) {
+	cfg := configuration.Get()
 	var admin models.UserSettings
-	if err := database.DB.Where("user_id = ?", os.Getenv("DEVELOPER_ID")).FirstOrCreate(&admin).Error; err != nil {
+	if err := database.DB.Where("user_id = ?", cfg.Discord.DeveloperID).FirstOrCreate(&admin).Error; err != nil {
 		logger.Log.WithError(err).Error("Error getting admin settings")
 		return
 	}

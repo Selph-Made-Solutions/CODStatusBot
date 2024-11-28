@@ -129,8 +129,8 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		}
 
 		settings.PreferredCaptchaProvider = provider
-		settings.CheckInterval = 15
-		settings.NotificationInterval = 12
+		settings.CheckInterval = cfg.Intervals.Check
+		settings.NotificationInterval = cfg.Intervals.Notification
 		settings.CustomSettings = true
 		settings.CaptchaBalance = balance
 		settings.LastBalanceCheck = time.Now()
