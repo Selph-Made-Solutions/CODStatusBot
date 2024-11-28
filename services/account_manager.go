@@ -220,7 +220,7 @@ func shouldCheckAccount(account models.Account, settings models.UserSettings) bo
 
 	var nextCheckTime time.Time
 	if account.IsPermabanned {
-		nextCheckTime = time.Unix(account.LastCheck, 0).Add(time.Duration(cfg.CookieCheckIntervalPermaban) * time.Hour)
+		nextCheckTime = time.Unix(account.LastCheck, 0).Add(time.Duration(cfg.Intervals.PermaBanCheck) * time.Hour)
 	} else {
 		checkInterval := settings.CheckInterval
 		if checkInterval < 1 {
@@ -240,7 +240,7 @@ func shouldCheckAccount(account models.Account, settings models.UserSettings) bo
 		return now.After(nextCheckTime)
 	}
 
-	return now.After(nextCheckTime) && time.Since(time.Unix(account.LastCheck, 0)) >= cfg.DefaultRateLimit
+	return now.After(nextCheckTime) && time.Since(time.Unix(account.LastCheck, 0)) >= cfg.RateLimits.Default
 }
 
 func hasStatusChanged(account models.Account, newStatus models.Status) bool {
@@ -326,5 +326,4 @@ func validateUserCaptchaService(userID string, userSettings models.UserSettings)
 	}
 
 	return nil
-
 }
