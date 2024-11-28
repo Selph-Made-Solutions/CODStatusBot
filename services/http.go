@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
@@ -28,16 +28,6 @@ var (
 	recaptchaURL     string
 )
 
-/*
-var (
-	checkURL         = os.Getenv("CHECK_ENDPOINT")     // account status check endpoint.
-	profileURL       = os.Getenv("PROFILE_ENDPOINT")   // Endpoint for retrieving profile information
-	checkVIP         = os.Getenv("CHECK_VIP_ENDPOINT") // Endpoint for checking VIP status
-	recaptchaSiteKey = os.Getenv("RECAPTCHA_SITE_KEY") // Site key for reCAPTCHA
-	recaptchaURL     = os.Getenv("RECAPTCHA_URL")      // URL for reCAPTCHA
-)
-*/
-
 type AccountValidationResult struct {
 	IsValid     bool
 	Created     int64
@@ -46,6 +36,12 @@ type AccountValidationResult struct {
 	ProfileData map[string]interface{}
 }
 
+func init() {
+	cfg := configuration.Get()
+	logger.Log.Infof("Initialized endpoints: Profile URL: %s", cfg.API.ProfileEndpoint)
+}
+
+/*
 func init() {
 	checkURL = os.Getenv("CHECK_ENDPOINT")
 	profileURL = os.Getenv("PROFILE_ENDPOINT")
@@ -65,13 +61,16 @@ func init() {
 
 	logger.Log.Infof("Initialized profile URL: %s", profileURL)
 }
+*/
 
 func VerifySSOCookie(ssoCookie string) bool {
+	cfg := configuration.Get()
 	logger.Log.Infof("Starting SSO cookie verification for cookie: %s", ssoCookie)
 
+	profileURL := cfg.API.ProfileEndpoint
 	if profileURL == "" {
-		logger.Log.Error("Profile URL is not set")
-		return false
+		profileURL = defaultProfileEndpoint
+		logger.Log.Warn("PROFILE_ENDPOINT not set in environment, using default value")
 	}
 
 	client := &http.Client{
@@ -104,11 +103,7 @@ func VerifySSOCookie(ssoCookie string) bool {
 		}
 
 		if resp != nil && resp.Body != nil {
-			defer func() {
-				if err := resp.Body.Close(); err != nil {
-					logger.Log.WithError(err).Error("Error closing response body")
-				}
-			}()
+			defer resp.Body.Close()
 		}
 
 		if resp.StatusCode != http.StatusOK {
@@ -145,6 +140,7 @@ func VerifySSOCookie(ssoCookie string) bool {
 }
 
 func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models.Status, error) {
+	cfg := configuration.Get()
 	logger.Log.Info("Starting CheckAccount function")
 
 	userSettings, err := GetUserSettings(userID)
@@ -185,7 +181,7 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 		return models.StatusUnknown, fmt.Errorf("failed to create captcha solver: %w", err)
 	}
 
-	gRecaptchaResponse, err := solver.SolveReCaptchaV2(recaptchaSiteKey, recaptchaURL)
+	gRecaptchaResponse, err := solver.SolveReCaptchaV2(cfg.CaptchaService.RecaptchaSiteKey, cfg.CaptchaService.RecaptchaURL)
 	if err != nil {
 		if strings.Contains(err.Error(), "insufficient balance") {
 			if err := DisableUserCaptcha(nil, userID, "Insufficient balance"); err != nil {
