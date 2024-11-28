@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
@@ -15,10 +16,10 @@ import (
 )
 
 const (
-	defaultCooldown = 1 * time.Hour
-	//	defaultNotifyInterval = 24 * time.Hour
-	//	minNotifyInterval     = 1 * time.Hour
-	//	maxNotifyInterval     = 72 * time.Hour
+	defaultCooldown       = 1 * time.Hour
+	defaultNotifyInterval = 24 * time.Hour
+	minNotifyInterval     = 1 * time.Hour
+	maxNotifyInterval     = 72 * time.Hour
 )
 
 var (
@@ -64,14 +65,15 @@ type NotificationConfig struct {
 }
 
 var (
-	globalLimiter = NewNotificationLimiter()
-	//	maxNotificationsPerHour = 4
-	//	maxNotificationsPerDay  = 10
-	//	minNotificationInterval = 5 * time.Minute
+	globalLimiter           = NewNotificationLimiter()
+	maxNotificationsPerHour = 4
+	maxNotificationsPerDay  = 10
+	minNotificationInterval = 5 * time.Minute
 )
 
 func NotifyAdmin(s *discordgo.Session, message string) {
-	adminID := os.Getenv("DEVELOPER_ID")
+	cfg := configuration.Get()
+	adminID := cfg.Discord.DeveloperID
 	if adminID == "" {
 		logger.Log.Error("DEVELOPER_ID not set in environment variables")
 		return
@@ -108,7 +110,8 @@ func GetCooldownDuration(userSettings models.UserSettings, notificationType stri
 }
 
 func IsDonationsEnabled() bool {
-	return os.Getenv("DONATIONS_ENABLED") == "true"
+	cfg := configuration.Get()
+	return cfg.Donations.Enabled
 }
 
 func GetNotificationChannel(s *discordgo.Session, account models.Account, userSettings models.UserSettings) (string, error) {
@@ -226,6 +229,7 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 		}
 	}
 
+	// TODO: is this not in the new centralized config?
 	var threshold float64
 	switch userSettings.PreferredCaptchaProvider {
 	case "ezcaptcha":
@@ -436,6 +440,7 @@ func (nl *NotificationLimiter) CanSendNotification(userID string) bool {
 	var maxPerHour int
 	var minInterval time.Duration
 
+	// TODO: Shouldn't this be in the new centralized config also?
 	if userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != "" {
 		maxPerHour = 10
 		minInterval = time.Minute * 5
@@ -525,6 +530,7 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 	return nil
 }
 
+// TODO: Shouldn't this be using the new centralized config?
 func NotifyAdminWithCooldown(s *discordgo.Session, message string, cooldownDuration time.Duration) {
 	var admin models.UserSettings
 	if err := database.DB.Where("user_id = ?", os.Getenv("DEVELOPER_ID")).FirstOrCreate(&admin).Error; err != nil {
@@ -645,6 +651,7 @@ func NotifyCookieExpiringSoon(s *discordgo.Session, accounts []models.Account) e
 	return SendNotification(s, accounts[0], embed, "", "cookie_expiring_soon")
 }
 
+// TODO: Figure out why This function is not being used.
 func CheckNotificationCooldown(userID string, notificationType string, cooldownDuration time.Duration) (bool, error) {
 	var settings models.UserSettings
 	if err := database.DB.Where("user_id = ?", userID).First(&settings).Error; err != nil {
@@ -669,6 +676,7 @@ func CheckNotificationCooldown(userID string, notificationType string, cooldownD
 	return false, nil
 }
 
+// TODO: Figure out why This function is not being used.
 func UpdateNotificationTimestamp(userID string, notificationType string) error {
 	var settings models.UserSettings
 	if err := database.DB.Where("user_id = ?", userID).First(&settings).Error; err != nil {
@@ -786,17 +794,18 @@ func isCriticalError(err error) bool {
 }
 
 func GetStatusIcon(status models.Status) string {
+	cfg := configuration.Get()
 	switch status {
 	case models.StatusGood:
-		return checkCircle
+		return cfg.Emojis.CheckCircle
 	case models.StatusPermaban:
-		return banCircle
+		return cfg.Emojis.BanCircle
 	case models.StatusShadowban:
-		return infoCircle
+		return cfg.Emojis.InfoCircle
 	case models.StatusTempban:
-		return stopWatch
+		return cfg.Emojis.StopWatch
 	default:
-		return questionCircle
+		return cfg.Emojis.QuestionCircle
 	}
 }
 
