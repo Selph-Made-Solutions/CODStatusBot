@@ -23,25 +23,20 @@ const (
 )
 
 var (
-	checkCircle                = os.Getenv("CHECKCIRCLE")
-	banCircle                  = os.Getenv("BANCIRCLE")
-	infoCircle                 = os.Getenv("INFOCIRCLE")
-	stopWatch                  = os.Getenv("STOPWATCH")
-	questionCircle             = os.Getenv("QUESTIONCIRCLE")
 	userNotificationMutex      sync.Mutex
 	userNotificationTimestamps = make(map[string]map[string]time.Time)
 	adminNotificationCache     = cache.New(5*time.Minute, 10*time.Minute)
 	notificationConfigs        = map[string]NotificationConfig{
-		"channel_change":       {Type: "channel_change", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 4},
 		"status_change":        {Type: "status_change", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 4},
-		"permaban":             {Type: "permaban", Cooldown: 24 * time.Hour, AllowConsolidated: false, MaxPerHour: 2},
-		"shadowban":            {Type: "shadowban", Cooldown: 12 * time.Hour, AllowConsolidated: false, MaxPerHour: 3},
 		"daily_update":         {Type: "daily_update", Cooldown: 24 * time.Hour, AllowConsolidated: true, MaxPerHour: 1},
 		"invalid_cookie":       {Type: "invalid_cookie", Cooldown: 6 * time.Hour, AllowConsolidated: true, MaxPerHour: 2},
 		"cookie_expiring_soon": {Type: "cookie_expiring_soon", Cooldown: 24 * time.Hour, AllowConsolidated: true, MaxPerHour: 1},
-		"temp_ban_update":      {Type: "temp_ban_update", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 4},
 		"error":                {Type: "error", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 3},
 		"account_added":        {Type: "account_added", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 5},
+		"channel_change":       {Type: "channel_change", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 4},
+		"permaban":             {Type: "permaban", Cooldown: 24 * time.Hour, AllowConsolidated: false, MaxPerHour: 2},
+		"shadowban":            {Type: "shadowban", Cooldown: 12 * time.Hour, AllowConsolidated: false, MaxPerHour: 3},
+		"temp_ban_update":      {Type: "temp_ban_update", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 4},
 	}
 )
 

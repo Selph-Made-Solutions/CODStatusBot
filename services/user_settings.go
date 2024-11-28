@@ -2,8 +2,6 @@ package services
 
 import (
 	"fmt"
-	"os"
-	"strconv"
 	"time"
 
 	"github.com/bradselph/CODStatusBot/configuration"
@@ -15,8 +13,7 @@ import (
 
 var defaultSettings models.UserSettings
 
-// TODO: Shouldn't this be in the removed since we moved to the new config?
-func init() {
+func initDefaultSettings() {
 	cfg := configuration.Get()
 	defaultSettings = models.UserSettings{
 		CheckInterval:            cfg.Intervals.Check,
@@ -37,6 +34,10 @@ func GetUserSettings(userID string) (models.UserSettings, error) {
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
 	if result.Error != nil {
 		return models.UserSettings{}, fmt.Errorf("error getting user settings: %w", result.Error)
+	}
+
+	if defaultSettings.CheckInterval == 0 {
+		initDefaultSettings()
 	}
 
 	if settings.CheckInterval == 0 {
@@ -128,14 +129,14 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 
 	if settings.PreferredCaptchaProvider == "ezcaptcha" && cfg.CaptchaService.EZCaptcha.Enabled {
 		defaultKey := cfg.CaptchaService.EZCaptcha.ClientKey
-		isValid, _, err := ValidateCaptchaKey(defaultKey, "ezcaptcha")
+		isValid, balance, err := ValidateCaptchaKey(defaultKey, "ezcaptcha")
 		if err != nil {
 			return "", 0, err
 		}
 		if !isValid {
 			return "", 0, fmt.Errorf("invalid default ezcaptcha API key")
 		}
-		return defaultKey, 0, nil
+		return defaultKey, balance, nil
 	}
 
 	return "", 0, fmt.Errorf("no valid API key found for provider %s", settings.PreferredCaptchaProvider)
@@ -156,6 +157,9 @@ func GetCaptchaSolver(userID string) (CaptchaSolver, error) {
 }
 
 func GetDefaultSettings() (models.UserSettings, error) {
+	if defaultSettings.CheckInterval == 0 {
+		initDefaultSettings()
+	}
 	return defaultSettings, nil
 }
 
@@ -174,10 +178,8 @@ func RemoveCaptchaKey(userID string) error {
 		return fmt.Errorf("failed to count user accounts: %w", err)
 	}
 
-	defaultMax, err := strconv.Atoi(os.Getenv("DEFAULT_USER_MAXACCOUNTS"))
-	if err != nil || defaultMax <= 0 {
-		defaultMax = 3
-	}
+	cfg := configuration.Get()
+	defaultMax := cfg.RateLimits.DefaultMaxAccounts
 
 	settings.EZCaptchaAPIKey = ""
 	settings.TwoCaptchaAPIKey = ""
@@ -188,21 +190,7 @@ func RemoveCaptchaKey(userID string) error {
 	settings.CooldownDuration = defaultSettings.CooldownDuration
 	settings.StatusChangeCooldown = defaultSettings.StatusChangeCooldown
 
-	if settings.NotificationTimes == nil {
-		settings.NotificationTimes = make(map[string]time.Time)
-	}
-	if settings.ActionCounts == nil {
-		settings.ActionCounts = make(map[string]int)
-	}
-	if settings.LastActionTimes == nil {
-		settings.LastActionTimes = make(map[string]time.Time)
-	}
-	if settings.LastCommandTimes == nil {
-		settings.LastCommandTimes = make(map[string]time.Time)
-	}
-	if settings.RateLimitExpiration == nil {
-		settings.RateLimitExpiration = make(map[string]time.Time)
-	}
+	settings.EnsureMapsInitialized()
 
 	settings.LastCommandTimes["api_key_removed"] = time.Now()
 

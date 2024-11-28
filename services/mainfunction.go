@@ -109,7 +109,6 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 	DBMutex.Lock()
 	defer DBMutex.Unlock()
 
-	cfg := configuration.Get()
 	now := time.Now()
 	lastStatusChange := time.Unix(account.LastStatusChange, 0)
 	if now.Sub(lastStatusChange) < time.Duration(userSettings.StatusChangeCooldown)*time.Hour {
