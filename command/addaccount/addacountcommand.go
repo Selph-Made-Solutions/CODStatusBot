@@ -14,8 +14,6 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-const rateLimit = 5 * time.Minute
-
 func getMaxAccounts(hasCustomKey bool) int {
 	cfg := configuration.Get()
 	if hasCustomKey {

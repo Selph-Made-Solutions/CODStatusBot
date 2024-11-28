@@ -229,8 +229,8 @@ func shouldCheckAccount(account models.Account, settings models.UserSettings) bo
 		nextCheckTime = time.Unix(account.LastCheck, 0).Add(time.Duration(checkInterval) * time.Minute)
 	}
 
-	if account.ConsecutiveErrors > 0 && !account.LastErrorTime.IsZero() {
-		errorCooldown := time.Hour * 1
+	if account.ConsecutiveErrors > cfg.CaptchaService.MaxRetries && !account.LastErrorTime.IsZero() {
+		errorCooldown := time.Duration(cfg.Intervals.Cooldown) * time.Hour
 		if time.Since(account.LastErrorTime) < errorCooldown {
 			return false
 		}
@@ -251,11 +251,13 @@ func hasStatusChanged(account models.Account, newStatus models.Status) bool {
 }
 
 func handleCheckError(s *discordgo.Session, account *models.Account, err error) {
+	cfg := configuration.Get()
 	account.ConsecutiveErrors++
 	account.LastErrorTime = time.Now()
 
-	if account.ConsecutiveErrors >= maxConsecutiveErrors {
-		reason := fmt.Sprintf("Max consecutive errors reached (%d). Last error: %v", maxConsecutiveErrors, err)
+	if account.ConsecutiveErrors >= cfg.CaptchaService.MaxRetries {
+		reason := fmt.Sprintf("Max consecutive errors reached (%d). Last error: %v",
+			cfg.CaptchaService.MaxRetries, err)
 		disableAccount(s, *account, reason)
 	}
 
@@ -298,6 +300,7 @@ func isComingFromBannedState(account models.Account) bool {
 }
 
 func shouldCheckExpiration(account models.Account, now time.Time) bool {
+	cfg := configuration.Get()
 	if account.IsExpiredCookie {
 		return false
 	}
@@ -307,7 +310,7 @@ func shouldCheckExpiration(account models.Account, now time.Time) bool {
 		return false
 	}
 
-	return timeUntilExpiration > 0 && timeUntilExpiration <= time.Duration(cookieExpirationWarning)*time.Hour
+	return timeUntilExpiration > 0 && timeUntilExpiration <= time.Duration(cfg.Intervals.CookieExpiration)*time.Hour
 }
 
 func validateUserCaptchaService(userID string, userSettings models.UserSettings) error {

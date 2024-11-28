@@ -2,10 +2,10 @@ package globalannouncement
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
@@ -48,7 +48,8 @@ func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 }
 
 func CommandGlobalAnnouncement(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	developerID := os.Getenv("DEVELOPER_ID")
+	cfg := configuration.Get()
+	developerID := cfg.Discord.DeveloperID
 	if developerID == "" {
 		logger.Log.Error("DEVELOPER_ID not set in environment variables")
 		respondToInteraction(s, i, "Error: Developer ID not configured.")
