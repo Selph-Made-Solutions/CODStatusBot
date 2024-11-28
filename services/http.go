@@ -20,14 +20,6 @@ const (
 	defaultProfileEndpoint = "https://support.activision.com/api/profile?accts=false"
 )
 
-var (
-	checkURL         string
-	profileURL       string
-	checkVIP         string
-	recaptchaSiteKey string
-	recaptchaURL     string
-)
-
 type AccountValidationResult struct {
 	IsValid     bool
 	Created     int64
@@ -40,28 +32,6 @@ func init() {
 	cfg := configuration.Get()
 	logger.Log.Infof("Initialized endpoints: Profile URL: %s", cfg.API.ProfileEndpoint)
 }
-
-/*
-func init() {
-	checkURL = os.Getenv("CHECK_ENDPOINT")
-	profileURL = os.Getenv("PROFILE_ENDPOINT")
-	checkVIP = os.Getenv("CHECK_VIP_ENDPOINT")
-	recaptchaSiteKey = os.Getenv("RECAPTCHA_SITE_KEY")
-	recaptchaURL = os.Getenv("RECAPTCHA_URL")
-
-	if profileURL == "" {
-		profileURL = defaultProfileEndpoint
-		logger.Log.Warn("PROFILE_ENDPOINT not set in environment, using default value")
-	}
-
-	if !strings.HasPrefix(profileURL, "http://") && !strings.HasPrefix(profileURL, "https://") {
-		logger.Log.Errorf("Invalid profile URL: %s", profileURL)
-		profileURL = defaultProfileEndpoint
-	}
-
-	logger.Log.Infof("Initialized profile URL: %s", profileURL)
-}
-*/
 
 func VerifySSOCookie(ssoCookie string) bool {
 	cfg := configuration.Get()
@@ -194,7 +164,7 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 
 	logger.Log.Info("Successfully received reCAPTCHA response")
 
-	checkRequest := fmt.Sprintf("%s?locale=en&g-cc=%s", checkURL, gRecaptchaResponse)
+	checkRequest := fmt.Sprintf("%s?locale=en&g-cc=%s", cfg.API.CheckEndpoint, gRecaptchaResponse)
 	logger.Log.WithField("url", checkRequest).Info("Constructed account check request")
 
 	req, err := http.NewRequest("GET", checkRequest, nil)
@@ -226,12 +196,7 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 			time.Sleep(time.Duration(i+1) * time.Second)
 			continue
 		}
-		defer func(Body io.ReadCloser) {
-			err := Body.Close()
-			if err != nil {
-				logger.Log.WithError(err).Error("Failed to close response body")
-			}
-		}(resp.Body)
+		defer resp.Body.Close()
 
 		logger.Log.WithField("status", resp.Status).Info("Received response")
 
@@ -346,7 +311,8 @@ func UpdateCaptchaUsage(userID string) error {
 
 func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 	logger.Log.Info("Starting CheckAccountAge function")
-	req, err := http.NewRequest("GET", profileURL, nil)
+	cfg := configuration.Get()
+	req, err := http.NewRequest("GET", cfg.API.ProfileEndpoint, nil)
 	if err != nil {
 		return 0, 0, 0, 0, errors.New("failed to create HTTP request to check account age")
 	}
@@ -361,12 +327,7 @@ func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 	if err != nil {
 		return 0, 0, 0, 0, errors.New("failed to send HTTP request to check account age")
 	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			logger.Log.WithError(err).Error("Failed to close response body")
-		}
-	}(resp.Body)
+	defer resp.Body.Close()
 
 	var data struct {
 		Created string `json:"created"`
@@ -397,8 +358,9 @@ func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 }
 
 func CheckVIPStatus(ssoCookie string) (bool, error) {
+	cfg := configuration.Get()
 	logger.Log.Info("Checking VIP status")
-	req, err := http.NewRequest("GET", checkVIP+ssoCookie, nil)
+	req, err := http.NewRequest("GET", cfg.API.CheckVIPEndpoint+ssoCookie, nil)
 	if err != nil {
 		return false, fmt.Errorf("failed to create HTTP request to check VIP status: %w", err)
 	}
@@ -414,12 +376,7 @@ func CheckVIPStatus(ssoCookie string) (bool, error) {
 		return false, fmt.Errorf("failed to send HTTP request to check VIP status: %w", err)
 	}
 
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			logger.Log.WithError(err).Error("Failed to close response body")
-		}
-	}(resp.Body)
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return false, fmt.Errorf("invalid response status code: %d", resp.StatusCode)
@@ -444,7 +401,8 @@ func CheckVIPStatus(ssoCookie string) (bool, error) {
 }
 
 func ValidateAndGetAccountInfo(ssoCookie string) (*AccountValidationResult, error) {
-	req, err := http.NewRequest("GET", profileURL, nil)
+	cfg := configuration.Get()
+	req, err := http.NewRequest("GET", cfg.API.ProfileEndpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create profile request: %w", err)
 	}
@@ -462,12 +420,7 @@ func ValidateAndGetAccountInfo(ssoCookie string) (*AccountValidationResult, erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to send profile request: %w", err)
 	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			logger.Log.WithError(err).Error("Failed to close response body")
-		}
-	}(resp.Body)
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return &AccountValidationResult{IsValid: false}, nil

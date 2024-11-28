@@ -2,11 +2,11 @@ package checknow
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
@@ -22,13 +22,8 @@ var (
 )
 
 func init() {
-	rateLimitStr := os.Getenv("CHECK_NOW_RATE_LIMIT")
-	rateLimitSeconds, err := strconv.Atoi(rateLimitStr)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to parse CHECK_NOW_RATE_LIMIT, using default of 3600 seconds")
-		rateLimitSeconds = 3600
-	}
-	rateLimit = time.Duration(rateLimitSeconds) * time.Second
+	cfg := configuration.Get()
+	rateLimit = cfg.RateLimits.CheckNow
 }
 
 func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {

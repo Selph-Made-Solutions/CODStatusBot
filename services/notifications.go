@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	defaultCooldown       = 1 * time.Hour
-	defaultNotifyInterval = 24 * time.Hour
-	minNotifyInterval     = 1 * time.Hour
-	maxNotifyInterval     = 72 * time.Hour
+	defaultCooldown         = 1 * time.Hour
+	maxNotificationsPerHour = 4
+	maxNotificationsPerDay  = 10
+	minNotificationInterval = 5 * time.Minute
 )
 
 var (
@@ -60,10 +60,10 @@ type NotificationConfig struct {
 }
 
 var (
-	globalLimiter           = NewNotificationLimiter()
-	maxNotificationsPerHour = 4
-	maxNotificationsPerDay  = 10
-	minNotificationInterval = 5 * time.Minute
+	globalLimiter = NewNotificationLimiter()
+	//maxNotificationsPerHour = 4
+	//maxNotificationsPerDay  = 10
+	//minNotificationInterval = 5 * time.Minute
 )
 
 func NotifyAdmin(s *discordgo.Session, message string) {
@@ -94,11 +94,14 @@ func NotifyAdmin(s *discordgo.Session, message string) {
 }
 
 func GetCooldownDuration(userSettings models.UserSettings, notificationType string, defaultCooldown time.Duration) time.Duration {
+	cfg := configuration.Get()
 	switch notificationType {
 	case "status_change":
 		return time.Duration(userSettings.StatusChangeCooldown) * time.Hour
-	case "daily_update", "invalid_cookie", "cookie_expiring_soon":
-		return time.Duration(userSettings.NotificationInterval) * time.Hour
+	case "daily_update":
+		return time.Duration(cfg.Intervals.Notification) * time.Hour
+	case "invalid_cookie", "cookie_expiring_soon":
+		return time.Duration(cfg.Intervals.CookieExpiration) * time.Hour
 	default:
 		return defaultCooldown
 	}
@@ -139,13 +142,14 @@ func FormatDuration(d time.Duration) string {
 }
 
 func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64) {
+	cfg := configuration.Get()
 	userSettings, err := GetUserSettings(userID)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to get user settings for balance check: %s", userID)
 		return
 	}
 
-	if time.Since(userSettings.LastBalanceNotification) < 24*time.Hour {
+	if time.Since(userSettings.LastBalanceNotification) < time.Duration(cfg.Intervals.Notification)*time.Hour {
 		return
 	}
 
@@ -228,9 +232,9 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 	var threshold float64
 	switch userSettings.PreferredCaptchaProvider {
 	case "ezcaptcha":
-		threshold = 250
+		threshold = cfg.CaptchaService.EZCaptcha.BalanceMin
 	case "2captcha":
-		threshold = 0.50
+		threshold = cfg.CaptchaService.TwoCaptcha.BalanceMin
 	default:
 		return
 	}
@@ -694,9 +698,15 @@ func UpdateNotificationTimestamp(userID string, notificationType string) error {
 }
 
 func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettings models.UserSettings, accounts []models.Account) {
+	cfg := configuration.Get()
 	if len(accounts) == 0 {
 		return
 	}
+
+	if time.Since(userSettings.LastDailyUpdateNotification) < time.Duration(cfg.Intervals.Notification)*time.Hour {
+		return
+	}
+
 	userSettings, err := GetUserSettings(userID)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)

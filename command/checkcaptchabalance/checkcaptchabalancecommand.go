@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/services"
 	"github.com/bwmarrin/discordgo"
@@ -75,11 +76,12 @@ func CommandCheckCaptchaBalance(s *discordgo.Session, i *discordgo.InteractionCr
 				Inline: true,
 			})
 
+		cfg := configuration.Get()
 		var threshold float64
 		if userSettings.PreferredCaptchaProvider == "ezcaptcha" {
-			threshold = 250
+			threshold = cfg.CaptchaService.EZCaptcha.BalanceMin
 		} else {
-			threshold = 0.25
+			threshold = cfg.CaptchaService.TwoCaptcha.BalanceMin
 		}
 
 		if balance < threshold {
