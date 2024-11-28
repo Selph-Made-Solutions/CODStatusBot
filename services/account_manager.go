@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bradselph/CODStatusBot/config"
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
@@ -104,7 +104,7 @@ func getActionLimit(action string) int {
 }
 
 func processUserAccounts(s *discordgo.Session, userID string, accounts []models.Account) {
-	cfg := config.Get()
+	cfg := configuration.Get()
 
 	userSettings, err := GetUserSettings(userID)
 	if err != nil {
@@ -124,7 +124,7 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 
 	now := time.Now()
 	shouldSendDaily := time.Since(userSettings.LastDailyUpdateNotification) >=
-		time.Duration(cfg.NotificationInterval)*time.Hour
+		time.Duration(cfg.Intervals.Notification)*time.Hour
 
 	for _, account := range accounts {
 		if !shouldCheckAccount(account, userSettings) {
@@ -206,7 +206,7 @@ func notifyUserOfServiceIssue(s *discordgo.Session, userID string, err error) {
 }
 
 func shouldCheckAccount(account models.Account, settings models.UserSettings) bool {
-	cfg := config.Get()
+	cfg := configuration.Get()
 	now := time.Now()
 
 	if account.IsCheckDisabled {
@@ -224,7 +224,7 @@ func shouldCheckAccount(account models.Account, settings models.UserSettings) bo
 	} else {
 		checkInterval := settings.CheckInterval
 		if checkInterval < 1 {
-			checkInterval = cfg.CheckInterval
+			checkInterval = cfg.Intervals.Check
 		}
 		nextCheckTime = time.Unix(account.LastCheck, 0).Add(time.Duration(checkInterval) * time.Minute)
 	}

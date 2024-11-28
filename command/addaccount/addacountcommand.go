@@ -2,11 +2,10 @@ package addaccount
 
 import (
 	"fmt"
-	"os"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
@@ -18,21 +17,11 @@ import (
 const rateLimit = 5 * time.Minute
 
 func getMaxAccounts(hasCustomKey bool) int {
+	cfg := configuration.Get()
 	if hasCustomKey {
-		premiumMax, err := strconv.Atoi(os.Getenv("PREM_USER_MAXACCOUNTS"))
-		if err != nil || premiumMax <= 0 {
-			logger.Log.WithError(err).Info("Using default premium max accounts value")
-			return 10
-		}
-		return premiumMax
+		return cfg.RateLimits.PremiumMaxAccounts
 	}
-
-	defaultMax, err := strconv.Atoi(os.Getenv("DEFAULT_USER_MAXACCOUNTS"))
-	if err != nil || defaultMax <= 0 {
-		logger.Log.WithError(err).Info("Using default max accounts value")
-		return 3
-	}
-	return defaultMax
+	return cfg.RateLimits.DefaultMaxAccounts
 }
 
 func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
