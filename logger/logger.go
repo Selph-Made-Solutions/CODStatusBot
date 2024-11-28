@@ -27,6 +27,7 @@ func init() {
 			logrus.FieldKeyMsg:   "message",
 		},
 	})
+
 	logDir := "logs/"
 	err := os.MkdirAll(logDir, 0o755)
 	if err != nil {

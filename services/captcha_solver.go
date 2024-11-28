@@ -26,29 +26,6 @@ const (
 	ezcap                    = "ezcaptcha"
 )
 
-/*
-func LoadEnvironmentVariables() error {
-	cfg := configuration.Get()
-
-	if cfg.EZCaptchaClientKey == "" || cfg.EZAppID == "" ||
-		cfg.SoftID == "" || cfg.SiteAction == "" {
-		return fmt.Errorf("required captcha configuration values not set")
-	}
-
-	return nil
-}
-*/
-/*
-var (
-	clientKey    string
-	ezappID      string
-	softID       string
-	siteAction   string
-	ezCapBalMin  float64
-	twoCapBalMin float64
-)
-*/
-
 type CaptchaSolver interface {
 	SolveReCaptchaV2(siteKey, pageURL string) (string, error)
 }
