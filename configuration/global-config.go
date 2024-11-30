@@ -111,12 +111,17 @@ type Config struct {
 		QuestionCircle string
 	}
 
-	// Donation Settings
 	Donations struct {
 		Enabled        bool
 		BitcoinAddress string
 		CashAppID      string
 	}
+}
+
+type DonationsConfig struct {
+	Enabled        bool
+	BitcoinAddress string
+	CashAppID      string
 }
 
 var AppConfig Config
