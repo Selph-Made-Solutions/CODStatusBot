@@ -175,7 +175,7 @@ func Load() error {
 	AppConfig.AdminPanel.Password = os.Getenv("ADMIN_PASSWORD")
 	AppConfig.AdminPanel.StatsRateLimit = getEnvAsFloat("STATS_RATE_LIMIT", 25.0)
 
-	// Rate Limits and Intervals
+	// Rate Limits
 	AppConfig.RateLimits.CheckNow = time.Duration(getEnvAsInt("CHECK_NOW_RATE_LIMIT", 3600)) * time.Second
 	AppConfig.RateLimits.Default = time.Duration(getEnvAsInt("DEFAULT_RATE_LIMIT", 180)) * time.Minute
 	AppConfig.RateLimits.DefaultMaxAccounts = getEnvAsInt("DEFAULT_USER_MAXACCOUNTS", 3)
@@ -208,7 +208,22 @@ func Load() error {
 		return fmt.Errorf("configuration validation failed: %w", err)
 	}
 
-	logger.Log.Info("Configuration loaded successfully")
+	logger.Log.Infof("Loaded rate limits and intervals: CHECK_INTERVAL=%d, NOTIFICATION_INTERVAL=%.2f, "+
+		"COOLDOWN_DURATION=%.2f, SLEEP_DURATION=%d, COOKIE_CHECK_INTERVAL_PERMABAN=%.2f, "+
+		"STATUS_CHANGE_COOLDOWN=%.2f, GLOBAL_NOTIFICATION_COOLDOWN=%.2f, COOKIE_EXPIRATION_WARNING=%.2f, "+
+		"TEMP_BAN_UPDATE_INTERVAL=%.2f, CHECK_NOW_RATE_LIMIT=%v, DEFAULT_RATE_LIMIT=%v",
+		AppConfig.Intervals.Check,
+		AppConfig.Intervals.Notification,
+		AppConfig.Intervals.Cooldown,
+		AppConfig.Intervals.Sleep,
+		AppConfig.Intervals.PermaBanCheck,
+		AppConfig.Intervals.StatusChange,
+		AppConfig.Intervals.GlobalNotification,
+		AppConfig.Intervals.CookieExpiration,
+		AppConfig.Intervals.TempBanUpdate,
+		AppConfig.RateLimits.CheckNow,
+		AppConfig.RateLimits.Default)
+
 	return nil
 }
 
@@ -221,15 +236,41 @@ func validate() error {
 		"DB_NAME":            AppConfig.Database.Name,
 		"DB_HOST":            AppConfig.Database.Host,
 		"DB_PORT":            AppConfig.Database.Port,
-		"CHECK_ENDPOINT":     AppConfig.API.CheckEndpoint,
 		"PROFILE_ENDPOINT":   AppConfig.API.ProfileEndpoint,
 		"CHECK_VIP_ENDPOINT": AppConfig.API.CheckVIPEndpoint,
+		"CHECK_ENDPOINT":     AppConfig.API.CheckEndpoint,
 	}
 
 	var missing []string
 	for key, value := range required {
 		if value == "" {
-			missing = append(missing, key)
+			val := os.Getenv(key)
+			if val == "" {
+				missing = append(missing, key)
+			} else {
+				switch key {
+				case "DISCORD_TOKEN":
+					AppConfig.Discord.Token = val
+				case "DEVELOPER_ID":
+					AppConfig.Discord.DeveloperID = val
+				case "DB_USER":
+					AppConfig.Database.User = val
+				case "DB_PASSWORD":
+					AppConfig.Database.Password = val
+				case "DB_NAME":
+					AppConfig.Database.Name = val
+				case "DB_HOST":
+					AppConfig.Database.Host = val
+				case "DB_PORT":
+					AppConfig.Database.Port = val
+				case "CHECK_ENDPOINT":
+					AppConfig.API.CheckEndpoint = val
+				case "PROFILE_ENDPOINT":
+					AppConfig.API.ProfileEndpoint = val
+				case "CHECK_VIP_ENDPOINT":
+					AppConfig.API.CheckVIPEndpoint = val
+				}
+			}
 		}
 	}
 

@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,6 +21,42 @@ import (
 )
 
 var discord *discordgo.Session
+
+func loadEnv(filename string) error {
+	file, err := os.Open(filename)
+	if err != nil {
+		return fmt.Errorf("error opening config file: %w", err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		value = strings.Trim(value, `"'`)
+
+		if err := os.Setenv(key, value); err != nil {
+			return fmt.Errorf("error setting environment variable %s: %w", key, err)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("error reading config file: %w", err)
+	}
+
+	return nil
+}
 
 func main() {
 	defer func() {
@@ -35,6 +73,10 @@ func main() {
 
 func run() error {
 	logger.Log.Info("Starting COD Status Bot...")
+
+	if err := loadEnv("config.env"); err != nil {
+		return fmt.Errorf("failed to load environment variables: %w", err)
+	}
 
 	if err := configuration.Load(); err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
