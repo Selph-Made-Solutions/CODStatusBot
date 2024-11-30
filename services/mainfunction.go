@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,8 +26,6 @@ var (
 	DBMutex sync.Mutex
 )
 
-// TODO: Shouldn't this be in the removed since we moved to the new config?
-
 func init() {
 	cfg := configuration.Get()
 	logger.Log.Infof("Loaded rate limits and intervals: CHECK_INTERVAL=%.2f, NOTIFICATION_INTERVAL=%.2f, "+
@@ -40,6 +37,7 @@ func init() {
 		cfg.Intervals.CookieExpiration, cfg.Intervals.TempBanUpdate, cfg.RateLimits.CheckNow, cfg.RateLimits.Default)
 }
 
+/*
 func GetEnvFloat(key string, fallback float64) float64 {
 	value := GetEnvFloatRaw(key, fallback)
 	if key == "CHECK_INTERVAL" || key == "SLEEP_DURATION" || key == "DEFAULT_RATE_LIMIT" {
@@ -47,7 +45,8 @@ func GetEnvFloat(key string, fallback float64) float64 {
 	}
 	return value
 }
-
+*/
+/*
 func GetEnvFloatRaw(key string, fallback float64) float64 {
 	if value, ok := os.LookupEnv(key); ok {
 		floatValue, err := strconv.ParseFloat(value, 64)
@@ -58,11 +57,15 @@ func GetEnvFloatRaw(key string, fallback float64) float64 {
 	}
 	return fallback
 }
+*/
 
+/*
 func GetEnvInt(key string, fallback int) int {
 	return GetEnvIntRaw(key, fallback)
 }
 
+*/
+/*
 func GetEnvIntRaw(key string, fallback int) int {
 	if value, ok := os.LookupEnv(key); ok {
 		intValue, err := strconv.Atoi(value)
@@ -73,7 +76,7 @@ func GetEnvIntRaw(key string, fallback int) int {
 	}
 	return fallback
 }
-
+*/
 func CheckAccounts(s *discordgo.Session) {
 	logger.Log.Info("Starting periodic account check")
 

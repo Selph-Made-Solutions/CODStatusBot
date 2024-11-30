@@ -16,10 +16,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const (
-	defaultProfileEndpoint = "https://support.activision.com/api/profile?accts=false"
-)
-
 type AccountValidationResult struct {
 	IsValid     bool
 	Created     int64
@@ -39,8 +35,8 @@ func VerifySSOCookie(ssoCookie string) bool {
 
 	profileURL := cfg.API.ProfileEndpoint
 	if profileURL == "" {
-		profileURL = defaultProfileEndpoint
-		logger.Log.Warn("PROFILE_ENDPOINT not set in environment, using default value")
+		logger.Log.Error("PROFILE_ENDPOINT not configured")
+		return false
 	}
 
 	client := &http.Client{
