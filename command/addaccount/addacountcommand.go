@@ -14,6 +14,15 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+var (
+	rateLimit time.Duration
+)
+
+func init() {
+	cfg := configuration.Get()
+	rateLimit = cfg.RateLimits.CheckNow
+}
+
 func getMaxAccounts(hasCustomKey bool) int {
 	cfg := configuration.Get()
 	if hasCustomKey {
@@ -38,6 +47,11 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	hasCustomKey := userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != ""
+	if !hasCustomKey && !checkRateLimit(userID) {
+		respondToInteraction(s, i, fmt.Sprintf("Please wait %v before adding another account.", rateLimit))
+		return
+	}
+
 	if !hasCustomKey && !checkRateLimit(userID) {
 		respondToInteraction(s, i, fmt.Sprintf("Please wait %v before adding another account.", rateLimit))
 		return
