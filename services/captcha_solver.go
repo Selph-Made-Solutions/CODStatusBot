@@ -22,8 +22,8 @@ const (
 	EZCaptchaResultEndpoint  = "https://api.ez-captcha.com/getTaskResult"
 	TwoCaptchaCreateEndpoint = "https://api.2captcha.com/createTask"
 	TwoCaptchaResultEndpoint = "https://api.2captcha.com/getTaskResult"
-	twocap                   = "2captcha"
-	ezcap                    = "ezcaptcha"
+	//	twocap                   = "2captcha"
+	//	ezcap                    = "ezcaptcha"
 )
 
 type CaptchaSolver interface {
@@ -43,9 +43,9 @@ type TwoCaptchaSolver struct {
 func IsServiceEnabled(provider string) bool {
 	cfg := configuration.Get()
 	switch provider {
-	case ezcap:
+	case "ezcaptcha":
 		return cfg.CaptchaService.EZCaptcha.Enabled
-	case twocap:
+	case "2captcha":
 		return cfg.CaptchaService.TwoCaptcha.Enabled
 	default:
 		return false
@@ -82,12 +82,12 @@ func NewCaptchaSolver(apiKey, provider string) (CaptchaSolver, error) {
 	}
 
 	switch provider {
-	case ezcap:
+	case "ezcaptcha":
 		return &EZCaptchaSolver{
 			APIKey:  apiKey,
 			EzappID: cfg.CaptchaService.EZCaptcha.AppID,
 		}, nil
-	case twocap:
+	case "2captcha":
 		return &TwoCaptchaSolver{
 			APIKey: apiKey,
 			SoftID: cfg.CaptchaService.TwoCaptcha.SoftID,
@@ -302,9 +302,9 @@ func sendRequest(url string, payload interface{}) ([]byte, error) {
 func getBalanceThreshold(provider string) float64 {
 	cfg := configuration.Get()
 	switch provider {
-	case ezcap:
+	case "ezcaptcha":
 		return cfg.CaptchaService.EZCaptcha.BalanceMin
-	case twocap:
+	case "2captcha":
 		return cfg.CaptchaService.TwoCaptcha.BalanceMin
 	default:
 		return 0
@@ -313,9 +313,9 @@ func getBalanceThreshold(provider string) float64 {
 
 func ValidateCaptchaKey(apiKey, provider string) (bool, float64, error) {
 	switch provider {
-	case ezcap:
+	case "ezcaptcha":
 		return validateEZCaptchaKey(apiKey)
-	case twocap:
+	case "2captcha":
 		return validate2CaptchaKey(apiKey)
 	default:
 		return false, 0, errors.New("unsupported captcha provider")

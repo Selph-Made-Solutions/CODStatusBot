@@ -23,11 +23,13 @@ type Config struct {
 		Port     string
 		Var      string
 	}
+
 	// Discord Settings
 	Discord struct {
 		Token       string
 		DeveloperID string
 	}
+
 	// Captcha Service Settings
 	CaptchaService struct {
 		EZCaptcha struct {
@@ -45,6 +47,19 @@ type Config struct {
 		RecaptchaURL     string
 		MaxRetries       int
 		SiteAction       string
+	}
+
+	CaptchaEndpoints struct {
+		EZCaptcha struct {
+			Create string
+			Result string
+		}
+		TwoCaptcha struct {
+			Create string
+			Result string
+		}
+		MaxRetries    int
+		RetryInterval time.Duration
 	}
 
 	// API Endpoints
