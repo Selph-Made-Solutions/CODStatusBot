@@ -23,6 +23,8 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+const BotStatusMessage = "the Status of your Accounts so you dont have to."
+
 var discord *discordgo.Session
 
 func StartBot() (*discordgo.Session, error) {
@@ -42,7 +44,7 @@ func StartBot() (*discordgo.Session, error) {
 		return nil, err
 	}
 
-	err = discord.UpdateWatchStatus(0, "the Status of your Accounts so you dont have to.")
+	err = discord.UpdateWatchStatus(0, BotStatusMessage)
 	if err != nil {
 		return nil, err
 	}
