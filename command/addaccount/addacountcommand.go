@@ -279,42 +279,19 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	go func() {
 		time.Sleep(2 * time.Second)
 
-		userSettings, err := services.GetUserSettings(userID)
+		status, err := services.CheckAccount(ssoCookie, userID, "")
 		if err != nil {
-			logger.Log.WithError(err).Error("Error getting user settings for initial status check")
+			logger.Log.WithError(err).Error("Error performing initial status check")
 			return
 		}
 
-		if status, err := services.CheckAccount(ssoCookie, userID, ""); err == nil {
-			services.DBMutex.Lock()
-			var updatedAccount models.Account
-			if err := database.DB.First(&updatedAccount, account.ID).Error; err != nil {
-				services.DBMutex.Unlock()
-				logger.Log.WithError(err).Error("Error fetching account for initial status update")
-				return
-			}
-
-			now := time.Now()
-			prevStatus := updatedAccount.LastStatus
-			updatedAccount.LastStatus = status
-			updatedAccount.LastCheck = now.Unix()
-			updatedAccount.LastStatusChange = now.Unix()
-			updatedAccount.LastSuccessfulCheck = now
-			updatedAccount.ConsecutiveErrors = 0
-
-			if err := database.DB.Save(&updatedAccount).Error; err != nil {
-				services.DBMutex.Unlock()
-				logger.Log.WithError(err).Error("Error saving initial status")
-				return
-			}
-			services.DBMutex.Unlock()
-
-			if prevStatus == models.StatusUnknown && status != models.StatusUnknown {
-				services.HandleStatusChange(s, updatedAccount, status, userSettings)
-			}
-		} else {
-			logger.Log.WithError(err).Error("Error performing initial status check")
+		var updatedAccount models.Account
+		if err := database.DB.First(&updatedAccount, account.ID).Error; err != nil {
+			logger.Log.WithError(err).Error("Error fetching account for initial status update")
+			return
 		}
+
+		services.HandleStatusChange(s, updatedAccount, status, userSettings)
 	}()
 }
 

@@ -37,46 +37,6 @@ func init() {
 		cfg.Intervals.CookieExpiration, cfg.Intervals.TempBanUpdate, cfg.RateLimits.CheckNow, cfg.RateLimits.Default)
 }
 
-/*
-func GetEnvFloat(key string, fallback float64) float64 {
-	value := GetEnvFloatRaw(key, fallback)
-	if key == "CHECK_INTERVAL" || key == "SLEEP_DURATION" || key == "DEFAULT_RATE_LIMIT" {
-		return value
-	}
-	return value
-}
-*/
-/*
-func GetEnvFloatRaw(key string, fallback float64) float64 {
-	if value, ok := os.LookupEnv(key); ok {
-		floatValue, err := strconv.ParseFloat(value, 64)
-		if err == nil {
-			return floatValue
-		}
-		logger.Log.WithError(err).Errorf("Failed to parse %s, using fallback value", key)
-	}
-	return fallback
-}
-*/
-
-/*
-func GetEnvInt(key string, fallback int) int {
-	return GetEnvIntRaw(key, fallback)
-}
-
-*/
-/*
-func GetEnvIntRaw(key string, fallback int) int {
-	if value, ok := os.LookupEnv(key); ok {
-		intValue, err := strconv.Atoi(value)
-		if err == nil {
-			return intValue
-		}
-		logger.Log.WithError(err).Errorf("Failed to parse %s, using fallback value", key)
-	}
-	return fallback
-}
-*/
 func CheckAccounts(s *discordgo.Session) {
 	logger.Log.Info("Starting periodic account check")
 
@@ -140,10 +100,14 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 	if newStatus == models.StatusTempban {
 		ban.TempBanDuration = calculateBanDuration(time.Now().Add(24 * time.Hour))
 		ban.AffectedGames = getAffectedGames(account.SSOCookie)
+	} else if newStatus != models.StatusGood {
+		ban.AffectedGames = getAffectedGames(account.SSOCookie)
 	}
 
 	if err := database.DB.Create(&ban).Error; err != nil {
 		logger.Log.WithError(err).Error("Failed to create ban record")
+	} else {
+		logger.Log.Infof("Created ban record for account %s: %s -> %s", account.Title, previousStatus, newStatus)
 	}
 
 	embed := &discordgo.MessageEmbed{

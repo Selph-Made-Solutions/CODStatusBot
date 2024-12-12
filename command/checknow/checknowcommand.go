@@ -207,7 +207,21 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 }
 
 func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, accounts []models.Account) {
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	userID, err := services.GetUserID(i)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to get user ID")
+		respondToInteraction(s, i, "An error occurred while processing your request.")
+		return
+	}
+
+	userSettings, err := services.GetUserSettings(userID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error fetching user settings")
+		respondToInteraction(s, i, "Error fetching settings. Please try again.")
+		return
+	}
+
+	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Flags: discordgo.MessageFlagsEphemeral,
@@ -265,11 +279,7 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 			continue
 		}
 
-		account.LastStatus = status
-		account.LastCheck = time.Now().Unix()
-		if err := database.DB.Save(&account).Error; err != nil {
-			logger.Log.WithError(err).Errorf("Failed to update account %s after check", account.Title)
-		}
+		services.HandleStatusChange(s, account, status, userSettings)
 
 		embed := &discordgo.MessageEmbed{
 			Title:       fmt.Sprintf("%s - Status Check", account.Title),

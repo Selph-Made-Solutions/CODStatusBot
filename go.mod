@@ -1,6 +1,6 @@
 module github.com/bradselph/CODStatusBot
 
-go 1.23.3
+go 1.23.4
 
 require (
 	github.com/bwmarrin/discordgo v0.28.1
@@ -16,8 +16,8 @@ require (
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
-	github.com/stretchr/testify v1.9.0 // indirect
-	golang.org/x/crypto v0.29.0 // indirect
-	golang.org/x/sys v0.27.0 // indirect
-	golang.org/x/text v0.20.0 // indirect
+	github.com/stretchr/testify v1.10.0 // indirect
+	golang.org/x/crypto v0.31.0 // indirect
+	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/text v0.21.0 // indirect
 )
