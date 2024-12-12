@@ -209,7 +209,7 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 			case <-ctx.Done():
 				return
 			default:
-				if err := s.UpdateWatchStatus(0, "the Status of your Accounts so you dont have to."); err != nil {
+				if err := s.UpdateWatchStatus(0, bot.BotStatusMessage); err != nil {
 					logger.Log.WithError(err).Error("Failed to refresh presence status")
 				}
 				time.Sleep(60 * time.Minute)
