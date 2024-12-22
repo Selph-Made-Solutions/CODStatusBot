@@ -22,10 +22,6 @@ func validateRateLimit(userID, action string, duration time.Duration) bool {
 	userSettings.EnsureMapsInitialized()
 
 	now := time.Now()
-	if userSettings.LastCommandTimes == nil {
-		userSettings.LastCommandTimes = make(map[string]time.Time)
-	}
-
 	lastAction := userSettings.LastCommandTimes[action]
 
 	config, exists := notificationConfigs[action]
@@ -63,13 +59,6 @@ func checkActionRateLimit(userID, action string, duration time.Duration) bool {
 	userSettings.EnsureMapsInitialized()
 
 	now := time.Now()
-	if userSettings.LastActionTimes == nil {
-		userSettings.LastActionTimes = make(map[string]time.Time)
-	}
-	if userSettings.ActionCounts == nil {
-		userSettings.ActionCounts = make(map[string]int)
-	}
-
 	lastAction := userSettings.LastActionTimes[action]
 	count := userSettings.ActionCounts[action]
 
