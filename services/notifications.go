@@ -12,6 +12,7 @@ import (
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bwmarrin/discordgo"
 	"github.com/patrickmn/go-cache"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -249,6 +250,7 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 }
 
 func BalanceWarningFields(donations configuration.DonationsConfig) []*discordgo.MessageEmbedField {
+	cfg := configuration.Get()
 	fields := []*discordgo.MessageEmbedField{
 		{
 			Name: "Option 1: Add Your Own API Key",
@@ -264,18 +266,18 @@ func BalanceWarningFields(donations configuration.DonationsConfig) []*discordgo.
 		},
 	}
 
-	if donations.Enabled {
+	if cfg.Donations.Enabled {
 		supportField := &discordgo.MessageEmbedField{
 			Name:   "Support the Bot",
 			Value:  "Help maintain the service by contributing:\n",
 			Inline: false,
 		}
 
-		if donations.BitcoinAddress != "" {
-			supportField.Value += fmt.Sprintf("• Bitcoin: `%s`\n", donations.BitcoinAddress)
+		if cfg.Donations.BitcoinAddress != "" {
+			supportField.Value += fmt.Sprintf("• Bitcoin: `%s`\n", cfg.Donations.BitcoinAddress)
 		}
-		if donations.CashAppID != "" {
-			supportField.Value += fmt.Sprintf("• CashApp: `%s`", donations.CashAppID)
+		if cfg.Donations.CashAppID != "" {
+			supportField.Value += fmt.Sprintf("• CashApp: `%s`", cfg.Donations.CashAppID)
 		}
 
 		fields = append(fields, supportField)
@@ -467,7 +469,11 @@ func (nl *NotificationLimiter) CanSendNotification(userID string) bool {
 
 func SendNotification(s *discordgo.Session, account models.Account, embed *discordgo.MessageEmbed, content, notificationType string) error {
 	if !globalLimiter.CanSendNotification(account.UserID) {
-		logger.Log.Infof("Notification suppressed due to rate limiting for user %s", account.UserID)
+		logger.Log.WithFields(logrus.Fields{
+			"userID":           account.UserID,
+			"accountTitle":     account.Title,
+			"notificationType": notificationType,
+		}).Info("Notification suppressed due to rate limiting")
 		return nil
 	}
 

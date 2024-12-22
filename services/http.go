@@ -74,7 +74,12 @@ func VerifySSOCookie(ssoCookie string) bool {
 		}
 
 		if resp != nil && resp.Body != nil {
-			defer resp.Body.Close()
+			defer func(Body io.ReadCloser) {
+				err := Body.Close()
+				if err != nil {
+					logger.Log.WithError(err).Error("Failed to close response body")
+				}
+			}(resp.Body)
 		}
 
 		if resp.StatusCode != http.StatusOK {
@@ -177,7 +182,12 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	logger.Log.WithField("headers", headers).Info("Set request headers")
+
+	logger.Log.WithFields(logrus.Fields{
+		"url":          checkRequest,
+		"headers":      headers,
+		"cookieLength": len(ssoCookie),
+	}).Debug("Set request headers")
 
 	client := &http.Client{
 		Timeout: 120 * time.Second,
@@ -197,11 +207,10 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 			time.Sleep(time.Duration(i+1) * time.Second)
 			continue
 		}
-		defer resp.Body.Close()
-
-		logger.Log.WithField("status", resp.Status).Info("Received response")
 
 		body, err = io.ReadAll(resp.Body)
+		resp.Body.Close()
+
 		if err != nil {
 			if i == maxRetries-1 {
 				return models.StatusUnknown, fmt.Errorf("failed to read response body after %d attempts: %w", maxRetries, err)
@@ -209,10 +218,25 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 			time.Sleep(time.Duration(i+1) * time.Second)
 			continue
 		}
+
+		logger.Log.WithFields(logrus.Fields{
+			"statusCode":  resp.StatusCode,
+			"bodyLength":  len(body),
+			"bodyContent": string(body),
+		}).Info("Received API response")
+
 		break
 	}
 
 	logger.Log.WithField("body", string(body)).Info("Read response body")
+
+	if resp.ContentLength == 0 {
+		logger.Log.Warn("Received empty response (Content-Length: 0)")
+	}
+
+	if len(body) == 0 {
+		logger.Log.Warn("Empty response body after reading")
+	}
 
 	var errorResponse struct {
 		Timestamp string `json:"timestamp"`
@@ -241,22 +265,18 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 		} `json:"bans"`
 	}
 
-	if string(body) == "" {
-		return models.StatusInvalidCookie, nil
-	}
-
 	if err := json.Unmarshal(body, &data); err != nil {
 		return models.StatusUnknown, fmt.Errorf("failed to decode JSON response: %w", err)
 	}
 	logger.Log.WithField("data", data).Info("Parsed ban data")
 
-	if err := UpdateCaptchaUsage(userID); err != nil {
-		logger.Log.WithError(err).Error("Failed to update captcha usage")
-	}
-
-	if len(data.Bans) == 0 {
+	if data.Success == "true" && len(data.Bans) == 0 {
 		logger.Log.Info("No bans found, account status is good")
 		return models.StatusGood, nil
+	}
+
+	if err := UpdateCaptchaUsage(userID); err != nil {
+		logger.Log.WithError(err).Error("Failed to update captcha usage")
 	}
 
 	for _, ban := range data.Bans {
@@ -328,7 +348,12 @@ func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 	if err != nil {
 		return 0, 0, 0, 0, errors.New("failed to send HTTP request to check account age")
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			logger.Log.WithError(err).Error("Failed to close response body")
+		}
+	}(resp.Body)
 
 	var data struct {
 		Created string `json:"created"`
@@ -377,7 +402,12 @@ func CheckVIPStatus(ssoCookie string) (bool, error) {
 		return false, fmt.Errorf("failed to send HTTP request to check VIP status: %w", err)
 	}
 
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			logger.Log.WithError(err).Error("Failed to close response body")
+		}
+	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return false, fmt.Errorf("invalid response status code: %d", resp.StatusCode)
@@ -421,7 +451,12 @@ func ValidateAndGetAccountInfo(ssoCookie string) (*AccountValidationResult, erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to send profile request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			logger.Log.WithError(err).Error("Failed to close response body")
+		}
+	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return &AccountValidationResult{IsValid: false}, nil

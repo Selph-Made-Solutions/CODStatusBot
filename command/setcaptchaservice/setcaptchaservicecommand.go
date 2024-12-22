@@ -2,7 +2,6 @@ package setcaptchaservice
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -176,7 +175,8 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	}
 }
 
-func isServiceEnabled(provider string) bool {
+/*
+func IsServiceEnabled(provider string) bool {
 	switch provider {
 	case "ezcaptcha":
 		return os.Getenv("EZCAPTCHA_ENABLED") == "true"
@@ -186,3 +186,4 @@ func isServiceEnabled(provider string) bool {
 		return false
 	}
 }
+*/

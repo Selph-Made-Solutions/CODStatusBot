@@ -12,6 +12,7 @@ import (
 	"github.com/bradselph/CODStatusBot/services"
 	"github.com/bradselph/CODStatusBot/utils"
 	"github.com/bwmarrin/discordgo"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -223,7 +224,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	if err := database.DB.Create(&account).Error; err != nil {
-		logger.Log.WithError(err).Error("Error creating account")
+		logger.Log.WithError(err).WithFields(logrus.Fields{"userID": userID, "title": title}).Error("Error creating account")
 		respondToInteraction(s, i, "Error creating account. Please try again.")
 		return
 	}
