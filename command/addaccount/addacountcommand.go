@@ -330,7 +330,6 @@ func getChannelID(s *discordgo.Session, i *discordgo.InteractionCreate) string {
 	}
 	return channel.ID
 }
-
 func checkRateLimit(userID string) bool {
 	var userSettings models.UserSettings
 	if err := database.DB.Where("user_id = ?", userID).First(&userSettings).Error; err != nil {
@@ -338,6 +337,7 @@ func checkRateLimit(userID string) bool {
 		return false
 	}
 
+	userSettings.EnsureMapsInitialized()
 	now := time.Now()
 	lastAddTime := userSettings.LastCommandTimes["add_account"]
 

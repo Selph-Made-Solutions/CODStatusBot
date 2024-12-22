@@ -320,12 +320,9 @@ func checkRateLimit(userID string) bool {
 		return false
 	}
 
+	userSettings.EnsureMapsInitialized()
+
 	now := time.Now()
-
-	if userSettings.LastCommandTimes == nil {
-		userSettings.LastCommandTimes = make(map[string]time.Time)
-	}
-
 	lastCheckTime := userSettings.LastCommandTimes["check_now"]
 
 	if lastCheckTime.IsZero() || time.Since(lastCheckTime) >= rateLimit {

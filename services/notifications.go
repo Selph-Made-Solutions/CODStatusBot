@@ -435,15 +435,17 @@ func (nl *NotificationLimiter) CanSendNotification(userID string) bool {
 		return false
 	}
 
+	userSettings.EnsureMapsInitialized()
+
 	cfg := configuration.Get()
 	var maxPerHour int
 	var minInterval time.Duration
 	if userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != "" {
 		maxPerHour = cfg.RateLimits.PremiumMaxAccounts
-		minInterval = time.Minute * 5
+		minInterval = time.Duration(userSettings.NotificationInterval) * time.Hour
 	} else {
 		maxPerHour = cfg.RateLimits.DefaultMaxAccounts
-		minInterval = time.Minute * 15
+		minInterval = time.Duration(cfg.Intervals.Notification) * time.Hour
 	}
 
 	if state.hourlyCount >= maxPerHour {

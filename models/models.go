@@ -92,18 +92,6 @@ const (
 	TwoCaptcha CaptchaProvider = "2captcha"
 )
 
-/*
-type RewardCode struct {
-	gorm.Model
-	Code        string    `gorm:"uniqueIndex"` // The actual reward code
-	Description string    // Description of what the code rewards
-	ExpiresAt   time.Time // When the code expires
-	SingleUse   bool      // Whether the code can only be used once
-	UsedBy      []string  `gorm:"type:json"` // List of user IDs who have used this code
-	Active      bool      // Whether the code is still active
-}
-*/
-
 func (u *UserSettings) EnsureMapsInitialized() {
 	if u.NotificationTimes == nil {
 		u.NotificationTimes = make(map[string]time.Time)
@@ -122,15 +110,12 @@ func (u *UserSettings) EnsureMapsInitialized() {
 	}
 }
 
-/*
 func (u *UserSettings) BeforeCreate(tx *gorm.DB) error {
 	u.EnsureMapsInitialized()
 	return nil
 }
-*/
-/*
+
 func (u *UserSettings) AfterFind(tx *gorm.DB) error {
 	u.EnsureMapsInitialized()
 	return nil
 }
-*/
