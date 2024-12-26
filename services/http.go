@@ -168,6 +168,10 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %w", err)
 	}
 
+	if strings.Contains(gRecaptchaResponse, "Invalid") || len(gRecaptchaResponse) < 50 {
+		return models.StatusUnknown, fmt.Errorf("invalid captcha response received")
+	}
+
 	logger.Log.Info("Successfully received reCAPTCHA response")
 
 	checkRequest := fmt.Sprintf("%s?locale=en&g-cc=%s", cfg.API.CheckEndpoint, gRecaptchaResponse)
@@ -197,6 +201,7 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 	var body []byte
 	maxRetries := 3
 
+	backoffDuration := time.Second
 	for i := 0; i < maxRetries; i++ {
 		logger.Log.Infof("Sending HTTP request to check account (attempt %d/%d)", i+1, maxRetries)
 		resp, err = client.Do(req)
@@ -204,7 +209,8 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 			if i == maxRetries-1 {
 				return models.StatusUnknown, fmt.Errorf("failed to send HTTP request after %d attempts: %w", maxRetries, err)
 			}
-			time.Sleep(time.Duration(i+1) * time.Second)
+			backoffDuration *= 2
+			time.Sleep(backoffDuration)
 			continue
 		}
 
