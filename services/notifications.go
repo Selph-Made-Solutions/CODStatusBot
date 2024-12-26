@@ -28,16 +28,16 @@ var (
 	adminNotificationCache     = cache.New(5*time.Minute, 10*time.Minute)
 	globalLimiter              = NewNotificationLimiter()
 	notificationConfigs        = map[string]NotificationConfig{
-		"status_change":        {Type: "status_change", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 4},
-		"daily_update":         {Type: "daily_update", Cooldown: 24 * time.Hour, AllowConsolidated: true, MaxPerHour: 1},
-		"invalid_cookie":       {Type: "invalid_cookie", Cooldown: 6 * time.Hour, AllowConsolidated: true, MaxPerHour: 2},
-		"cookie_expiring_soon": {Type: "cookie_expiring_soon", Cooldown: 24 * time.Hour, AllowConsolidated: true, MaxPerHour: 1},
-		"error":                {Type: "error", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 3},
-		"account_added":        {Type: "account_added", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 5},
-		"channel_change":       {Type: "channel_change", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 4},
-		"permaban":             {Type: "permaban", Cooldown: 24 * time.Hour, AllowConsolidated: false, MaxPerHour: 2},
-		"shadowban":            {Type: "shadowban", Cooldown: 12 * time.Hour, AllowConsolidated: false, MaxPerHour: 3},
-		"temp_ban_update":      {Type: "temp_ban_update", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 4},
+		"status_change":        {Type: "status_change", Cooldown: 30 * time.Minute, AllowConsolidated: true, MaxPerHour: 10},
+		"daily_update":         {Type: "daily_update", Cooldown: 12 * time.Hour, AllowConsolidated: true, MaxPerHour: 3},
+		"invalid_cookie":       {Type: "invalid_cookie", Cooldown: 3 * time.Hour, AllowConsolidated: true, MaxPerHour: 4},
+		"cookie_expiring_soon": {Type: "cookie_expiring_soon", Cooldown: 12 * time.Hour, AllowConsolidated: true, MaxPerHour: 2},
+		"error":                {Type: "error", Cooldown: 30 * time.Minute, AllowConsolidated: true, MaxPerHour: 6},
+		"account_added":        {Type: "account_added", Cooldown: 30 * time.Minute, AllowConsolidated: true, MaxPerHour: 8},
+		"channel_change":       {Type: "channel_change", Cooldown: 30 * time.Minute, AllowConsolidated: true, MaxPerHour: 6},
+		"permaban":             {Type: "permaban", Cooldown: 12 * time.Hour, AllowConsolidated: true, MaxPerHour: 4},
+		"shadowban":            {Type: "shadowban", Cooldown: 6 * time.Hour, AllowConsolidated: true, MaxPerHour: 5},
+		"temp_ban_update":      {Type: "temp_ban_update", Cooldown: 30 * time.Minute, AllowConsolidated: true, MaxPerHour: 8},
 	}
 )
 
@@ -419,12 +419,12 @@ func (nl *NotificationLimiter) CanSendNotification(userID string) bool {
 	if !exists {
 		state = &NotificationState{
 			lastReset: now,
-			lastSent:  now.Add(-time.Hour),
+			lastSent:  now.Add(-30 * time.Minute),
 		}
 		nl.userCounts[userID] = state
 	}
 
-	if now.Sub(state.lastReset) >= time.Hour {
+	if now.Sub(state.lastReset) >= 30*time.Minute {
 		state.hourlyCount = 0
 		state.lastReset = now
 	}
@@ -441,20 +441,28 @@ func (nl *NotificationLimiter) CanSendNotification(userID string) bool {
 	var maxPerHour int
 	var minInterval time.Duration
 	if userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != "" {
-		maxPerHour = cfg.RateLimits.PremiumMaxAccounts
-		minInterval = time.Duration(userSettings.NotificationInterval) * time.Hour
+		maxPerHour = cfg.RateLimits.PremiumMaxAccounts * 2
+		minInterval = time.Duration(userSettings.NotificationInterval) * time.Hour / 2
 	} else {
-		maxPerHour = cfg.RateLimits.DefaultMaxAccounts
-		minInterval = time.Duration(cfg.Intervals.Notification) * time.Hour
+		maxPerHour = cfg.RateLimits.DefaultMaxAccounts * 2
+		minInterval = time.Duration(cfg.Intervals.Notification) * time.Hour / 2
 	}
 
 	if state.hourlyCount >= maxPerHour {
-		logger.Log.Debugf("User %s exceeded hourly notification limit", userID)
+		logger.Log.WithFields(logrus.Fields{
+			"userID":       userID,
+			"currentCount": state.hourlyCount,
+			"maxAllowed":   maxPerHour,
+		}).Warn("Notification rate limit reached")
 		return false
 	}
 
 	if now.Sub(state.lastSent) < minInterval {
-		logger.Log.Debugf("User %s notification interval too short", userID)
+		logger.Log.WithFields(logrus.Fields{
+			"userID":                    userID,
+			"timeSinceLastNotification": now.Sub(state.lastSent),
+			"minimumInterval":           minInterval,
+		}).Debug("Notification interval not met")
 		return false
 	}
 
@@ -475,7 +483,12 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 			"userID":           account.UserID,
 			"accountTitle":     account.Title,
 			"notificationType": notificationType,
-		}).Info("Notification suppressed due to rate limiting")
+			"embedTitle":       embed.Title,
+			"embedDescription": embed.Description,
+		}).Warn("Notification suppressed due to rate limiting")
+
+		//storeSuppressedNotification(account.UserID, notificationType, embed, content)
+
 		return nil
 	}
 
@@ -530,6 +543,12 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 	}
 
 	return nil
+}
+
+func storeSuppressedNotification(userID, notificationType string, embed *discordgo.MessageEmbed, content string) {
+	// Implement a mechanism to store or log suppressed notifications
+	// prefer database logging
+	logger.Log.Infof("Notification for user %s of type %s was suppressed", userID, notificationType)
 }
 
 func NotifyAdminWithCooldown(s *discordgo.Session, message string, cooldownDuration time.Duration) {
