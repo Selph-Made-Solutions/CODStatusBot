@@ -174,16 +174,3 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 		logger.Log.WithError(err).Error("Error responding to interaction")
 	}
 }
-
-/*
-func IsServiceEnabled(provider string) bool {
-	switch provider {
-	case "ezcaptcha":
-		return os.Getenv("EZCAPTCHA_ENABLED") == "true"
-	case "2captcha":
-		return os.Getenv("TWOCAPTCHA_ENABLED") == "true"
-	default:
-		return false
-	}
-}
-*/

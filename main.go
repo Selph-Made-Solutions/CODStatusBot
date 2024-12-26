@@ -105,7 +105,6 @@ func run() error {
 			enabledServices = append(enabledServices, "2Captcha")
 			logger.Log.Info("2Captcha service enabled and configured correctly")
 		}
-		logger.Log.Infof("Enabled captcha services: %v", enabledServices)
 	}
 
 	if err := database.Databaselogin(); err != nil {
