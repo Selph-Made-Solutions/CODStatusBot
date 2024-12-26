@@ -27,7 +27,12 @@ func loadEnv(filename string) error {
 	if err != nil {
 		return fmt.Errorf("error opening config file: %w", err)
 	}
-	defer file.Close()
+	defer func(file *os.File) {
+		err := file.Close()
+		if err != nil {
+			logger.Log.Errorf("Error closing config file: %v", err)
+		}
+	}(file)
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {

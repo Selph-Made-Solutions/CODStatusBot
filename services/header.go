@@ -22,27 +22,3 @@ func GenerateHeaders(ssoCookie string) map[string]string {
 	}
 	return headers
 }
-
-/*	"Cookie": [
-	ACT_SSO_COOKIE=MjM5NDQzOToxNzM1MTA2MzQ4MDIyOmY0ZjJlMDA5MmJlNjUwYjdmNzhjNWI4NTk4ZDViNGRm
-	ACT_SSO_COOKIE_EXPIRY=1735106348022
-	ACT_SSO_EVENT="LOGOUT:1733826099604"
-	ACT_SSO_LOCALE=en_US
-	CookieConsentPolicy=0:1
-	XSRF-TOKEN=QPRrXBUm5MUkZjNmd_WZ2qK0TOvfYEQX5iTbVE9l2hqZ7jDFFqzr-f2H_ZR8aFhg
-	comid=activision
-	gpv_pn=support%3Aban-appeal
-	new_SiteId=activision
-	pgacct=steam
-	priv_reg_name=ccpa
-	s_cc=true
-	s_ppv=support%253Aban-appeal%2C82%2C82%2C1999
-	tfa_enrollment_seen=true
-*/
-
-func GeneratePostHeaders(ssoCookie string) map[string]string {
-	headers := GenerateHeaders(ssoCookie)
-	headers["Content-Type"] = "application/x-www-form-urlencoded"
-	headers["x-requested-with"] = "XMLHttpRequest"
-	return headers
-}

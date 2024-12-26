@@ -198,19 +198,23 @@ func shouldCheckAccount(account models.Account, settings models.UserSettings) bo
 	cfg := configuration.Get()
 	now := time.Now()
 
+	// If account checks are explicitly disabled, return false
 	if account.IsCheckDisabled {
 		logger.Log.Debugf("Account %s is disabled, skipping check", account.Title)
 		return false
 	}
 
+	// If account has an expired cookie, do not check
 	if account.IsExpiredCookie {
 		return false
 	}
 
 	var nextCheckTime time.Time
+	// Different check intervals for permanently banned accounts
 	if account.IsPermabanned {
 		nextCheckTime = time.Unix(account.LastCheck, 0).Add(time.Duration(cfg.Intervals.PermaBanCheck) * time.Hour)
 	} else {
+		// Use user's check interval or default
 		checkInterval := settings.CheckInterval
 		if checkInterval < 1 {
 			checkInterval = cfg.Intervals.Check
@@ -218,6 +222,7 @@ func shouldCheckAccount(account models.Account, settings models.UserSettings) bo
 		nextCheckTime = time.Unix(account.LastCheck, 0).Add(time.Duration(checkInterval) * time.Minute)
 	}
 
+	// Handle error tracking and cooldown
 	if account.ConsecutiveErrors > cfg.CaptchaService.MaxRetries && !account.LastErrorTime.IsZero() {
 		errorCooldown := time.Duration(cfg.Intervals.Cooldown) * time.Hour
 		if time.Since(account.LastErrorTime) < errorCooldown {
@@ -225,10 +230,12 @@ func shouldCheckAccount(account models.Account, settings models.UserSettings) bo
 		}
 	}
 
+	// For users with custom API keys, always allow checks
 	if settings.EZCaptchaAPIKey != "" || settings.TwoCaptchaAPIKey != "" {
 		return now.After(nextCheckTime)
 	}
 
+	// For default key users, apply rate limiting
 	return now.After(nextCheckTime) && time.Since(time.Unix(account.LastCheck, 0)) >= cfg.RateLimits.Default
 }
 
