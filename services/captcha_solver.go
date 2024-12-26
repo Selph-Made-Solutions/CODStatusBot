@@ -8,48 +8,22 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
-	"strconv"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/logger"
 )
 
-func LoadEnvironmentVariables() error {
-	clientKey = os.Getenv("EZCAPTCHA_CLIENT_KEY")
-	ezappID = os.Getenv("EZAPPID")
-	softID = os.Getenv("SOFT_ID")
-	siteAction = os.Getenv("SITE_ACTION")
-	ezCapBalMinStr := os.Getenv("EZCAPBALMIN")
-	twoCapBalMinStr := os.Getenv("TWOCAPBALMIN")
+const (
+	MaxRetries    = 6
+	RetryInterval = 10 * time.Second
 
-	var err error
-	ezCapBalMin, err = strconv.ParseFloat(ezCapBalMinStr, 64)
-	if err != nil {
-		ezCapBalMin = 100
-		logger.Log.Warnf("Failed to parse EZCAPBALMIN, using default value: %v", ezCapBalMin)
-	}
-
-	twoCapBalMin, err = strconv.ParseFloat(twoCapBalMinStr, 64)
-	if err != nil {
-		twoCapBalMin = 0.10
-		logger.Log.Warnf("Failed to parse TWOCAPBALMIN, using default value: %v", twoCapBalMin)
-	}
-
-	if clientKey == "" || ezappID == "" || softID == "" || siteAction == "" {
-		return fmt.Errorf("EZCAPTCHA_CLIENT_KEY, EZAPPID, SOFT_ID, or SITE_ACTION is not set in the environment")
-	}
-
-	return nil
-}
-
-var (
-	clientKey    string
-	ezappID      string
-	softID       string
-	siteAction   string
-	ezCapBalMin  float64
-	twoCapBalMin float64
+	EZCaptchaCreateEndpoint  = "https://api.ez-captcha.com/createTask"
+	EZCaptchaResultEndpoint  = "https://api.ez-captcha.com/getTaskResult"
+	TwoCaptchaCreateEndpoint = "https://api.2captcha.com/createTask"
+	TwoCaptchaResultEndpoint = "https://api.2captcha.com/getTaskResult"
+	//	twocap                   = "2captcha"
+	//	ezcap                    = "ezcaptcha"
 )
 
 type CaptchaSolver interface {
@@ -66,45 +40,65 @@ type TwoCaptchaSolver struct {
 	SoftID string
 }
 
-const (
-	MaxRetries    = 6
-	RetryInterval = 10 * time.Second
-
-	EZCaptchaCreateEndpoint  = "https://api.ez-captcha.com/createTask"
-	EZCaptchaResultEndpoint  = "https://api.ez-captcha.com/getTaskResult"
-	TwoCaptchaCreateEndpoint = "https://api.2captcha.com/createTask"
-	TwoCaptchaResultEndpoint = "https://api.2captcha.com/getTaskResult"
-	twocap                   = "2captcha"
-	ezcap                    = "ezcaptcha"
-)
-
 func IsServiceEnabled(provider string) bool {
+	cfg := configuration.Get()
 	switch provider {
-	case ezcap:
-		return os.Getenv("EZCAPTCHA_ENABLED") == "true"
-	case twocap:
-		return os.Getenv("TWOCAPTCHA_ENABLED") == "true"
+	case "ezcaptcha":
+		return cfg.CaptchaService.EZCaptcha.Enabled
+	case "2captcha":
+		return cfg.CaptchaService.TwoCaptcha.Enabled
 	default:
 		return false
 	}
 }
 
+func VerifyEZCaptchaConfig() bool {
+	cfg := configuration.Get()
+	ezConfig := cfg.CaptchaService
+
+	if ezConfig.EZCaptcha.ClientKey == "" || ezConfig.EZCaptcha.AppID == "" || ezConfig.SiteAction == "" {
+		logger.Log.Error("Missing required EZCaptcha configuration")
+		return false
+	}
+
+	if ezConfig.RecaptchaSiteKey == "" {
+		logger.Log.Error("RECAPTCHA_SITE_KEY is not set")
+		return false
+	}
+	if ezConfig.RecaptchaURL == "" {
+		logger.Log.Error("RECAPTCHA_URL is not set")
+		return false
+	}
+
+	logger.Log.Info("EZCaptcha configuration verified successfully")
+	return true
+}
+
 func NewCaptchaSolver(apiKey, provider string) (CaptchaSolver, error) {
+	cfg := configuration.Get()
+
 	if !IsServiceEnabled(provider) {
 		return nil, fmt.Errorf("captcha service %s is currently disabled", provider)
 	}
 
 	switch provider {
-	case ezcap:
-		return &EZCaptchaSolver{APIKey: apiKey, EzappID: ezappID}, nil
-	case twocap:
-		return &TwoCaptchaSolver{APIKey: apiKey, SoftID: softID}, nil
+	case "ezcaptcha":
+		return &EZCaptchaSolver{
+			APIKey:  apiKey,
+			EzappID: cfg.CaptchaService.EZCaptcha.AppID,
+		}, nil
+	case "2captcha":
+		return &TwoCaptchaSolver{
+			APIKey: apiKey,
+			SoftID: cfg.CaptchaService.TwoCaptcha.SoftID,
+		}, nil
 	default:
 		return nil, errors.New("unsupported captcha provider")
 	}
 }
 
 func (s *EZCaptchaSolver) SolveReCaptchaV2(siteKey, pageURL string) (string, error) {
+
 	taskID, err := s.createTask(siteKey, pageURL)
 	if err != nil {
 		return "", fmt.Errorf("failed to create captcha task: %w", err)
@@ -121,6 +115,16 @@ func (s *TwoCaptchaSolver) SolveReCaptchaV2(siteKey, pageURL string) (string, er
 }
 
 func (s *EZCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
+	cfg := configuration.Get()
+
+	if s.EzappID == "" {
+		return "", fmt.Errorf("EzappID is not configured")
+	}
+
+	if cfg.CaptchaService.SiteAction == "" {
+		return "", fmt.Errorf("site action is not configured")
+	}
+
 	payload := map[string]interface{}{
 		"clientKey": s.APIKey,
 		"appId":     s.EzappID,
@@ -129,6 +133,7 @@ func (s *EZCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 			"websiteURL":  pageURL,
 			"websiteKey":  siteKey,
 			"isInvisible": false,
+			"sa":          cfg.CaptchaService.SiteAction,
 		},
 	}
 
@@ -295,11 +300,12 @@ func sendRequest(url string, payload interface{}) ([]byte, error) {
 }
 
 func getBalanceThreshold(provider string) float64 {
+	cfg := configuration.Get()
 	switch provider {
-	case ezcap:
-		return ezCapBalMin
-	case twocap:
-		return twoCapBalMin
+	case "ezcaptcha":
+		return cfg.CaptchaService.EZCaptcha.BalanceMin
+	case "2captcha":
+		return cfg.CaptchaService.TwoCaptcha.BalanceMin
 	default:
 		return 0
 	}
@@ -307,9 +313,9 @@ func getBalanceThreshold(provider string) float64 {
 
 func ValidateCaptchaKey(apiKey, provider string) (bool, float64, error) {
 	switch provider {
-	case ezcap:
+	case "ezcaptcha":
 		return validateEZCaptchaKey(apiKey)
-	case twocap:
+	case "2captcha":
 		return validate2CaptchaKey(apiKey)
 	default:
 		return false, 0, errors.New("unsupported captcha provider")

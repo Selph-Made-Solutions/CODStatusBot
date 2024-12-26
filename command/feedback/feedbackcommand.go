@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bwmarrin/discordgo"
 )
@@ -25,9 +26,10 @@ const feedbackTimeout = 5 * time.Minute
 
 func CommandFeedback(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	feedbackMessage := i.ApplicationCommandData().Options[0].StringValue()
-	developerID := os.Getenv("DEVELOPER_ID")
+	cfg := configuration.Get()
+	developerID := cfg.Discord.DeveloperID
 	if developerID == "" {
-		logger.Log.Error("DEVELOPER_ID not set in environment variables")
+		logger.Log.Error("Developer ID not configured")
 		sendResponse(s, i, "Configuration error. Please try again later.", true)
 		return
 	}

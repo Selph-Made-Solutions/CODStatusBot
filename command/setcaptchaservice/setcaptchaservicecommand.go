@@ -2,10 +2,10 @@ package setcaptchaservice
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
@@ -15,11 +15,12 @@ import (
 )
 
 func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	cfg := configuration.Get()
 	var enabledServices []string
-	if isServiceEnabled("ezcaptcha") {
+	if cfg.CaptchaService.EZCaptcha.Enabled {
 		enabledServices = append(enabledServices, "ezcaptcha")
 	}
-	if isServiceEnabled("2captcha") {
+	if cfg.CaptchaService.TwoCaptcha.Enabled {
 		enabledServices = append(enabledServices, "2captcha")
 	}
 
@@ -80,13 +81,15 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	logger.Log.Infof("Received setcaptchaservice command. Provider: %s, API Key length: %d", provider, len(apiKey))
 
+	cfg := configuration.Get()
 	if provider != "ezcaptcha" && provider != "2captcha" {
 		logger.Log.Errorf("Invalid captcha provider: %s", provider)
 		respondToInteraction(s, i, "Invalid captcha provider. Please enter 'ezcaptcha' or '2captcha'.")
 		return
 	}
 
-	if !isServiceEnabled(provider) {
+	if (provider == "ezcaptcha" && !cfg.CaptchaService.EZCaptcha.Enabled) ||
+		(provider == "2captcha" && !cfg.CaptchaService.TwoCaptcha.Enabled) {
 		logger.Log.Errorf("Attempt to use disabled captcha service: %s", provider)
 		respondToInteraction(s, i, fmt.Sprintf("The %s service is currently disabled. Please use an enabled service.", provider))
 		return
@@ -125,8 +128,8 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		}
 
 		settings.PreferredCaptchaProvider = provider
-		settings.CheckInterval = 15
-		settings.NotificationInterval = 12
+		settings.CheckInterval = cfg.Intervals.Check
+		settings.NotificationInterval = cfg.Intervals.Notification
 		settings.CustomSettings = true
 		settings.CaptchaBalance = balance
 		settings.LastBalanceCheck = time.Now()
@@ -172,7 +175,8 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	}
 }
 
-func isServiceEnabled(provider string) bool {
+/*
+func IsServiceEnabled(provider string) bool {
 	switch provider {
 	case "ezcaptcha":
 		return os.Getenv("EZCAPTCHA_ENABLED") == "true"
@@ -182,3 +186,4 @@ func isServiceEnabled(provider string) bool {
 		return false
 	}
 }
+*/

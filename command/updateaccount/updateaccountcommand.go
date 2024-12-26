@@ -283,36 +283,19 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	go func() {
 		time.Sleep(2 * time.Second)
 
-		if status, err := services.CheckAccount(newSSOCookie, userID, ""); err == nil {
-			services.DBMutex.Lock()
-			var updatedAccount models.Account
-			if err := database.DB.First(&updatedAccount, account.ID).Error; err != nil {
-				services.DBMutex.Unlock()
-				logger.Log.WithError(err).Error("Error fetching account for status update")
-				return
-			}
-
-			now := time.Now()
-			prevStatus := updatedAccount.LastStatus
-			updatedAccount.LastStatus = status
-			updatedAccount.LastCheck = now.Unix()
-			updatedAccount.LastStatusChange = now.Unix()
-			updatedAccount.LastSuccessfulCheck = now
-			updatedAccount.ConsecutiveErrors = 0
-
-			if err := database.DB.Save(&updatedAccount).Error; err != nil {
-				services.DBMutex.Unlock()
-				logger.Log.WithError(err).Error("Error saving updated status")
-				return
-			}
-			services.DBMutex.Unlock()
-
-			if prevStatus != status {
-				services.HandleStatusChange(s, updatedAccount, status, userSettings)
-			}
-		} else {
+		status, err := services.CheckAccount(newSSOCookie, userID, "")
+		if err != nil {
 			logger.Log.WithError(err).Error("Error performing status check after update")
+			return
 		}
+
+		var updatedAccount models.Account
+		if err := database.DB.First(&updatedAccount, account.ID).Error; err != nil {
+			logger.Log.WithError(err).Error("Error fetching account for status update")
+			return
+		}
+
+		services.HandleStatusChange(s, updatedAccount, status, userSettings)
 	}()
 }
 

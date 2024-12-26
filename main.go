@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
@@ -11,17 +12,56 @@ import (
 	"time"
 
 	"github.com/bradselph/CODStatusBot/bot"
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bradselph/CODStatusBot/services"
-	"github.com/bradselph/CODStatusBot/webserver"
 	"github.com/bwmarrin/discordgo"
-
-	"github.com/joho/godotenv"
 )
 
 var discord *discordgo.Session
+
+func loadEnv(filename string) error {
+	file, err := os.Open(filename)
+	if err != nil {
+		return fmt.Errorf("error opening config file: %w", err)
+	}
+	defer func(file *os.File) {
+		err := file.Close()
+		if err != nil {
+			logger.Log.Errorf("Error closing config file: %v", err)
+		}
+	}(file)
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		value = strings.Trim(value, `"'`)
+
+		if err := os.Setenv(key, value); err != nil {
+			return fmt.Errorf("error setting environment variable %s: %w", key, err)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("error reading config file: %w", err)
+	}
+
+	return nil
+}
 
 func main() {
 	defer func() {
@@ -29,12 +69,6 @@ func main() {
 			logger.Log.Errorf("Recovered from panic: %v\n%s", r, debug.Stack())
 		}
 	}()
-
-	if services.IsDonationsEnabled() {
-		logger.Log.Info("Donations system enabled")
-	} else {
-		logger.Log.Info("Donations system disabled")
-	}
 
 	if err := run(); err != nil {
 		logger.Log.WithError(err).Error("Bot encountered an error and is shutting down")
@@ -45,42 +79,39 @@ func main() {
 func run() error {
 	logger.Log.Info("Starting COD Status Bot...")
 
-	if err := loadEnvironmentVariables(); err != nil {
+	if err := loadEnv("config.env"); err != nil {
 		return fmt.Errorf("failed to load environment variables: %w", err)
 	}
-	logger.Log.Info("Environment variables loaded successfully")
 
-	if !services.IsServiceEnabled("ezcaptcha") && !services.IsServiceEnabled("2captcha") {
+	if err := configuration.Load(); err != nil {
+		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	cfg := configuration.Get()
+
+	if !cfg.CaptchaService.EZCaptcha.Enabled && !cfg.CaptchaService.TwoCaptcha.Enabled {
 		logger.Log.Warn("Starting bot with no captcha services enabled - functionality will be limited")
 	} else {
 		var enabledServices []string
-		if services.IsServiceEnabled("ezcaptcha") {
+		if cfg.CaptchaService.EZCaptcha.Enabled {
 			enabledServices = append(enabledServices, "EZCaptcha")
-			logger.Log.Info("EZCaptcha service enabled")
+			if services.VerifyEZCaptchaConfig() {
+				logger.Log.Info("EZCaptcha service enabled and configured correctly")
+			} else {
+				logger.Log.Error("EZCaptcha service enabled but configuration is invalid")
+			}
 		}
-		if services.IsServiceEnabled("2captcha") {
+		if cfg.CaptchaService.TwoCaptcha.Enabled {
 			enabledServices = append(enabledServices, "2Captcha")
-			logger.Log.Info("2Captcha service enabled")
+			logger.Log.Info("2Captcha service enabled and configured correctly")
 		}
-		logger.Log.Infof("Enabled captcha services: %s", strings.Join(enabledServices, ", "))
+		logger.Log.Infof("Enabled captcha services: %v", enabledServices)
 	}
-
-	if err := services.LoadEnvironmentVariables(); err != nil {
-		return fmt.Errorf("failed to initialize EZ-Captcha service: %w", err)
-	}
-	logger.Log.Info("EZ-Captcha service initialized successfully")
 
 	if err := database.Databaselogin(); err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 	logger.Log.Info("Database connection established successfully")
-
-	if err := initializeDatabase(); err != nil {
-		return fmt.Errorf("failed to initialize database: %w", err)
-	}
-	logger.Log.Info("Database initialized successfully")
-
-	server := webserver.StartAdminDashboard()
 
 	var err error
 	discord, err = bot.StartBot()
@@ -102,12 +133,6 @@ func run() error {
 
 	cancelPeriodicTasks()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := server.Shutdown(ctx); err != nil {
-		logger.Log.WithError(err).Error("Error shutting down webpage server")
-	}
-
 	if err := discord.Close(); err != nil {
 		logger.Log.WithError(err).Error("Error closing Discord session")
 	}
@@ -120,89 +145,9 @@ func run() error {
 	return nil
 }
 
-func loadEnvironmentVariables() error {
-	logger.Log.Info("Loading environment variables...")
-	if err := godotenv.Load(); err != nil {
-		logger.Log.WithError(err).Error("Error loading .env file")
-		return fmt.Errorf("error loading .env file: %w", err)
-	}
-
-	requiredEnvVars := []string{
-		"DONATIONS_ENABLED",
-		"BITCOIN_ADDRESS",
-		"CASHAPP_ID",
-		"DISCORD_TOKEN",
-		"DEVELOPER_ID",
-		"DB_USER",
-		"DB_PASSWORD",
-		"DB_NAME",
-		"DB_HOST",
-		"DB_PORT",
-		"DB_VAR",
-		"EZCAPTCHA_ENABLED",
-		"TWOCAPTCHA_ENABLED",
-		"MAX_RETRIES",
-		"RECAPTCHA_SITE_KEY",
-		"RECAPTCHA_URL",
-		"SITE_ACTION",
-		"EZAPPID",
-		"EZCAPTCHA_CLIENT_KEY",
-		"SOFT_ID",
-		"COOLDOWN_DURATION",
-		"CHECK_INTERVAL",
-		"NOTIFICATION_INTERVAL",
-		"SLEEP_DURATION",
-		"COOKIE_CHECK_INTERVAL_PERMABAN",
-		"STATUS_CHANGE_COOLDOWN",
-		"GLOBAL_NOTIFICATION_COOLDOWN",
-		"COOKIE_EXPIRATION_WARNING",
-		"TEMP_BAN_UPDATE_INTERVAL",
-		"CHECK_ENDPOINT",
-		"PROFILE_ENDPOINT",
-		"CHECK_VIP_ENDPOINT",
-		"REDEEM_CODE_ENDPOINT",
-		"SESSION_KEY",
-		"STATIC_DIR",
-		"ADMIN_PORT",
-		"ADMIN_USERNAME",
-		"ADMIN_PASSWORD",
-		"CHECK_NOW_RATE_LIMIT",
-		"DEFAULT_RATE_LIMIT",
-		"DEFAULT_USER_MAXACCOUNTS",
-		"PREM_USER_MAXACCOUNTS",
-		"CHECKCIRCLE",
-		"BANCIRCLE",
-		"INFOCIRCLE",
-		"STOPWATCH",
-		"QUESTIONCIRCLE",
-	}
-
-	for _, envVar := range requiredEnvVars {
-		if os.Getenv(envVar) == "" {
-			return fmt.Errorf("%s is not set in the environment", envVar)
-		}
-	}
-
-	return nil
-}
-
-func initializeDatabase() error {
-	if err := database.DB.AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{}); err != nil {
-		return fmt.Errorf("failed to migrate database tables: %w", err)
-	}
-
-	var accounts []models.Account
-	database.DB.Find(&accounts)
-	for _, account := range accounts {
-		if account.LastStatus == models.StatusShadowban {
-			account.IsShadowbanned = true
-			database.DB.Save(&account)
-		}
-	}
-	return nil
-}
-
 func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
+	cfg := configuration.Get()
+
 	go func() {
 		for {
 			select {
@@ -210,8 +155,7 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 				return
 			default:
 				services.CheckAccounts(s)
-				sleepDuration := time.Duration(services.GetEnvInt("SLEEP_DURATION", 3)) * time.Minute
-				time.Sleep(sleepDuration)
+				time.Sleep(time.Duration(cfg.Intervals.Sleep) * time.Minute)
 			}
 		}
 	}()
@@ -238,7 +182,7 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 					}
 
 					if time.Since(user.LastDailyUpdateNotification) >=
-						time.Duration(user.NotificationInterval)*time.Hour {
+						time.Duration(cfg.Intervals.Notification)*time.Hour {
 						services.SendConsolidatedDailyUpdate(s, user.UserID, user, accounts)
 					}
 				}
@@ -248,7 +192,6 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 		}
 	}()
 
-	go webserver.StartStatsCaching()
 	go services.ScheduleBalanceChecks(s)
 
 	go func() {
@@ -265,5 +208,20 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 		}
 	}()
 
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if err := s.UpdateWatchStatus(0, bot.BotStatusMessage); err != nil {
+					logger.Log.WithError(err).Error("Failed to refresh presence status")
+				}
+				time.Sleep(60 * time.Minute)
+			}
+		}
+	}()
+
 	logger.Log.Info("Periodic tasks started successfully")
+
 }

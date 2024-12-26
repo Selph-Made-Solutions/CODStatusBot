@@ -2,51 +2,34 @@ package addaccount
 
 import (
 	"fmt"
-	"os"
-	"strconv"
 	"strings"
 	"time"
-	"unicode"
 
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bradselph/CODStatusBot/services"
 	"github.com/bradselph/CODStatusBot/utils"
 	"github.com/bwmarrin/discordgo"
+	"github.com/sirupsen/logrus"
 )
 
-//TODO: fix this as its supposed to be used for input cleaning
+var (
+	rateLimit time.Duration
+)
 
-func sanitizeInput(input string) string {
-	return strings.Map(func(r rune) rune {
-		if unicode.IsLetter(r) || unicode.IsNumber(r) || r == ' ' || r == '-' || r == '_' {
-			return r
-		}
-		return -1
-	}, input)
+func init() {
+	cfg := configuration.Get()
+	rateLimit = cfg.RateLimits.CheckNow
 }
 
-const rateLimit = 5 * time.Minute
-
-var rateLimiter = make(map[string]time.Time)
-
 func getMaxAccounts(hasCustomKey bool) int {
+	cfg := configuration.Get()
 	if hasCustomKey {
-		premiumMax, err := strconv.Atoi(os.Getenv("PREM_USER_MAXACCOUNTS"))
-		if err != nil || premiumMax <= 0 {
-			logger.Log.WithError(err).Info("Using default premium max accounts value")
-			return 10
-		}
-		return premiumMax
+		return cfg.RateLimits.PremiumMaxAccounts
 	}
-
-	defaultMax, err := strconv.Atoi(os.Getenv("DEFAULT_USER_MAXACCOUNTS"))
-	if err != nil || defaultMax <= 0 {
-		logger.Log.WithError(err).Info("Using default max accounts value")
-		return 3
-	}
-	return defaultMax
+	return cfg.RateLimits.DefaultMaxAccounts
 }
 
 func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -65,6 +48,11 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	hasCustomKey := userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != ""
+	if !hasCustomKey && !checkRateLimit(userID) {
+		respondToInteraction(s, i, fmt.Sprintf("Please wait %v before adding another account.", rateLimit))
+		return
+	}
+
 	if !hasCustomKey && !checkRateLimit(userID) {
 		respondToInteraction(s, i, fmt.Sprintf("Please wait %v before adding another account.", rateLimit))
 		return
@@ -133,10 +121,10 @@ func showAddAccountModal(s *discordgo.Session, i *discordgo.InteractionCreate) {
 							CustomID:    "account_title",
 							Label:       "Account Title",
 							Style:       discordgo.TextInputShort,
-							Placeholder: "Enter a title for this account",
+							Placeholder: "Enter a name for this account",
 							Required:    true,
 							MinLength:   1,
-							MaxLength:   100,
+							MaxLength:   40,
 						},
 					},
 				},
@@ -236,7 +224,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	if err := database.DB.Create(&account).Error; err != nil {
-		logger.Log.WithError(err).Error("Error creating account")
+		logger.Log.WithError(err).WithFields(logrus.Fields{"userID": userID, "title": title}).Error("Error creating account")
 		respondToInteraction(s, i, "Error creating account. Please try again.")
 		return
 	}
@@ -292,42 +280,19 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	go func() {
 		time.Sleep(2 * time.Second)
 
-		userSettings, err := services.GetUserSettings(userID)
+		status, err := services.CheckAccount(ssoCookie, userID, "")
 		if err != nil {
-			logger.Log.WithError(err).Error("Error getting user settings for initial status check")
+			logger.Log.WithError(err).Error("Error performing initial status check")
 			return
 		}
 
-		if status, err := services.CheckAccount(ssoCookie, userID, ""); err == nil {
-			services.DBMutex.Lock()
-			var updatedAccount models.Account
-			if err := database.DB.First(&updatedAccount, account.ID).Error; err != nil {
-				services.DBMutex.Unlock()
-				logger.Log.WithError(err).Error("Error fetching account for initial status update")
-				return
-			}
-
-			now := time.Now()
-			prevStatus := updatedAccount.LastStatus
-			updatedAccount.LastStatus = status
-			updatedAccount.LastCheck = now.Unix()
-			updatedAccount.LastStatusChange = now.Unix()
-			updatedAccount.LastSuccessfulCheck = now
-			updatedAccount.ConsecutiveErrors = 0
-
-			if err := database.DB.Save(&updatedAccount).Error; err != nil {
-				services.DBMutex.Unlock()
-				logger.Log.WithError(err).Error("Error saving initial status")
-				return
-			}
-			services.DBMutex.Unlock()
-
-			if prevStatus == models.StatusUnknown && status != models.StatusUnknown {
-				services.HandleStatusChange(s, updatedAccount, status, userSettings)
-			}
-		} else {
-			logger.Log.WithError(err).Error("Error performing initial status check")
+		var updatedAccount models.Account
+		if err := database.DB.First(&updatedAccount, account.ID).Error; err != nil {
+			logger.Log.WithError(err).Error("Error fetching account for initial status update")
+			return
 		}
+
+		services.HandleStatusChange(s, updatedAccount, status, userSettings)
 	}()
 }
 
@@ -365,7 +330,6 @@ func getChannelID(s *discordgo.Session, i *discordgo.InteractionCreate) string {
 	}
 	return channel.ID
 }
-
 func checkRateLimit(userID string) bool {
 	var userSettings models.UserSettings
 	if err := database.DB.Where("user_id = ?", userID).First(&userSettings).Error; err != nil {
@@ -373,6 +337,7 @@ func checkRateLimit(userID string) bool {
 		return false
 	}
 
+	userSettings.EnsureMapsInitialized()
 	now := time.Now()
 	lastAddTime := userSettings.LastCommandTimes["add_account"]
 

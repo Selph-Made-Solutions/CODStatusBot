@@ -2,12 +2,11 @@ package checknow
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
@@ -17,19 +16,14 @@ import (
 )
 
 var (
-	rateLimiter     = make(map[string]time.Time)
-	rateLimiterLock sync.Mutex
-	rateLimit       time.Duration
+	//	rateLimiter     = make(map[string]time.Time)
+	//	rateLimiterLock sync.Mutex
+	rateLimit time.Duration
 )
 
 func init() {
-	rateLimitStr := os.Getenv("CHECK_NOW_RATE_LIMIT")
-	rateLimitSeconds, err := strconv.Atoi(rateLimitStr)
-	if err != nil {
-		logger.Log.WithError(err).Error("Failed to parse CHECK_NOW_RATE_LIMIT, using default of 3600 seconds")
-		rateLimitSeconds = 3600
-	}
-	rateLimit = time.Duration(rateLimitSeconds) * time.Second
+	cfg := configuration.Get()
+	rateLimit = cfg.RateLimits.CheckNow
 }
 
 func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -213,7 +207,21 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 }
 
 func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, accounts []models.Account) {
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	userID, err := services.GetUserID(i)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to get user ID")
+		respondToInteraction(s, i, "An error occurred while processing your request.")
+		return
+	}
+
+	userSettings, err := services.GetUserSettings(userID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error fetching user settings")
+		respondToInteraction(s, i, "Error fetching settings. Please try again.")
+		return
+	}
+
+	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Flags: discordgo.MessageFlagsEphemeral,
@@ -271,11 +279,7 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 			continue
 		}
 
-		account.LastStatus = status
-		account.LastCheck = time.Now().Unix()
-		if err := database.DB.Save(&account).Error; err != nil {
-			logger.Log.WithError(err).Errorf("Failed to update account %s after check", account.Title)
-		}
+		services.HandleStatusChange(s, account, status, userSettings)
 
 		embed := &discordgo.MessageEmbed{
 			Title:       fmt.Sprintf("%s - Status Check", account.Title),
@@ -316,12 +320,9 @@ func checkRateLimit(userID string) bool {
 		return false
 	}
 
+	userSettings.EnsureMapsInitialized()
+
 	now := time.Now()
-
-	if userSettings.LastCommandTimes == nil {
-		userSettings.LastCommandTimes = make(map[string]time.Time)
-	}
-
 	lastCheckTime := userSettings.LastCommandTimes["check_now"]
 
 	if lastCheckTime.IsZero() || time.Since(lastCheckTime) >= rateLimit {

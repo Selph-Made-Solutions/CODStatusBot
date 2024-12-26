@@ -94,17 +94,6 @@ func RegisterCommands(s *discordgo.Session) error {
 			Description:  "Remove a monitored account",
 			DMPermission: BoolPtr(true),
 		},
-		/*		{
-					Name:         "managerewardcodes",
-					Description:  "Manage reward codes (Admin only)",
-					DMPermission: BoolPtr(true),
-				},
-				{
-					Name:         "claimreward",
-					Description:  "Claim a reward code for your account(s)",
-					DMPermission: BoolPtr(true),
-				},
-		*/
 		{
 			Name:         "updateaccount",
 			Description:  "Update a monitored account's information",
@@ -146,7 +135,6 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["feedback"] = feedback.CommandFeedback
 	Handlers["accountage"] = accountage.CommandAccountAge
 	Handlers["accountlogs"] = accountlogs.CommandAccountLogs
-	//	Handlers["claimreward"] = claimreward.CommandClaimReward
 	Handlers["checknow"] = checknow.CommandCheckNow
 	Handlers["listaccounts"] = listaccounts.CommandListAccounts
 	Handlers["removeaccount"] = removeaccount.CommandRemoveAccount
@@ -154,7 +142,6 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["togglecheck"] = togglecheck.CommandToggleCheck
 	Handlers["setnotifications"] = setnotifications.CommandSetNotifications
 
-	//	Handlers["claim_reward_modal"] = claimreward.HandleModalSubmit
 	Handlers["set_notifications_modal"] = setnotifications.HandleModalSubmit
 	Handlers["setcaptchaservice_modal"] = setcaptchaservice.HandleModalSubmit
 	Handlers["addaccount_modal"] = addaccount.HandleModalSubmit
@@ -166,8 +153,6 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["remove_account"] = removeaccount.HandleAccountSelection
 	Handlers["check_now"] = checknow.HandleAccountSelection
 	Handlers["toggle_check"] = togglecheck.HandleAccountSelection
-	//	Handlers["claim_reward_manual"] = claimreward.HandleRewardChoice
-	//	Handlers["claim_reward_preset"] = claimreward.HandleRewardChoice
 	Handlers["feedback_anonymous"] = feedback.HandleFeedbackChoice
 	Handlers["feedback_with_id"] = feedback.HandleFeedbackChoice
 	Handlers["show_interval_modal"] = setcheckinterval.HandleButton
@@ -175,12 +160,6 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["confirm_remove"] = removeaccount.HandleConfirmation
 	Handlers["confirm_reenable"] = togglecheck.HandleConfirmation
 	Handlers["cancel_reenable"] = togglecheck.HandleConfirmation
-
-	//	Handlers["add_reward_code_modal"] = managerewardcodes.HandleAddCodeModal
-	//	Handlers["add_reward_code"] = managerewardcodes.HandleManageChoice
-	//	Handlers["list_reward_codes"] = managerewardcodes.HandleManageChoice
-	//	Handlers["remove_reward_code"] = managerewardcodes.HandleManageChoice
-	//	Handlers["managerewardcodes"] = managerewardcodes.CommandManageRewardCodes
 
 	logger.Log.Info("Global commands registered and handlers set up")
 	return nil

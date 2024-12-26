@@ -5,93 +5,36 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bwmarrin/discordgo"
-	"github.com/joho/godotenv"
 )
 
 const (
-	maxRetryAttempts     = 3
-	retryDelay           = 5 * time.Second
-	maxConsecutiveErrors = 5
+	maxConsecutiveErrors    = 5
+	cookieExpirationWarning = 24
 )
 
 var (
-	checkInterval               float64
-	notificationInterval        float64
-	cooldownDuration            float64
-	sleepDuration               int
-	cookieCheckIntervalPermaban float64
-	statusChangeCooldown        float64
-	globalNotificationCooldown  float64
-	cookieExpirationWarning     float64
-	tempBanUpdateInterval       float64
-	defaultRateLimit            time.Duration
-	checkNowRateLimit           time.Duration
-	DBMutex                     sync.Mutex
+	DBMutex sync.Mutex
 )
 
 func init() {
-	if err := godotenv.Load(); err != nil {
-		logger.Log.WithError(err).Error("Failed to load .env file")
-	}
-
-	checkInterval = GetEnvFloat("CHECK_INTERVAL", 15)
-	notificationInterval = GetEnvFloat("NOTIFICATION_INTERVAL", 24)
-	cooldownDuration = GetEnvFloat("COOLDOWN_DURATION", 6)
-	sleepDuration = GetEnvInt("SLEEP_DURATION", 1)
-	cookieCheckIntervalPermaban = GetEnvFloat("COOKIE_CHECK_INTERVAL_PERMABAN", 24)
-	statusChangeCooldown = GetEnvFloat("STATUS_CHANGE_COOLDOWN", 1)
-	globalNotificationCooldown = GetEnvFloat("GLOBAL_NOTIFICATION_COOLDOWN", 2)
-	cookieExpirationWarning = GetEnvFloat("COOKIE_EXPIRATION_WARNING", 24)
-	tempBanUpdateInterval = GetEnvFloat("TEMP_BAN_UPDATE_INTERVAL", 24)
-	defaultRateLimit = time.Duration(GetEnvInt("DEFAULT_RATE_LIMIT", 5)) * time.Minute
-	checkNowRateLimit = time.Duration(GetEnvInt("CHECK_NOW_RATE_LIMIT", 3600)) * time.Second
-
-	logger.Log.Infof("Loaded config: CHECK_INTERVAL=%.2f, NOTIFICATION_INTERVAL=%.2f, COOLDOWN_DURATION=%.2f, SLEEP_DURATION=%d, COOKIE_CHECK_INTERVAL_PERMABAN=%.2f, STATUS_CHANGE_COOLDOWN=%.2f, GLOBAL_NOTIFICATION_COOLDOWN=%.2f, COOKIE_EXPIRATION_WARNING=%.2f, TEMP_BAN_UPDATE_INTERVAL=%.2f, CHECK_NOW_RATE_LIMIT=%v, DEFAULT_RATE_LIMIT=%v",
-		checkInterval, notificationInterval, cooldownDuration, sleepDuration, cookieCheckIntervalPermaban, statusChangeCooldown, globalNotificationCooldown, cookieExpirationWarning, tempBanUpdateInterval, checkNowRateLimit, defaultRateLimit)
-}
-
-func GetEnvFloat(key string, fallback float64) float64 {
-	value := GetEnvFloatRaw(key, fallback)
-	if key == "CHECK_INTERVAL" || key == "SLEEP_DURATION" || key == "DEFAULT_RATE_LIMIT" {
-		return value
-	}
-	return value
-}
-
-func GetEnvFloatRaw(key string, fallback float64) float64 {
-	if value, ok := os.LookupEnv(key); ok {
-		floatValue, err := strconv.ParseFloat(value, 64)
-		if err == nil {
-			return floatValue
-		}
-		logger.Log.WithError(err).Errorf("Failed to parse %s, using fallback value", key)
-	}
-	return fallback
-}
-
-func GetEnvInt(key string, fallback int) int {
-	return GetEnvIntRaw(key, fallback)
-}
-
-func GetEnvIntRaw(key string, fallback int) int {
-	if value, ok := os.LookupEnv(key); ok {
-		intValue, err := strconv.Atoi(value)
-		if err == nil {
-			return intValue
-		}
-		logger.Log.WithError(err).Errorf("Failed to parse %s, using fallback value", key)
-	}
-	return fallback
+	cfg := configuration.Get()
+	logger.Log.Infof("Loaded rate limits and intervals: CHECK_INTERVAL=%.2f, NOTIFICATION_INTERVAL=%.2f, "+
+		"COOLDOWN_DURATION=%.2f, SLEEP_DURATION=%d, COOKIE_CHECK_INTERVAL_PERMABAN=%.2f, "+
+		"STATUS_CHANGE_COOLDOWN=%.2f, GLOBAL_NOTIFICATION_COOLDOWN=%.2f, COOKIE_EXPIRATION_WARNING=%.2f, "+
+		"TEMP_BAN_UPDATE_INTERVAL=%.2f, CHECK_NOW_RATE_LIMIT=%v, DEFAULT_RATE_LIMIT=%v",
+		cfg.Intervals.Check, cfg.Intervals.Notification, cfg.Intervals.Cooldown, cfg.Intervals.Sleep,
+		cfg.Intervals.PermaBanCheck, cfg.Intervals.StatusChange, cfg.Intervals.GlobalNotification,
+		cfg.Intervals.CookieExpiration, cfg.Intervals.TempBanUpdate, cfg.RateLimits.CheckNow, cfg.RateLimits.Default)
 }
 
 func CheckAccounts(s *discordgo.Session) {
@@ -157,10 +100,14 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 	if newStatus == models.StatusTempban {
 		ban.TempBanDuration = calculateBanDuration(time.Now().Add(24 * time.Hour))
 		ban.AffectedGames = getAffectedGames(account.SSOCookie)
+	} else if newStatus != models.StatusGood {
+		ban.AffectedGames = getAffectedGames(account.SSOCookie)
 	}
 
 	if err := database.DB.Create(&ban).Error; err != nil {
 		logger.Log.WithError(err).Error("Failed to create ban record")
+	} else {
+		logger.Log.Infof("Created ban record for account %s: %s -> %s", account.Title, previousStatus, newStatus)
 	}
 
 	embed := &discordgo.MessageEmbed{
@@ -242,7 +189,9 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 }
 
 func getAffectedGames(ssoCookie string) string {
-	req, err := http.NewRequest("GET", checkURL, nil)
+	cfg := configuration.Get()
+
+	req, err := http.NewRequest("GET", cfg.API.CheckEndpoint, nil)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to create request for affected games")
 		return "All Games"
@@ -298,7 +247,6 @@ func getAffectedGames(ssoCookie string) string {
 
 	return strings.Join(games, ", ")
 }
-
 func getStatusFields(account models.Account, status models.Status) []*discordgo.MessageEmbedField {
 	fields := []*discordgo.MessageEmbedField{
 		{
@@ -323,21 +271,6 @@ func getStatusFields(account models.Account, status models.Status) []*discordgo.
 			})
 		}
 	}
-
-	// TODO: why is this here? is it duplicated we only need to check vip 1 time once it is set in database for the account
-	/*
-		if isVIP, err := CheckVIPStatus(account.SSOCookie); err == nil {
-			vipStatus := "No"
-			if isVIP {
-				vipStatus = "Yes"
-			}
-			fields = append(fields, &discordgo.MessageEmbedField{
-				Name:   "VIP Status",
-				Value:  vipStatus,
-				Inline: true,
-			})
-		}
-	*/
 
 	if account.Created > 0 {
 		creationDate := time.Unix(account.Created, 0)
@@ -389,6 +322,7 @@ func getStatusFields(account models.Account, status models.Status) []*discordgo.
 
 	return fields
 }
+
 func disableAccount(s *discordgo.Session, account models.Account, reason string) {
 	account.IsCheckDisabled = true
 	account.DisabledReason = reason
@@ -402,33 +336,6 @@ func disableAccount(s *discordgo.Session, account models.Account, reason string)
 
 	NotifyUserAboutDisabledAccount(s, account, reason)
 }
-
-// TODO: remove  after ensuring it is not used
-/*
-func updateAccountStatus(s *discordgo.Session, account models.Account, result models.Status) {
-	DBMutex.Lock()
-	defer DBMutex.Unlock()
-
-	lastStatus := account.LastStatus
-	now := time.Now()
-	account.LastCheck = now.Unix()
-	account.IsExpiredCookie = false
-	if err := database.DB.Save(&account).Error; err != nil {
-		logger.Log.WithError(err).Errorf("Failed to save account changes for account %s", account.Title)
-		return
-	}
-
-	if result != lastStatus {
-		lastStatusChange := time.Unix(account.LastStatusChange, 0)
-		if now.Sub(lastStatusChange).Hours() >= statusChangeCooldown {
-			userSettings, _ := GetUserSettings(account.UserID)
-			HandleStatusChange(s, account, result, userSettings)
-		} else {
-			logger.Log.Infof("Skipping status change notification for account %s (cooldown)", account.Title)
-		}
-	}
-}
-*/
 
 func ScheduleTempBanNotification(s *discordgo.Session, account models.Account, duration string) {
 	parts := strings.Split(duration, ",")

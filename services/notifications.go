@@ -2,59 +2,48 @@ package services
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bwmarrin/discordgo"
 	"github.com/patrickmn/go-cache"
+	"github.com/sirupsen/logrus"
 )
 
 const (
-	defaultCooldown       = 1 * time.Hour
-	defaultNotifyInterval = 24 * time.Hour
-	minNotifyInterval     = 1 * time.Hour
-	maxNotifyInterval     = 72 * time.Hour
+	defaultCooldown         = 1 * time.Hour
+	maxNotificationsPerHour = 4
+	maxNotificationsPerDay  = 10
+	minNotificationInterval = 5 * time.Minute
 )
 
 var (
-	checkCircle    = os.Getenv("CHECKCIRCLE")
-	banCircle      = os.Getenv("BANCIRCLE")
-	infoCircle     = os.Getenv("INFOCIRCLE")
-	stopWatch      = os.Getenv("STOPWATCH")
-	questionCircle = os.Getenv("QUESTIONCIRCLE")
-
 	userNotificationMutex      sync.Mutex
 	userNotificationTimestamps = make(map[string]map[string]time.Time)
 	adminNotificationCache     = cache.New(5*time.Minute, 10*time.Minute)
+	globalLimiter              = NewNotificationLimiter()
 	notificationConfigs        = map[string]NotificationConfig{
-		"channel_change":       {Type: "channel_change", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 4},
-		"status_change":        {Type: "status_change", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 4},
-		"permaban":             {Type: "permaban", Cooldown: 24 * time.Hour, AllowConsolidated: false, MaxPerHour: 2},
-		"shadowban":            {Type: "shadowban", Cooldown: 12 * time.Hour, AllowConsolidated: false, MaxPerHour: 3},
-		"daily_update":         {Type: "daily_update", Cooldown: 24 * time.Hour, AllowConsolidated: true, MaxPerHour: 1},
-		"invalid_cookie":       {Type: "invalid_cookie", Cooldown: 6 * time.Hour, AllowConsolidated: true, MaxPerHour: 2},
-		"cookie_expiring_soon": {Type: "cookie_expiring_soon", Cooldown: 24 * time.Hour, AllowConsolidated: true, MaxPerHour: 1},
-		"temp_ban_update":      {Type: "temp_ban_update", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 4},
-		"error":                {Type: "error", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 3},
-		"account_added":        {Type: "account_added", Cooldown: time.Hour, AllowConsolidated: false, MaxPerHour: 5},
+		"status_change":        {Type: "status_change", Cooldown: 30 * time.Minute, AllowConsolidated: true, MaxPerHour: 10},
+		"daily_update":         {Type: "daily_update", Cooldown: 12 * time.Hour, AllowConsolidated: true, MaxPerHour: 3},
+		"invalid_cookie":       {Type: "invalid_cookie", Cooldown: 3 * time.Hour, AllowConsolidated: true, MaxPerHour: 4},
+		"cookie_expiring_soon": {Type: "cookie_expiring_soon", Cooldown: 12 * time.Hour, AllowConsolidated: true, MaxPerHour: 2},
+		"error":                {Type: "error", Cooldown: 30 * time.Minute, AllowConsolidated: true, MaxPerHour: 6},
+		"account_added":        {Type: "account_added", Cooldown: 30 * time.Minute, AllowConsolidated: true, MaxPerHour: 8},
+		"channel_change":       {Type: "channel_change", Cooldown: 30 * time.Minute, AllowConsolidated: true, MaxPerHour: 6},
+		"permaban":             {Type: "permaban", Cooldown: 12 * time.Hour, AllowConsolidated: true, MaxPerHour: 4},
+		"shadowban":            {Type: "shadowban", Cooldown: 6 * time.Hour, AllowConsolidated: true, MaxPerHour: 5},
+		"temp_ban_update":      {Type: "temp_ban_update", Cooldown: 30 * time.Minute, AllowConsolidated: true, MaxPerHour: 8},
 	}
 )
 
 type NotificationLimiter struct {
 	sync.RWMutex
 	userCounts map[string]*NotificationState
-}
-
-type NotificationState struct {
-	hourlyCount int
-	dailyCount  int
-	lastReset   time.Time
-	lastSent    time.Time
 }
 
 type NotificationConfig struct {
@@ -64,17 +53,18 @@ type NotificationConfig struct {
 	MaxPerHour        int
 }
 
-var (
-	globalLimiter           = NewNotificationLimiter()
-	maxNotificationsPerHour = 4
-	maxNotificationsPerDay  = 10
-	minNotificationInterval = 5 * time.Minute
-)
+type NotificationState struct {
+	hourlyCount int
+	dailyCount  int
+	lastReset   time.Time
+	lastSent    time.Time
+}
 
 func NotifyAdmin(s *discordgo.Session, message string) {
-	adminID := os.Getenv("DEVELOPER_ID")
+	cfg := configuration.Get()
+	adminID := cfg.Discord.DeveloperID
 	if adminID == "" {
-		logger.Log.Error("DEVELOPER_ID not set in environment variables")
+		logger.Log.Error("Developer ID not configured")
 		return
 	}
 
@@ -98,18 +88,22 @@ func NotifyAdmin(s *discordgo.Session, message string) {
 }
 
 func GetCooldownDuration(userSettings models.UserSettings, notificationType string, defaultCooldown time.Duration) time.Duration {
+	cfg := configuration.Get()
 	switch notificationType {
 	case "status_change":
 		return time.Duration(userSettings.StatusChangeCooldown) * time.Hour
-	case "daily_update", "invalid_cookie", "cookie_expiring_soon":
-		return time.Duration(userSettings.NotificationInterval) * time.Hour
+	case "daily_update":
+		return time.Duration(cfg.Intervals.Notification) * time.Hour
+	case "invalid_cookie", "cookie_expiring_soon":
+		return time.Duration(cfg.Intervals.CookieExpiration) * time.Hour
 	default:
 		return defaultCooldown
 	}
 }
 
 func IsDonationsEnabled() bool {
-	return os.Getenv("DONATIONS_ENABLED") == "true"
+	cfg := configuration.Get()
+	return cfg.Donations.Enabled
 }
 
 func GetNotificationChannel(s *discordgo.Session, account models.Account, userSettings models.UserSettings) (string, error) {
@@ -142,13 +136,14 @@ func FormatDuration(d time.Duration) string {
 }
 
 func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64) {
+	cfg := configuration.Get()
 	userSettings, err := GetUserSettings(userID)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to get user settings for balance check: %s", userID)
 		return
 	}
 
-	if time.Since(userSettings.LastBalanceNotification) < 24*time.Hour {
+	if time.Since(userSettings.LastBalanceNotification) < time.Duration(cfg.Intervals.Notification)*time.Hour {
 		return
 	}
 
@@ -158,53 +153,20 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 	}
 
 	if balance == 0 {
-		var err error
 		apiKey, balance, err := GetUserCaptchaKey(userID)
 		if err != nil {
 			logger.Log.WithError(err).Error("Failed to get captcha balance")
 			return
 		}
 
-		if apiKey == os.Getenv("EZCAPTCHA_CLIENT_KEY") {
-			if balance < getBalanceThreshold(userSettings.PreferredCaptchaProvider) {
-				var fields []*discordgo.MessageEmbedField
-
-				fields = append(fields, &discordgo.MessageEmbedField{
-					Name: "Option 1: Use Your Own API Key (Recommended)",
-					Value: "Get your own API key using `/setcaptchaservice` for:\n" +
-						"• Faster check intervals\n" +
-						"• No rate limits\n" +
-						"• More account slots",
-					Inline: false,
-				})
-
-				if IsDonationsEnabled() {
-					bitcoinAddress := os.Getenv("BITCOIN_ADDRESS")
-					cashappID := os.Getenv("CASHAPP_ID")
-
-					if bitcoinAddress != "" || cashappID != "" {
-						donationText := "If you'd like to help keep the default API key funded:\n"
-						if bitcoinAddress != "" {
-							donationText += fmt.Sprintf("Bitcoin: %s\n", bitcoinAddress)
-						}
-						if cashappID != "" {
-							donationText += fmt.Sprintf("CashApp: %s", cashappID)
-						}
-
-						fields = append(fields, &discordgo.MessageEmbedField{
-							Name:   "Option 2: Help Support the Default API Key",
-							Value:  donationText,
-							Inline: false,
-						})
-					}
-				}
-
+		if apiKey == cfg.CaptchaService.EZCaptcha.ClientKey {
+			if balance < cfg.CaptchaService.EZCaptcha.BalanceMin {
 				embed := &discordgo.MessageEmbed{
 					Title: "Default API Key Balance Low",
 					Description: fmt.Sprintf("The bot's default API key balance is currently low (%.2f points). "+
 						"To ensure uninterrupted service, consider the following options:", balance),
 					Color:     0xFFA500,
-					Fields:    fields,
+					Fields:    BalanceWarningFields(cfg.Donations),
 					Timestamp: time.Now().Format(time.RFC3339),
 					Footer: &discordgo.MessageEmbedFooter{
 						Text: "Thank you for using COD Status Bot!",
@@ -230,10 +192,11 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 	var threshold float64
 	switch userSettings.PreferredCaptchaProvider {
 	case "ezcaptcha":
-		threshold = 250
+		threshold = cfg.CaptchaService.EZCaptcha.BalanceMin
 	case "2captcha":
-		threshold = 0.50
+		threshold = cfg.CaptchaService.TwoCaptcha.BalanceMin
 	default:
+		logger.Log.Warnf("Unknown captcha provider: %s", userSettings.PreferredCaptchaProvider)
 		return
 	}
 
@@ -270,20 +233,57 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 			return
 		}
 
-		err := SendNotification(s, account, embed, "", "balance_warning")
-		if err != nil {
+		if err := SendNotification(s, account, embed, "", "balance_warning"); err != nil {
 			logger.Log.WithError(err).Errorf("Failed to send balance notification to user %s", userID)
 			return
 		}
 
-		userSettings.LastBalanceNotification = time.Now()
+		now := time.Now()
+		userSettings.LastBalanceNotification = now
 		userSettings.CaptchaBalance = balance
-		userSettings.LastBalanceCheck = time.Now()
+		userSettings.LastBalanceCheck = now
 
 		if err := database.DB.Save(&userSettings).Error; err != nil {
 			logger.Log.WithError(err).Errorf("Failed to update LastBalanceNotification for user %s", userID)
 		}
 	}
+}
+
+func BalanceWarningFields(donations configuration.DonationsConfig) []*discordgo.MessageEmbedField {
+	cfg := configuration.Get()
+	fields := []*discordgo.MessageEmbedField{
+		{
+			Name: "Option 1: Add Your Own API Key",
+			Value: "Use `/setcaptchaservice` to configure your own EZCaptcha API key. " +
+				"This gives you unlimited checks and customizable intervals.",
+			Inline: false,
+		},
+		{
+			Name: "Option 2: Wait for Balance Refresh",
+			Value: "Continue using the bot's default key with standard rate limits. " +
+				"Checks will still work but may be delayed.",
+			Inline: false,
+		},
+	}
+
+	if cfg.Donations.Enabled {
+		supportField := &discordgo.MessageEmbedField{
+			Name:   "Support the Bot",
+			Value:  "Help maintain the service by contributing:\n",
+			Inline: false,
+		}
+
+		if cfg.Donations.BitcoinAddress != "" {
+			supportField.Value += fmt.Sprintf("• Bitcoin: `%s`\n", cfg.Donations.BitcoinAddress)
+		}
+		if cfg.Donations.CashAppID != "" {
+			supportField.Value += fmt.Sprintf("• CashApp: `%s`", cfg.Donations.CashAppID)
+		}
+
+		fields = append(fields, supportField)
+	}
+
+	return fields
 }
 
 func ScheduleBalanceChecks(s *discordgo.Session) {
@@ -393,6 +393,7 @@ func getEnabledServicesString() string {
 	if IsServiceEnabled("ezcaptcha") {
 		enabledServices = append(enabledServices, "EZCaptcha")
 	}
+
 	if IsServiceEnabled("2captcha") {
 		enabledServices = append(enabledServices, "2Captcha")
 	}
@@ -418,12 +419,12 @@ func (nl *NotificationLimiter) CanSendNotification(userID string) bool {
 	if !exists {
 		state = &NotificationState{
 			lastReset: now,
-			lastSent:  now.Add(-time.Hour),
+			lastSent:  now.Add(-30 * time.Minute),
 		}
 		nl.userCounts[userID] = state
 	}
 
-	if now.Sub(state.lastReset) >= time.Hour {
+	if now.Sub(state.lastReset) >= 30*time.Minute {
 		state.hourlyCount = 0
 		state.lastReset = now
 	}
@@ -434,24 +435,34 @@ func (nl *NotificationLimiter) CanSendNotification(userID string) bool {
 		return false
 	}
 
+	userSettings.EnsureMapsInitialized()
+
+	cfg := configuration.Get()
 	var maxPerHour int
 	var minInterval time.Duration
-
 	if userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != "" {
-		maxPerHour = 10
-		minInterval = time.Minute * 5
+		maxPerHour = cfg.RateLimits.PremiumMaxAccounts * 2
+		minInterval = time.Duration(userSettings.NotificationInterval) * time.Hour / 2
 	} else {
-		maxPerHour = 4
-		minInterval = time.Minute * 15
+		maxPerHour = cfg.RateLimits.DefaultMaxAccounts * 2
+		minInterval = time.Duration(cfg.Intervals.Notification) * time.Hour / 2
 	}
 
 	if state.hourlyCount >= maxPerHour {
-		logger.Log.Debugf("User %s exceeded hourly notification limit", userID)
+		logger.Log.WithFields(logrus.Fields{
+			"userID":       userID,
+			"currentCount": state.hourlyCount,
+			"maxAllowed":   maxPerHour,
+		}).Warn("Notification rate limit reached")
 		return false
 	}
 
 	if now.Sub(state.lastSent) < minInterval {
-		logger.Log.Debugf("User %s notification interval too short", userID)
+		logger.Log.WithFields(logrus.Fields{
+			"userID":                    userID,
+			"timeSinceLastNotification": now.Sub(state.lastSent),
+			"minimumInterval":           minInterval,
+		}).Debug("Notification interval not met")
 		return false
 	}
 
@@ -468,7 +479,16 @@ func (nl *NotificationLimiter) CanSendNotification(userID string) bool {
 
 func SendNotification(s *discordgo.Session, account models.Account, embed *discordgo.MessageEmbed, content, notificationType string) error {
 	if !globalLimiter.CanSendNotification(account.UserID) {
-		logger.Log.Infof("Notification suppressed due to rate limiting for user %s", account.UserID)
+		logger.Log.WithFields(logrus.Fields{
+			"userID":           account.UserID,
+			"accountTitle":     account.Title,
+			"notificationType": notificationType,
+			"embedTitle":       embed.Title,
+			"embedDescription": embed.Description,
+		}).Warn("Notification suppressed due to rate limiting")
+
+		//storeSuppressedNotification(account.UserID, notificationType, embed, content)
+
 		return nil
 	}
 
@@ -482,7 +502,6 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 		return fmt.Errorf("failed to get user settings: %w", err)
 	}
 
-	// Check cooldown
 	now := time.Now()
 	lastNotification := userSettings.LastCommandTimes[notificationType]
 	cooldownDuration := GetCooldownDuration(userSettings, notificationType, defaultCooldown)
@@ -526,9 +545,16 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 	return nil
 }
 
+func storeSuppressedNotification(userID, notificationType string, embed *discordgo.MessageEmbed, content string) {
+	// Implement a mechanism to store or log suppressed notifications
+	// prefer database logging
+	logger.Log.Infof("Notification for user %s of type %s was suppressed", userID, notificationType)
+}
+
 func NotifyAdminWithCooldown(s *discordgo.Session, message string, cooldownDuration time.Duration) {
+	cfg := configuration.Get()
 	var admin models.UserSettings
-	if err := database.DB.Where("user_id = ?", os.Getenv("DEVELOPER_ID")).FirstOrCreate(&admin).Error; err != nil {
+	if err := database.DB.Where("user_id = ?", cfg.Discord.DeveloperID).FirstOrCreate(&admin).Error; err != nil {
 		logger.Log.WithError(err).Error("Error getting admin settings")
 		return
 	}
@@ -617,17 +643,14 @@ func NotifyCookieExpiringSoon(s *discordgo.Session, accounts []models.Account) e
 		return nil
 	}
 
-	userID := accounts[0].UserID
-	logger.Log.Infof("Sending cookie expiration warning for user %s", userID)
-
 	var embedFields []*discordgo.MessageEmbedField
-
 	for _, account := range accounts {
 		timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
 		if err != nil {
 			logger.Log.WithError(err).Errorf("Error checking SSO cookie expiration for account %s", account.Title)
 			continue
 		}
+
 		embedFields = append(embedFields, &discordgo.MessageEmbedField{
 			Name:   account.Title,
 			Value:  fmt.Sprintf("Cookie expires in %s", FormatDuration(timeUntilExpiration)),
@@ -646,65 +669,27 @@ func NotifyCookieExpiringSoon(s *discordgo.Session, accounts []models.Account) e
 	return SendNotification(s, accounts[0], embed, "", "cookie_expiring_soon")
 }
 
-func CheckNotificationCooldown(userID string, notificationType string, cooldownDuration time.Duration) (bool, error) {
-	var settings models.UserSettings
-	if err := database.DB.Where("user_id = ?", userID).First(&settings).Error; err != nil {
-		return false, err
-	}
-
-	var lastNotification time.Time
-	switch notificationType {
-	case "balance":
-		lastNotification = settings.LastBalanceNotification
-	case "error":
-		lastNotification = settings.LastErrorNotification
-	case "disabled":
-		lastNotification = settings.LastDisabledNotification
-	default:
-		return false, fmt.Errorf("unknown notification type: %s", notificationType)
-	}
-
-	if time.Since(lastNotification) >= cooldownDuration {
-		return true, nil
-	}
-	return false, nil
-}
-
-func UpdateNotificationTimestamp(userID string, notificationType string) error {
-	var settings models.UserSettings
-	if err := database.DB.Where("user_id = ?", userID).First(&settings).Error; err != nil {
-		return err
-	}
-
-	now := time.Now()
-	switch notificationType {
-	case "balance":
-		settings.LastBalanceNotification = now
-	case "error":
-		settings.LastErrorNotification = now
-	case "disabled":
-		settings.LastDisabledNotification = now
-	default:
-		return fmt.Errorf("unknown notification type: %s", notificationType)
-	}
-
-	return database.DB.Save(&settings).Error
-}
-
 func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettings models.UserSettings, accounts []models.Account) {
 	if len(accounts) == 0 {
 		return
 	}
-	userSettings, err := GetUserSettings(userID)
-	if err != nil {
-		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
+
+	cfg := configuration.Get()
+	if time.Since(userSettings.LastDailyUpdateNotification) < time.Duration(cfg.Intervals.Notification)*time.Hour {
 		return
 	}
+
 	accountsByStatus := make(map[models.Status][]models.Account)
 	for _, account := range accounts {
 		if !account.IsCheckDisabled && !account.IsExpiredCookie {
 			accountsByStatus[account.LastStatus] = append(accountsByStatus[account.LastStatus], account)
 		}
+	}
+
+	userSettings, err := GetUserSettings(userID)
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
+		return
 	}
 
 	var embedFields []*discordgo.MessageEmbedField
@@ -721,14 +706,9 @@ func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettin
 	for status, statusAccounts := range accountsByStatus {
 		var description strings.Builder
 		for _, account := range statusAccounts {
-			if account.IsExpiredCookie {
-				description.WriteString(fmt.Sprintf("⚠ %s: Cookie expired\n", account.Title))
-				continue
-			}
-
 			timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
 			if err != nil {
-				description.WriteString(fmt.Sprintf("⛔ %s: Error checking expiration\n", account.Title))
+				logger.Log.WithError(err).Errorf("Error checking expiration for account %s", account.Title)
 				continue
 			}
 
@@ -738,7 +718,6 @@ func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettin
 		}
 
 		if description.Len() > 0 {
-			//goland:noinspection GoDeprecation
 			embedFields = append(embedFields, &discordgo.MessageEmbedField{
 				Name:   fmt.Sprintf("%s Accounts", strings.Title(string(status))),
 				Value:  description.String(),
@@ -758,14 +737,14 @@ func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettin
 		},
 	}
 
-	err = SendNotification(s, accounts[0], embed, "", "daily_update")
-	if err != nil {
+	if err := SendNotification(s, accounts[0], embed, "", "daily_update"); err != nil {
 		logger.Log.WithError(err).Errorf("Failed to send consolidated daily update for user %s", userID)
-	} else {
-		userSettings.LastDailyUpdateNotification = time.Now()
-		if err := database.DB.Save(&userSettings).Error; err != nil {
-			logger.Log.WithError(err).Errorf("Failed to update LastDailyUpdateNotification for user %s", userID)
-		}
+		return
+	}
+
+	userSettings.LastDailyUpdateNotification = time.Now()
+	if err := database.DB.Save(&userSettings).Error; err != nil {
+		logger.Log.WithError(err).Error("Failed to update LastDailyUpdateNotification")
 	}
 
 	checkAccountsNeedingAttention(s, accounts, userSettings)
@@ -787,17 +766,18 @@ func isCriticalError(err error) bool {
 }
 
 func GetStatusIcon(status models.Status) string {
+	cfg := configuration.Get()
 	switch status {
 	case models.StatusGood:
-		return checkCircle
+		return cfg.Emojis.CheckCircle
 	case models.StatusPermaban:
-		return banCircle
+		return cfg.Emojis.BanCircle
 	case models.StatusShadowban:
-		return infoCircle
+		return cfg.Emojis.InfoCircle
 	case models.StatusTempban:
-		return stopWatch
+		return cfg.Emojis.StopWatch
 	default:
-		return questionCircle
+		return cfg.Emojis.QuestionCircle
 	}
 }
 
@@ -864,23 +844,26 @@ func checkAccountsNeedingAttention(s *discordgo.Session, accounts []models.Accou
 	var expiringAccounts []models.Account
 	var errorAccounts []models.Account
 
+	cfg := configuration.Get()
 	for _, account := range accounts {
 		if !account.IsExpiredCookie {
 			timeUntilExpiration, err := CheckSSOCookieExpiration(account.SSOCookieExpiration)
 			if err != nil {
 				errorAccounts = append(errorAccounts, account)
-			} else if timeUntilExpiration <= time.Duration(cookieExpirationWarning)*time.Hour {
+			} else if timeUntilExpiration <= time.Duration(cfg.Intervals.CookieExpiration)*time.Hour {
 				expiringAccounts = append(expiringAccounts, account)
 			}
 		}
 
-		if account.ConsecutiveErrors >= maxConsecutiveErrors {
+		if account.ConsecutiveErrors >= cfg.CaptchaService.MaxRetries {
 			errorAccounts = append(errorAccounts, account)
 		}
 	}
 
 	if len(expiringAccounts) > 0 {
-		NotifyCookieExpiringSoon(s, expiringAccounts)
+		if err := NotifyCookieExpiringSoon(s, expiringAccounts); err != nil {
+			logger.Log.WithError(err).Error("Failed to send cookie expiration notifications")
+		}
 	}
 
 	if len(errorAccounts) > 0 {
@@ -901,11 +884,12 @@ func notifyAccountErrors(s *discordgo.Session, errorAccounts []models.Account, u
 		Timestamp:   time.Now().Format(time.RFC3339),
 	}
 
+	cfg := configuration.Get()
 	for _, account := range errorAccounts {
 		var errorDescription string
 		if account.IsCheckDisabled {
 			errorDescription = fmt.Sprintf("Checks disabled - Reason: %s", account.DisabledReason)
-		} else if account.ConsecutiveErrors >= maxConsecutiveErrors {
+		} else if account.ConsecutiveErrors >= cfg.CaptchaService.MaxRetries {
 			errorDescription = fmt.Sprintf("Multiple check failures - Last error time: %s",
 				account.LastErrorTime.Format("2006-01-02 15:04:05"))
 		} else {

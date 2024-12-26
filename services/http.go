@@ -6,22 +6,19 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
+	"github.com/sirupsen/logrus"
 )
 
-var (
-	checkURL         = os.Getenv("CHECK_ENDPOINT")       // account status check endpoint.
-	profileURL       = os.Getenv("PROFILE_ENDPOINT")     // Endpoint for retrieving profile information
-	checkVIP         = os.Getenv("CHECK_VIP_ENDPOINT")   // Endpoint for checking VIP status
-	redeemCodeURL    = os.Getenv("REDEEM_CODE_ENDPOINT") // Endpoint for redeeming codes
-	recaptchaSiteKey = os.Getenv("RECAPTCHA_SITE_KEY")   // Site key for reCAPTCHA
-	recaptchaURL     = os.Getenv("RECAPTCHA_URL")        // URL for reCAPTCHA
+const (
+	ezcap  = "ezcaptcha"
+	twocap = "2captcha"
 )
 
 type AccountValidationResult struct {
@@ -32,51 +29,94 @@ type AccountValidationResult struct {
 	ProfileData map[string]interface{}
 }
 
+func init() {
+	cfg := configuration.Get()
+	logger.Log.Infof("Initialized endpoints: Profile URL: %s", cfg.API.ProfileEndpoint)
+}
+
 func VerifySSOCookie(ssoCookie string) bool {
-	logger.Log.Infof("Verifying SSO cookie: %s", ssoCookie)
-	req, err := http.NewRequest("GET", profileURL, nil)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error creating verification request")
+	cfg := configuration.Get()
+	logger.Log.Infof("Starting SSO cookie verification for cookie: %s", ssoCookie)
+
+	profileURL := cfg.API.ProfileEndpoint
+	if profileURL == "" {
+		logger.Log.Error("PROFILE_ENDPOINT not configured")
 		return false
 	}
-	headers := GenerateHeaders(ssoCookie)
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
+
 	client := &http.Client{
-		Timeout: 60 * time.Second,
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error sending verification request")
-		return false
+		Timeout: 120 * time.Second,
 	}
 
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
+	maxRetries := 3
+	var lastError error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		req, err := http.NewRequest("GET", profileURL, nil)
 		if err != nil {
-			logger.Log.WithError(err).Error("Error closing response body")
+			lastError = fmt.Errorf("error creating verification request (attempt %d/%d): %w", attempt, maxRetries, err)
+			logger.Log.WithError(err).Error("Error creating verification request")
+			continue
 		}
-	}(resp.Body)
 
-	if resp.StatusCode != http.StatusOK {
-		logger.Log.Errorf("Invalid SSOCookie, status code: %d", resp.StatusCode)
-		return false
+		headers := GenerateHeaders(ssoCookie)
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+
+		logger.Log.Infof("Sending verification request to: %s (attempt %d/%d)", profileURL, attempt, maxRetries)
+		resp, err := client.Do(req)
+		if err != nil {
+			lastError = fmt.Errorf("error sending verification request (attempt %d/%d): %w", attempt, maxRetries, err)
+			logger.Log.WithError(err).Error("Error sending verification request")
+			time.Sleep(time.Duration(attempt) * time.Second)
+			continue
+		}
+
+		if resp != nil && resp.Body != nil {
+			defer func(Body io.ReadCloser) {
+				err := Body.Close()
+				if err != nil {
+					logger.Log.WithError(err).Error("Failed to close response body")
+				}
+			}(resp.Body)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			lastError = fmt.Errorf("invalid status code (attempt %d/%d): %d", attempt, maxRetries, resp.StatusCode)
+			logger.Log.WithFields(logrus.Fields{
+				"statusCode": resp.StatusCode,
+				"attempt":    attempt,
+			}).Error("Invalid status code in SSO verification")
+			time.Sleep(time.Duration(attempt) * time.Second)
+			continue
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			lastError = fmt.Errorf("error reading response body (attempt %d/%d): %w", attempt, maxRetries, err)
+			logger.Log.WithError(err).Error("Error reading response body")
+			time.Sleep(time.Duration(attempt) * time.Second)
+			continue
+		}
+
+		if len(body) == 0 {
+			lastError = fmt.Errorf("empty response body (attempt %d/%d)", attempt, maxRetries)
+			logger.Log.Error("Empty response body in SSO verification")
+			time.Sleep(time.Duration(attempt) * time.Second)
+			continue
+		}
+
+		logger.Log.Info("SSO cookie verified successfully")
+		return true
 	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error reading verification response body")
-		return false
-	}
-	if len(body) == 0 {
-		logger.Log.Error("Invalid SSOCookie, response body is empty")
-		return false
-	}
-	logger.Log.Info("SSO cookie verified successfully")
-	return true
+
+	logger.Log.WithError(lastError).Error("SSO cookie verification failed after all retries")
+	return false
 }
 
 func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models.Status, error) {
+	cfg := configuration.Get()
 	logger.Log.Info("Starting CheckAccount function")
 
 	userSettings, err := GetUserSettings(userID)
@@ -117,7 +157,7 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 		return models.StatusUnknown, fmt.Errorf("failed to create captcha solver: %w", err)
 	}
 
-	gRecaptchaResponse, err := solver.SolveReCaptchaV2(recaptchaSiteKey, recaptchaURL)
+	gRecaptchaResponse, err := solver.SolveReCaptchaV2(cfg.CaptchaService.RecaptchaSiteKey, cfg.CaptchaService.RecaptchaURL)
 	if err != nil {
 		if strings.Contains(err.Error(), "insufficient balance") {
 			if err := DisableUserCaptcha(nil, userID, "Insufficient balance"); err != nil {
@@ -128,9 +168,13 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 		return models.StatusUnknown, fmt.Errorf("failed to solve reCAPTCHA: %w", err)
 	}
 
+	if strings.Contains(gRecaptchaResponse, "Invalid") || len(gRecaptchaResponse) < 50 {
+		return models.StatusUnknown, fmt.Errorf("invalid captcha response received")
+	}
+
 	logger.Log.Info("Successfully received reCAPTCHA response")
 
-	checkRequest := fmt.Sprintf("%s?locale=en&g-cc=%s", checkURL, gRecaptchaResponse)
+	checkRequest := fmt.Sprintf("%s?locale=en&g-cc=%s", cfg.API.CheckEndpoint, gRecaptchaResponse)
 	logger.Log.WithField("url", checkRequest).Info("Constructed account check request")
 
 	req, err := http.NewRequest("GET", checkRequest, nil)
@@ -142,7 +186,12 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	logger.Log.WithField("headers", headers).Info("Set request headers")
+
+	logger.Log.WithFields(logrus.Fields{
+		"url":          checkRequest,
+		"headers":      headers,
+		"cookieLength": len(ssoCookie),
+	}).Debug("Set request headers")
 
 	client := &http.Client{
 		Timeout: 120 * time.Second,
@@ -152,6 +201,7 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 	var body []byte
 	maxRetries := 3
 
+	backoffDuration := time.Second
 	for i := 0; i < maxRetries; i++ {
 		logger.Log.Infof("Sending HTTP request to check account (attempt %d/%d)", i+1, maxRetries)
 		resp, err = client.Do(req)
@@ -159,19 +209,14 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 			if i == maxRetries-1 {
 				return models.StatusUnknown, fmt.Errorf("failed to send HTTP request after %d attempts: %w", maxRetries, err)
 			}
-			time.Sleep(time.Duration(i+1) * time.Second)
+			backoffDuration *= 2
+			time.Sleep(backoffDuration)
 			continue
 		}
-		defer func(Body io.ReadCloser) {
-			err := Body.Close()
-			if err != nil {
-				logger.Log.WithError(err).Error("Failed to close response body")
-			}
-		}(resp.Body)
-
-		logger.Log.WithField("status", resp.Status).Info("Received response")
 
 		body, err = io.ReadAll(resp.Body)
+		resp.Body.Close()
+
 		if err != nil {
 			if i == maxRetries-1 {
 				return models.StatusUnknown, fmt.Errorf("failed to read response body after %d attempts: %w", maxRetries, err)
@@ -179,10 +224,25 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 			time.Sleep(time.Duration(i+1) * time.Second)
 			continue
 		}
+
+		logger.Log.WithFields(logrus.Fields{
+			"statusCode":  resp.StatusCode,
+			"bodyLength":  len(body),
+			"bodyContent": string(body),
+		}).Info("Received API response")
+
 		break
 	}
 
 	logger.Log.WithField("body", string(body)).Info("Read response body")
+
+	if resp.ContentLength == 0 {
+		logger.Log.Warn("Received empty response (Content-Length: 0)")
+	}
+
+	if len(body) == 0 {
+		logger.Log.Warn("Empty response body after reading")
+	}
 
 	var errorResponse struct {
 		Timestamp string `json:"timestamp"`
@@ -211,22 +271,18 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 		} `json:"bans"`
 	}
 
-	if string(body) == "" {
-		return models.StatusInvalidCookie, nil
-	}
-
 	if err := json.Unmarshal(body, &data); err != nil {
 		return models.StatusUnknown, fmt.Errorf("failed to decode JSON response: %w", err)
 	}
 	logger.Log.WithField("data", data).Info("Parsed ban data")
 
-	if err := UpdateCaptchaUsage(userID); err != nil {
-		logger.Log.WithError(err).Error("Failed to update captcha usage")
-	}
-
-	if len(data.Bans) == 0 {
+	if data.Success == "true" && len(data.Bans) == 0 {
 		logger.Log.Info("No bans found, account status is good")
 		return models.StatusGood, nil
+	}
+
+	if err := UpdateCaptchaUsage(userID); err != nil {
+		logger.Log.WithError(err).Error("Failed to update captcha usage")
 	}
 
 	for _, ban := range data.Bans {
@@ -282,7 +338,8 @@ func UpdateCaptchaUsage(userID string) error {
 
 func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 	logger.Log.Info("Starting CheckAccountAge function")
-	req, err := http.NewRequest("GET", profileURL, nil)
+	cfg := configuration.Get()
+	req, err := http.NewRequest("GET", cfg.API.ProfileEndpoint, nil)
 	if err != nil {
 		return 0, 0, 0, 0, errors.New("failed to create HTTP request to check account age")
 	}
@@ -333,8 +390,9 @@ func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 }
 
 func CheckVIPStatus(ssoCookie string) (bool, error) {
+	cfg := configuration.Get()
 	logger.Log.Info("Checking VIP status")
-	req, err := http.NewRequest("GET", checkVIP+ssoCookie, nil)
+	req, err := http.NewRequest("GET", cfg.API.CheckVIPEndpoint+ssoCookie, nil)
 	if err != nil {
 		return false, fmt.Errorf("failed to create HTTP request to check VIP status: %w", err)
 	}
@@ -379,67 +437,9 @@ func CheckVIPStatus(ssoCookie string) (bool, error) {
 	return data.VIP, nil
 }
 
-func RedeemCode(ssoCookie, code string) (string, error) {
-	logger.Log.Infof("Attempting to redeem code: %s", code)
-
-	req, err := http.NewRequest("POST", redeemCodeURL, strings.NewReader(fmt.Sprintf("code=%s", code)))
-	if err != nil {
-		return "", fmt.Errorf("failed to create HTTP request to redeem code: %w", err)
-	}
-
-	headers := GeneratePostHeaders(ssoCookie)
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to send HTTP request to redeem code: %w", err)
-	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			logger.Log.Errorf("Failed to close response body: %v", err)
-		}
-	}(resp.Body)
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	var jsonResponse struct {
-		Status  string `json:"status"`
-		Message string `json:"message"`
-	}
-	if err := json.Unmarshal(body, &jsonResponse); err == nil && jsonResponse.Status == "success" {
-		logger.Log.Infof("Code redemption successful: %s", jsonResponse.Message)
-		return jsonResponse.Message, nil
-	}
-
-	bodyStr := string(body)
-	if strings.Contains(bodyStr, "redemption-success") {
-		start := strings.Index(bodyStr, "Just Unlocked:<br><br><div class=\"accent-highlight mw2\">")
-		end := strings.Index(bodyStr, "</div></h4>")
-		if start != -1 && end != -1 {
-			unlockedItem := strings.TrimSpace(bodyStr[start+len("Just Unlocked:<br><br><div class=\"accent-highlight mw2\">") : end])
-			logger.Log.Infof("Successfully claimed reward: %s", unlockedItem)
-			return fmt.Sprintf("Successfully claimed reward: %s", unlockedItem), nil
-		}
-		logger.Log.Info("Successfully claimed reward, but couldn't extract details")
-		return "Successfully claimed reward, but couldn't extract details", nil
-	}
-
-	logger.Log.Warnf("Unexpected response body: %s", bodyStr)
-	return "", fmt.Errorf("failed to redeem code: unexpected response")
-}
-
 func ValidateAndGetAccountInfo(ssoCookie string) (*AccountValidationResult, error) {
-	req, err := http.NewRequest("GET", profileURL, nil)
+	cfg := configuration.Get()
+	req, err := http.NewRequest("GET", cfg.API.ProfileEndpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create profile request: %w", err)
 	}

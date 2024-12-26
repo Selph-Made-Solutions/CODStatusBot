@@ -16,6 +16,7 @@ func GetUserID(i *discordgo.InteractionCreate) (string, error) {
 	return "", fmt.Errorf("unable to determine user ID")
 }
 
+/*
 func GetChannelID(s *discordgo.Session, i *discordgo.InteractionCreate, userID string) (string, error) {
 	if i.ChannelID != "" {
 		return i.ChannelID, nil
@@ -27,3 +28,4 @@ func GetChannelID(s *discordgo.Session, i *discordgo.InteractionCreate, userID s
 	}
 	return channel.ID, nil
 }
+*/
