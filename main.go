@@ -105,7 +105,6 @@ func run() error {
 			enabledServices = append(enabledServices, "2Captcha")
 			logger.Log.Info("2Captcha service enabled and configured correctly")
 		}
-		logger.Log.Infof("Enabled captcha services: %v", enabledServices)
 	}
 
 	if err := database.Databaselogin(); err != nil {
@@ -119,6 +118,9 @@ func run() error {
 		return fmt.Errorf("failed to start Discord bot: %w", err)
 	}
 	logger.Log.Info("Discord bot started successfully")
+
+	services.StartNotificationProcessor(discord)
+	logger.Log.Info("Notification processor started successfully")
 
 	periodicTasksCtx, cancelPeriodicTasks := context.WithCancel(context.Background())
 	go startPeriodicTasks(periodicTasksCtx, discord)
@@ -218,6 +220,20 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 					logger.Log.WithError(err).Error("Failed to refresh presence status")
 				}
 				time.Sleep(60 * time.Minute)
+			}
+		}
+	}()
+
+	go func() {
+		ticker := time.NewTicker(12 * time.Hour)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				services.CleanupOldRateLimitData()
 			}
 		}
 	}()

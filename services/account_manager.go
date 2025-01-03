@@ -198,15 +198,38 @@ func shouldCheckAccount(account models.Account, settings models.UserSettings) bo
 	cfg := configuration.Get()
 	now := time.Now()
 
-	// If account checks are explicitly disabled, return false
 	if account.IsCheckDisabled {
 		logger.Log.Debugf("Account %s is disabled, skipping check", account.Title)
 		return false
 	}
 
-	// If account has an expired cookie, do not check
 	if account.IsExpiredCookie {
 		return false
+	}
+
+	// If last check time is 0, this is first check
+	if account.LastCheck == 0 {
+		return true
+	}
+
+	lastCheckTime := time.Unix(account.LastCheck, 0)
+	checkInterval := time.Duration(settings.CheckInterval) * time.Minute
+
+	if settings.EZCaptchaAPIKey == "" && settings.TwoCaptchaAPIKey == "" {
+		if time.Since(lastCheckTime) < cfg.RateLimits.Default {
+			return false
+		}
+	}
+
+	if time.Since(lastCheckTime) < checkInterval {
+		return false
+	}
+
+	if account.ConsecutiveErrors > cfg.CaptchaService.MaxRetries && !account.LastErrorTime.IsZero() {
+		errorCooldown := time.Duration(cfg.Intervals.Cooldown) * time.Hour
+		if time.Since(account.LastErrorTime) < errorCooldown {
+			return false
+		}
 	}
 
 	var nextCheckTime time.Time
@@ -220,14 +243,6 @@ func shouldCheckAccount(account models.Account, settings models.UserSettings) bo
 			checkInterval = cfg.Intervals.Check
 		}
 		nextCheckTime = time.Unix(account.LastCheck, 0).Add(time.Duration(checkInterval) * time.Minute)
-	}
-
-	// Handle error tracking and cooldown
-	if account.ConsecutiveErrors > cfg.CaptchaService.MaxRetries && !account.LastErrorTime.IsZero() {
-		errorCooldown := time.Duration(cfg.Intervals.Cooldown) * time.Hour
-		if time.Since(account.LastErrorTime) < errorCooldown {
-			return false
-		}
 	}
 
 	// For users with custom API keys, always allow checks
