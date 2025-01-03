@@ -87,6 +87,7 @@ func run() error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
+	services.InitializeServices()
 	cfg := configuration.Get()
 
 	if !cfg.CaptchaService.EZCaptcha.Enabled && !cfg.CaptchaService.TwoCaptcha.Enabled {
