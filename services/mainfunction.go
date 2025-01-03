@@ -26,9 +26,13 @@ var (
 	DBMutex sync.Mutex
 )
 
-func init() {
+//var notificationConfigs map[string]NotificationConfig
+
+func init() {}
+
+func InitializeServices() {
 	cfg := configuration.Get()
-	logger.Log.Infof("Loaded rate limits and intervals: CHECK_INTERVAL=%.2f, NOTIFICATION_INTERVAL=%.2f, "+
+	logger.Log.Infof("Loaded rate limits and intervals: CHECK_INTERVAL=%d, NOTIFICATION_INTERVAL=%.2f, "+
 		"COOLDOWN_DURATION=%.2f, SLEEP_DURATION=%d, COOKIE_CHECK_INTERVAL_PERMABAN=%.2f, "+
 		"STATUS_CHANGE_COOLDOWN=%.2f, GLOBAL_NOTIFICATION_COOLDOWN=%.2f, COOKIE_EXPIRATION_WARNING=%.2f, "+
 		"TEMP_BAN_UPDATE_INTERVAL=%.2f, CHECK_NOW_RATE_LIMIT=%v, DEFAULT_RATE_LIMIT=%v",
