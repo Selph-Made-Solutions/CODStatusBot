@@ -76,18 +76,22 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 			label += " ⭐"
 		}
 
-		button := discordgo.Button{
-			Label:    label,
-			Style:    discordgo.PrimaryButton,
-			CustomID: fmt.Sprintf("update_account_%d", account.ID),
-		}
-
 		if account.IsCheckDisabled {
-			button.Style = discordgo.SecondaryButton
 			label += " (Disabled)"
+			button := discordgo.Button{
+				Label:    label,
+				Style:    discordgo.SecondaryButton,
+				CustomID: fmt.Sprintf("update_account_%d", account.ID),
+			}
+			currentRow = append(currentRow, button)
+		} else {
+			button := discordgo.Button{
+				Label:    label,
+				Style:    discordgo.PrimaryButton,
+				CustomID: fmt.Sprintf("update_account_%d", account.ID),
+			}
+			currentRow = append(currentRow, button)
 		}
-
-		currentRow = append(currentRow, button)
 
 		if len(currentRow) == 5 {
 			components = append(components, discordgo.ActionsRow{Components: currentRow})
@@ -153,7 +157,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 							CustomID:    "new_sso_cookie",
 							Label:       "Enter the new SSO cookie",
 							Style:       discordgo.TextInputParagraph,
-							Placeholder: "Enter the new SSO cookie",
+							Placeholder: "Enter the new SSO cookie for this account",
 							Required:    true,
 							MinLength:   1,
 							MaxLength:   4000,
@@ -163,18 +167,20 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 			},
 		},
 	})
+
 	if err != nil {
-		logger.Log.WithError(err).Error("Error responding with modal")
+		logger.Log.WithError(err).Error("Error showing update modal")
+		respondToInteraction(s, i, "Error showing update form. Please try again.")
+		return
 	}
 }
 
 func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
-
 	accountIDStr := strings.TrimPrefix(data.CustomID, "update_account_modal_")
 	accountID, err := strconv.Atoi(accountIDStr)
 	if err != nil {
-		logger.Log.WithError(err).Error("Error converting account ID from modal custom ID")
+		logger.Log.WithError(err).Error("Error parsing account ID")
 		respondToInteractionWithEmbed(s, i, "Error processing your update. Please try again.", nil)
 		return
 	}
