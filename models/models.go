@@ -73,6 +73,13 @@ type Ban struct {
 	TempBanDuration string  // Duration of the temporary ban (if applicable)
 	AffectedGames   string  // Comma-separated list of affected games
 }
+type SuppressedNotification struct {
+	gorm.Model
+	UserID           string    `gorm:"index"` // The ID of the user.
+	NotificationType string    // The type of notification suppressed.
+	Content          string    `gorm:"type:text"` // The content of the suppressed notification.
+	Timestamp        time.Time `gorm:"index"`     // The timestamp of the suppressed notification.
+}
 
 type Status string
 

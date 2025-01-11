@@ -95,6 +95,7 @@ func getActionLimit(action string) int {
 func processUserAccounts(s *discordgo.Session, userID string, accounts []models.Account) {
 	cfg := configuration.Get()
 
+	now := time.Now()
 	userSettings, err := GetUserSettings(userID)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
@@ -111,15 +112,19 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 	var accountsToNotify []models.Account
 	var accountsForDailyUpdate []models.Account
 
-	now := time.Now()
-	shouldSendDaily := time.Since(userSettings.LastDailyUpdateNotification) >=
-		time.Duration(cfg.Intervals.Notification)*time.Hour
+	notificationInterval := time.Duration(userSettings.NotificationInterval) * time.Hour
+	if notificationInterval == 0 {
+		notificationInterval = time.Duration(cfg.Intervals.Notification) * time.Hour
+	}
+
+	shouldSendDaily := time.Since(userSettings.LastDailyUpdateNotification) >= notificationInterval
 
 	for _, account := range accounts {
+		if !account.IsCheckDisabled && !account.IsExpiredCookie {
+			accountsForDailyUpdate = append(accountsForDailyUpdate, account)
+		}
+
 		if !shouldCheckAccount(account, userSettings) {
-			if !account.IsCheckDisabled && !account.IsExpiredCookie {
-				accountsForDailyUpdate = append(accountsForDailyUpdate, account)
-			}
 			continue
 		}
 

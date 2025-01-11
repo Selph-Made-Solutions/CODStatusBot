@@ -42,7 +42,7 @@ func Databaselogin() error {
 
 	DB = db
 
-	err = DB.AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{})
+	err = DB.AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{}, &models.SuppressedNotification{})
 	if err != nil {
 		logger.Log.WithError(err).WithField("Bot Startup ", "Database Models Problem ").Error()
 		return err

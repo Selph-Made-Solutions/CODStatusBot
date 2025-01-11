@@ -40,6 +40,10 @@ func GetUserSettings(userID string) (models.UserSettings, error) {
 		initDefaultSettings()
 	}
 
+	if settings.LastDailyUpdateNotification.IsZero() {
+		settings.LastDailyUpdateNotification = time.Now().Add(-24 * time.Hour)
+	}
+
 	if settings.CheckInterval == 0 {
 		settings.CheckInterval = defaultSettings.CheckInterval
 	}
