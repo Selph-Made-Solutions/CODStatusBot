@@ -328,6 +328,7 @@ func getStatusFields(account models.Account, status models.Status) []*discordgo.
 func disableAccount(s *discordgo.Session, account models.Account, reason string) {
 	account.IsCheckDisabled = true
 	account.DisabledReason = reason
+	account.ConsecutiveErrors = 0
 
 	if err := database.DB.Save(&account).Error; err != nil {
 		logger.Log.WithError(err).Errorf("Failed to disable account %s", account.Title)
@@ -335,7 +336,6 @@ func disableAccount(s *discordgo.Session, account models.Account, reason string)
 	}
 
 	logger.Log.Infof("Account %s has been disabled. Reason: %s", account.Title, reason)
-
 	NotifyUserAboutDisabledAccount(s, account, reason)
 }
 
