@@ -26,8 +26,6 @@ var (
 	DBMutex sync.Mutex
 )
 
-//var notificationConfigs map[string]NotificationConfig
-
 func init() {}
 
 func InitializeServices() {

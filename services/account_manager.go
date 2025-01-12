@@ -274,7 +274,13 @@ func handleCheckError(s *discordgo.Session, account *models.Account, err error) 
 	if account.ConsecutiveErrors >= cfg.CaptchaService.MaxRetries {
 		reason := fmt.Sprintf("Max consecutive errors reached (%d). Last error: %v",
 			cfg.CaptchaService.MaxRetries, err)
+		account.IsCheckDisabled = true
+		account.DisabledReason = reason
+		if err := database.DB.Save(account).Error; err != nil {
+			logger.Log.WithError(err).Errorf("Failed to disable account: %s", account.Title)
+		}
 		disableAccount(s, *account, reason)
+		return
 	}
 
 	if err := database.DB.Save(account).Error; err != nil {

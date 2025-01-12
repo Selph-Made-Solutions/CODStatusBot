@@ -15,17 +15,3 @@ func GetUserID(i *discordgo.InteractionCreate) (string, error) {
 	}
 	return "", fmt.Errorf("unable to determine user ID")
 }
-
-/*
-func GetChannelID(s *discordgo.Session, i *discordgo.InteractionCreate, userID string) (string, error) {
-	if i.ChannelID != "" {
-		return i.ChannelID, nil
-	}
-
-	channel, err := s.UserChannelCreate(userID)
-	if err != nil {
-		return "", fmt.Errorf("failed to create DM channel: %w", err)
-	}
-	return channel.ID, nil
-}
-*/
