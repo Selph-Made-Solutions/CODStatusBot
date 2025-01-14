@@ -271,14 +271,15 @@ func handleCheckError(s *discordgo.Session, account *models.Account, err error) 
 	account.ConsecutiveErrors++
 	account.LastErrorTime = time.Now()
 
+	if err := database.DB.Save(account).Error; err != nil {
+		logger.Log.WithError(err).Errorf("Failed to update account error status: %s", account.Title)
+		return
+	}
+
 	if account.ConsecutiveErrors >= cfg.CaptchaService.MaxRetries {
 		reason := fmt.Sprintf("Max consecutive errors reached (%d). Last error: %v",
 			cfg.CaptchaService.MaxRetries, err)
 		disableAccount(s, *account, reason)
-	}
-
-	if err := database.DB.Save(account).Error; err != nil {
-		logger.Log.WithError(err).Errorf("Failed to update account error status: %s", account.Title)
 	}
 }
 
