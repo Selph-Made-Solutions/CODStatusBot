@@ -129,11 +129,14 @@ func (s *EZCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 		"clientKey": s.APIKey,
 		"appId":     s.EzappID,
 		"task": map[string]interface{}{
-			"type":        "ReCaptchaV2TaskProxyless",
+			"type":        "ReCaptchaV2EnterpriseTaskProxyless",
 			"websiteURL":  pageURL,
 			"websiteKey":  siteKey,
 			"isInvisible": false,
 			"sa":          cfg.CaptchaService.SiteAction,
+			"enterprisePayload": map[string]interface{}{
+				"s": "",
+			},
 		},
 	}
 
@@ -207,7 +210,6 @@ func (s *EZCaptchaSolver) getTaskResult(taskID string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-
 		var result struct {
 			ErrorId          int    `json:"errorId"`
 			ErrorCode        string `json:"errorCode"`
@@ -223,7 +225,11 @@ func (s *EZCaptchaSolver) getTaskResult(taskID string) (string, error) {
 		}
 
 		if result.ErrorId != 0 {
-			return "", fmt.Errorf("API error: %s - %s", result.ErrorCode, result.ErrorDescription)
+			if i == MaxRetries-1 {
+				return "", fmt.Errorf("API error after %d retries: %s - %s", MaxRetries, result.ErrorCode, result.ErrorDescription)
+			}
+			time.Sleep(RetryInterval)
+			continue
 		}
 
 		if result.Status == "ready" {
