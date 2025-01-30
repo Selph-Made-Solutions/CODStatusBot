@@ -38,7 +38,8 @@ type Account struct {
 
 type UserSettings struct {
 	gorm.Model
-	UserID                       string               `gorm:"uniqueIndex"` // The ID of the user.
+	UserID string `gorm:"type:varchar(255);uniqueIndex"` // The ID of the user.
+	//	UserID                       string               `gorm:"uniqueIndex"` // The ID of the user.
 	EZCaptchaAPIKey              string               // User's own EZCaptcha API key, if provided
 	TwoCaptchaAPIKey             string               // User's own 2captcha API key, if provided
 	PreferredCaptchaProvider     string               `gorm:"default:'ezcaptcha'"` // 'ezcaptcha' or '2captcha'
