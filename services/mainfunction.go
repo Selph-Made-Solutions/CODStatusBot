@@ -88,6 +88,7 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 	account.IsShadowbanned = newStatus == models.StatusShadowban
 	account.IsTempbanned = newStatus == models.StatusTempban
 	account.LastSuccessfulCheck = now
+	account.ConsecutiveErrors = 0
 
 	if err := database.DB.Save(&account).Error; err != nil {
 		logger.Log.WithError(err).Error("Failed to update account status")
@@ -116,11 +117,9 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 		Title:       fmt.Sprintf("%s - %s", account.Title, EmbedTitleFromStatus(newStatus)),
 		Description: GetStatusDescription(newStatus, account.Title, ban),
 		Color:       GetColorForStatus(newStatus, account.IsExpiredCookie, account.IsCheckDisabled),
-		Fields:      getStatusFields(account, newStatus),
+		Fields:      getStatusFields(account, newStatus, ban),
 		Timestamp:   now.Format(time.RFC3339),
 	}
-
-	notificationType := getNotificationType(newStatus)
 
 	if previousStatus != models.StatusUnknown {
 		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
@@ -130,6 +129,7 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 		})
 	}
 
+	notificationType := getNotificationType(newStatus)
 	err := SendNotification(s, account, embed, fmt.Sprintf("<@%s>", account.UserID), notificationType)
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to send status update message for account %s", account.Title)
@@ -249,7 +249,8 @@ func getAffectedGames(ssoCookie string) string {
 
 	return strings.Join(games, ", ")
 }
-func getStatusFields(account models.Account, status models.Status) []*discordgo.MessageEmbedField {
+
+func getStatusFields(account models.Account, status models.Status, ban models.Ban) []*discordgo.MessageEmbedField {
 	fields := []*discordgo.MessageEmbedField{
 		{
 			Name:   "Account Status",
@@ -261,6 +262,22 @@ func getStatusFields(account models.Account, status models.Status) []*discordgo.
 			Value:  time.Unix(account.LastCheck, 0).Format(time.RFC1123),
 			Inline: true,
 		},
+	}
+
+	if ban.AffectedGames != "" {
+		fields = append(fields, &discordgo.MessageEmbedField{
+			Name:   "Affected Games",
+			Value:  ban.AffectedGames,
+			Inline: false,
+		})
+	}
+
+	if isVIP, err := CheckVIPStatus(account.SSOCookie); err == nil {
+		fields = append(fields, &discordgo.MessageEmbedField{
+			Name:   "VIP Status",
+			Value:  formatVIPStatus(isVIP),
+			Inline: true,
+		})
 	}
 
 	if !account.IsExpiredCookie {
@@ -337,6 +354,55 @@ func disableAccount(s *discordgo.Session, account models.Account, reason string)
 
 	logger.Log.Infof("Account %s has been disabled. Reason: %s", account.Title, reason)
 	NotifyUserAboutDisabledAccount(s, account, reason)
+}
+
+func handlePermaBanNotification(s *discordgo.Session, account models.Account, ban models.Ban) {
+	permaBanEmbed := &discordgo.MessageEmbed{
+		Title: fmt.Sprintf("%s - Permanent Ban Detected", account.Title),
+		Description: "This account has been permanently banned. It's recommended to remove it from monitoring " +
+			"using the /removeaccount command to free up your account slot.",
+		Color:     GetColorForStatus(models.StatusPermaban, false, false),
+		Timestamp: time.Now().Format(time.RFC3339),
+		Fields: []*discordgo.MessageEmbedField{
+			{
+				Name:   "Account Status",
+				Value:  "Permanently Banned",
+				Inline: true,
+			},
+			{
+				Name:   "Action Required",
+				Value:  "Remove account using /removeaccount",
+				Inline: true,
+			},
+		},
+	}
+
+	if ban.AffectedGames != "" {
+		permaBanEmbed.Fields = append(permaBanEmbed.Fields, &discordgo.MessageEmbedField{
+			Name:   "Affected Games",
+			Value:  ban.AffectedGames,
+			Inline: false,
+		})
+	}
+
+	if err := SendNotification(s, account, permaBanEmbed, "", "permaban_notice"); err != nil {
+		logger.Log.WithError(err).Error("Failed to send permaban notice")
+	}
+}
+
+func handleShadowBanNotification(s *discordgo.Session, account models.Account, ban models.Ban) {
+	shadowBanEmbed := &discordgo.MessageEmbed{
+		Title: fmt.Sprintf("%s - Account Under Review", account.Title),
+		Description: "Your account has been placed under review (shadowban). " +
+			"This typically means your account is being investigated.",
+		Color:     GetColorForStatus(models.StatusShadowban, false, false),
+		Timestamp: time.Now().Format(time.RFC3339),
+		Fields:    getStatusFields(account, models.StatusShadowban, ban),
+	}
+
+	if err := SendNotification(s, account, shadowBanEmbed, "", "shadowban_notice"); err != nil {
+		logger.Log.WithError(err).Error("Failed to send shadowban notice")
+	}
 }
 
 func ScheduleTempBanNotification(s *discordgo.Session, account models.Account, duration string) {

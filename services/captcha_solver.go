@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/bradselph/CODStatusBot/configuration"
@@ -134,8 +135,8 @@ func (s *EZCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 			"websiteKey":  siteKey,
 			"isInvisible": false,
 			"sa":          cfg.CaptchaService.SiteAction,
-			"enterprisePayload": map[string]interface{}{
-				"s": "",
+			"enterprisePayload": map[string]interface{}{ //  wtf is this shit you made up more bullshit? proof of concept did not have this anywhere!
+				"s": "", // this more bullshit as well? proof of concept did not have this anywhere!
 			},
 		},
 	}
@@ -225,6 +226,9 @@ func (s *EZCaptchaSolver) getTaskResult(taskID string) (string, error) {
 		}
 
 		if result.ErrorId != 0 {
+			if strings.Contains(result.ErrorDescription, "insufficient balance") {
+				return "", fmt.Errorf("insufficient balance")
+			}
 			if i == MaxRetries-1 {
 				return "", fmt.Errorf("API error after %d retries: %s - %s", MaxRetries, result.ErrorCode, result.ErrorDescription)
 			}
@@ -233,6 +237,9 @@ func (s *EZCaptchaSolver) getTaskResult(taskID string) (string, error) {
 		}
 
 		if result.Status == "ready" {
+			if len(result.Solution.GRecaptchaResponse) < 50 {
+				return "", fmt.Errorf("invalid captcha response received")
+			}
 			return result.Solution.GRecaptchaResponse, nil
 		}
 

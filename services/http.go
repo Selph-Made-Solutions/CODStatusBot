@@ -128,6 +128,10 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 		return models.StatusUnknown, fmt.Errorf("failed to get user settings: %w", err)
 	}
 
+	if !VerifySSOCookie(ssoCookie) {
+		return models.StatusInvalidCookie, nil
+	}
+
 	if !IsServiceEnabled("ezcaptcha") && !IsServiceEnabled("2captcha") {
 		return models.StatusUnknown, fmt.Errorf("no captcha services are currently enabled")
 	}
@@ -146,11 +150,9 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 
 	solver, err := GetCaptchaSolver(userID)
 	if err != nil {
-		if isCriticalError(err) {
-			if strings.Contains(err.Error(), "insufficient balance") {
-				if err := DisableUserCaptcha(nil, userID, "Insufficient balance"); err != nil {
-					logger.Log.WithError(err).Error("Failed to disable user captcha service")
-				}
+		if strings.Contains(err.Error(), "insufficient balance") {
+			if err := DisableUserCaptcha(nil, userID, "Insufficient balance"); err != nil {
+				logger.Log.WithError(err).Error("Failed to disable user captcha service")
 			}
 			return models.StatusUnknown, fmt.Errorf("critical error: %w", err)
 		}
@@ -177,9 +179,13 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 	checkRequest := fmt.Sprintf("%s?locale=en&g-cc=%s", cfg.API.CheckEndpoint, gRecaptchaResponse)
 	logger.Log.WithField("url", checkRequest).Info("Constructed account check request")
 
+	client := &http.Client{
+		Timeout: 120 * time.Second,
+	}
+
 	req, err := http.NewRequest("GET", checkRequest, nil)
 	if err != nil {
-		return models.StatusUnknown, fmt.Errorf("failed to create HTTP request: %w", err)
+		return models.StatusUnknown, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	headers := GenerateHeaders(ssoCookie)
@@ -192,22 +198,17 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 		"headers":      headers,
 		"cookieLength": len(ssoCookie),
 	}).Debug("Set request headers")
-
-	client := &http.Client{
-		Timeout: 120 * time.Second,
-	}
-
 	var resp *http.Response
 	var body []byte
 	maxRetries := 3
 
 	backoffDuration := time.Second
 	for i := 0; i < maxRetries; i++ {
-		logger.Log.Infof("Sending HTTP request to check account (attempt %d/%d)", i+1, maxRetries)
+		logger.Log.Infof("Sending request to check account (attempt %d/%d)", i+1, maxRetries)
 		resp, err = client.Do(req)
 		if err != nil {
 			if i == maxRetries-1 {
-				return models.StatusUnknown, fmt.Errorf("failed to send HTTP request after %d attempts: %w", maxRetries, err)
+				return models.StatusUnknown, fmt.Errorf("failed to send request after %d attempts: %w", maxRetries, err)
 			}
 			backoffDuration *= 2
 			time.Sleep(backoffDuration)
@@ -216,7 +217,6 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 
 		body, err = io.ReadAll(resp.Body)
 		resp.Body.Close()
-
 		if err != nil {
 			if i == maxRetries-1 {
 				return models.StatusUnknown, fmt.Errorf("failed to read response body after %d attempts: %w", maxRetries, err)
@@ -265,14 +265,15 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 		Success   string `json:"success"`
 		CanAppeal bool   `json:"canAppeal"`
 		Bans      []struct {
-			Enforcement string `json:"enforcement"`
-			Title       string `json:"title"`
-			CanAppeal   bool   `json:"canAppeal"`
+			Enforcement string   `json:"enforcement"`
+			Title       string   `json:"title"`
+			CanAppeal   bool     `json:"canAppeal"`
+			Bar         struct{} `json:"bar,omitempty"`
 		} `json:"bans"`
 	}
 
 	if err := json.Unmarshal(body, &data); err != nil {
-		return models.StatusUnknown, fmt.Errorf("failed to decode JSON response: %w", err)
+		return models.StatusUnknown, fmt.Errorf("failed to parse response: %w", err)
 	}
 	logger.Log.WithField("data", data).Info("Parsed ban data")
 

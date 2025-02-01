@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"time"
 )
 
 func GenerateHeaders(ssoCookie string) map[string]string {
@@ -18,7 +19,10 @@ func GenerateHeaders(ssoCookie string) map[string]string {
 		"sec-fetch-mode":     "cors",
 		"sec-fetch-site":     "same-origin",
 		"x-requested-with":   "XMLHttpRequest",
-		"Cookie":             fmt.Sprintf("ACT_SSO_COOKIE=%s", ssoCookie),
+		"Cookie": fmt.Sprintf("ACT_SSO_COOKIE=%s; ACT_SSO_REMEMBER_ME=%s; ACT_SSO_EVENT=\"LOGIN_SUCCESS:%d\"; POAct-ACTXSRF=active",
+			ssoCookie,
+			ssoCookie,
+			time.Now().UnixMilli()),
 	}
 	return headers
 }

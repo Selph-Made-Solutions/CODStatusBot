@@ -18,6 +18,7 @@ import (
 	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bradselph/CODStatusBot/services"
 	"github.com/bwmarrin/discordgo"
+	"github.com/getsentry/sentry-go"
 )
 
 var discord *discordgo.Session
@@ -77,6 +78,8 @@ func main() {
 }
 
 func run() error {
+	defer sentry.Flush(2 * time.Second)
+	logger.LogAndCapture("func run for starting CODStatusBot was called")
 	logger.Log.Info("Starting COD Status Bot...")
 
 	if err := loadEnv("config.env"); err != nil {
