@@ -51,11 +51,11 @@ func IsServiceEnabled(provider string) bool {
 	cfg := configuration.Get()
 	switch provider {
 	case "capsolver":
-		return cfg.CaptchaService.Capsolver.Enabled
+		return cfg.CaptchaService.Capsolver.Enabled && cfg.CaptchaService.Capsolver.ClientKey != ""
 	case "ezcaptcha":
-		return cfg.CaptchaService.EZCaptcha.Enabled
+		return cfg.CaptchaService.EZCaptcha.Enabled && cfg.CaptchaService.EZCaptcha.ClientKey != ""
 	case "2captcha":
-		return cfg.CaptchaService.TwoCaptcha.Enabled
+		return cfg.CaptchaService.TwoCaptcha.Enabled && cfg.CaptchaService.TwoCaptcha.ClientKey != ""
 	default:
 		return false
 	}
@@ -439,12 +439,25 @@ func getBalanceThreshold(provider string) float64 {
 }
 
 func ValidateCaptchaKey(apiKey, provider string) (bool, float64, error) {
+	if apiKey == "" {
+		return false, 0, fmt.Errorf("empty API key provided")
+	}
+
 	switch provider {
 	case "capsolver":
+		if !IsServiceEnabled("capsolver") {
+			return false, 0, fmt.Errorf("capsolver service is not enabled")
+		}
 		return validateCapsolverKey(apiKey)
 	case "ezcaptcha":
+		if !IsServiceEnabled("ezcaptcha") {
+			return false, 0, fmt.Errorf("ezcaptcha service is not enabled")
+		}
 		return validateEZCaptchaKey(apiKey)
 	case "2captcha":
+		if !IsServiceEnabled("2captcha") {
+			return false, 0, fmt.Errorf("2captcha service is not enabled")
+		}
 		return validate2CaptchaKey(apiKey)
 	default:
 		return false, 0, errors.New("unsupported captcha provider")

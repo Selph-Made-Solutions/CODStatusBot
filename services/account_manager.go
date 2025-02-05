@@ -347,3 +347,23 @@ func validateUserCaptchaService(userID string, userSettings models.UserSettings)
 
 	return nil
 }
+
+func ValidateDefaultCapsolverConfig() error {
+	cfg := configuration.Get()
+	if cfg.CaptchaService.Capsolver.ClientKey == "" {
+		return fmt.Errorf("capsolver client key not configured")
+	}
+	if cfg.CaptchaService.Capsolver.AppID == "" {
+		return fmt.Errorf("capsolver App ID not configured")
+	}
+
+	isValid, _, err := validateCapsolverKey(cfg.CaptchaService.Capsolver.ClientKey)
+	if err != nil {
+		return fmt.Errorf("failed to validate Capsolver key: %w", err)
+	}
+	if !isValid {
+		return fmt.Errorf("invalid Capsolver configuration")
+	}
+
+	return nil
+}

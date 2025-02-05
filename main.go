@@ -93,21 +93,38 @@ func run() error {
 	services.InitializeServices()
 	cfg := configuration.Get()
 
-	if !cfg.CaptchaService.EZCaptcha.Enabled && !cfg.CaptchaService.TwoCaptcha.Enabled {
-		logger.Log.Warn("Starting bot with no captcha services enabled - functionality will be limited")
+	// Check if at least one service is properly configured
+	if !cfg.CaptchaService.Capsolver.Enabled && !cfg.CaptchaService.EZCaptcha.Enabled && !cfg.CaptchaService.TwoCaptcha.Enabled {
+		logger.Log.Warn("No captcha services are enabled - functionality will be limited")
 	} else {
 		var enabledServices []string
-		if cfg.CaptchaService.EZCaptcha.Enabled {
+		if cfg.CaptchaService.Capsolver.Enabled && cfg.CaptchaService.Capsolver.ClientKey != "" {
+			enabledServices = append(enabledServices, "Capsolver")
+			if err := services.ValidateDefaultCapsolverConfig(); err != nil {
+				logger.Log.WithError(err).Error("Capsolver service enabled but configuration is invalid")
+				cfg.CaptchaService.Capsolver.Enabled = false
+			} else {
+				logger.Log.Info("Capsolver service enabled and configured correctly")
+			}
+		}
+		if cfg.CaptchaService.EZCaptcha.Enabled && cfg.CaptchaService.EZCaptcha.ClientKey != "" {
 			enabledServices = append(enabledServices, "EZCaptcha")
 			if services.VerifyEZCaptchaConfig() {
 				logger.Log.Info("EZCaptcha service enabled and configured correctly")
 			} else {
 				logger.Log.Error("EZCaptcha service enabled but configuration is invalid")
+				cfg.CaptchaService.EZCaptcha.Enabled = false
 			}
 		}
-		if cfg.CaptchaService.TwoCaptcha.Enabled {
+		if cfg.CaptchaService.TwoCaptcha.Enabled && cfg.CaptchaService.TwoCaptcha.ClientKey != "" {
 			enabledServices = append(enabledServices, "2Captcha")
 			logger.Log.Info("2Captcha service enabled and configured correctly")
+		}
+
+		if len(enabledServices) == 0 {
+			logger.Log.Error("No properly configured captcha services found")
+		} else {
+			logger.Log.Infof("Enabled captcha services: %s", strings.Join(enabledServices, ", "))
 		}
 	}
 
