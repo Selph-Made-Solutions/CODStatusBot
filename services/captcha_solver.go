@@ -19,16 +19,23 @@ const (
 	MaxRetries    = 6
 	RetryInterval = 10 * time.Second
 
+	CapsolverCreateEndpoint  = "https://api.capsolver.com/createTask"
+	CapsolverResultEndpoint  = "https://api.capsolver.com/getTaskResult"
 	EZCaptchaCreateEndpoint  = "https://api.ez-captcha.com/createTask"
 	EZCaptchaResultEndpoint  = "https://api.ez-captcha.com/getTaskResult"
 	TwoCaptchaCreateEndpoint = "https://api.2captcha.com/createTask"
 	TwoCaptchaResultEndpoint = "https://api.2captcha.com/getTaskResult"
+	//  capsol		       	     = "capsolver"
 	//	twocap                   = "2captcha"
 	//	ezcap                    = "ezcaptcha"
 )
 
 type CaptchaSolver interface {
 	SolveReCaptchaV2(siteKey, pageURL string) (string, error)
+}
+type CapsolverSolver struct {
+	APIKey string
+	AppID  string
 }
 
 type EZCaptchaSolver struct {
@@ -44,6 +51,8 @@ type TwoCaptchaSolver struct {
 func IsServiceEnabled(provider string) bool {
 	cfg := configuration.Get()
 	switch provider {
+	case "capsolver":
+		return cfg.CaptchaService.Capsolver.Enabled
 	case "ezcaptcha":
 		return cfg.CaptchaService.EZCaptcha.Enabled
 	case "2captcha":
@@ -57,7 +66,7 @@ func VerifyEZCaptchaConfig() bool {
 	cfg := configuration.Get()
 	ezConfig := cfg.CaptchaService
 
-	if ezConfig.EZCaptcha.ClientKey == "" || ezConfig.EZCaptcha.AppID == "" || ezConfig.SiteAction == "" {
+	if ezConfig.EZCaptcha.ClientKey == "" || ezConfig.EZCaptcha.AppID == "" {
 		logger.Log.Error("Missing required EZCaptcha configuration")
 		return false
 	}
@@ -83,6 +92,11 @@ func NewCaptchaSolver(apiKey, provider string) (CaptchaSolver, error) {
 	}
 
 	switch provider {
+	case "capsolver":
+		return &CapsolverSolver{
+			APIKey: apiKey,
+			AppID:  cfg.CaptchaService.Capsolver.AppID,
+		}, nil
 	case "ezcaptcha":
 		return &EZCaptchaSolver{
 			APIKey:  apiKey,
@@ -98,6 +112,13 @@ func NewCaptchaSolver(apiKey, provider string) (CaptchaSolver, error) {
 	}
 }
 
+func (s *CapsolverSolver) SolveReCaptchaV2(siteKey, pageURL string) (string, error) {
+	taskID, err := s.createTask(siteKey, pageURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to create capsolver task: %w", err)
+	}
+	return s.getTaskResult(taskID)
+}
 func (s *EZCaptchaSolver) SolveReCaptchaV2(siteKey, pageURL string) (string, error) {
 
 	taskID, err := s.createTask(siteKey, pageURL)
@@ -115,15 +136,50 @@ func (s *TwoCaptchaSolver) SolveReCaptchaV2(siteKey, pageURL string) (string, er
 	return s.getTaskResult(taskID)
 }
 
+func (s *CapsolverSolver) createTask(siteKey, pageURL string) (string, error) {
+
+	if s.AppID == "" {
+		return "", fmt.Errorf("AppID is not configured")
+	}
+
+	payload := map[string]interface{}{
+		"clientKey": s.APIKey,
+		"appId":     s.AppID,
+		"task": map[string]interface{}{
+			"type":        "ReCaptchaV2EnterpriseTaskProxyless",
+			"websiteURL":  pageURL,
+			"websiteKey":  siteKey,
+			"isInvisible": false,
+		},
+	}
+
+	resp, err := sendRequest(CapsolverCreateEndpoint, payload)
+	if err != nil {
+		return "", err
+	}
+
+	var result struct {
+		ErrorId          int    `json:"errorId"`
+		ErrorCode        string `json:"errorCode"`
+		ErrorDescription string `json:"errorDescription"`
+		TaskId           string `json:"taskId"`
+	}
+
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return "", fmt.Errorf("failed to parse capsolver response: %w", err)
+	}
+
+	if result.ErrorId != 0 {
+		return "", fmt.Errorf("capsolver API error: %s - %s", result.ErrorCode, result.ErrorDescription)
+	}
+
+	return result.TaskId, nil
+}
+
 func (s *EZCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
-	cfg := configuration.Get()
 
 	if s.EzappID == "" {
 		return "", fmt.Errorf("EzappID is not configured")
-	}
-
-	if cfg.CaptchaService.SiteAction == "" {
-		return "", fmt.Errorf("site action is not configured")
 	}
 
 	payload := map[string]interface{}{
@@ -134,10 +190,6 @@ func (s *EZCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 			"websiteURL":  pageURL,
 			"websiteKey":  siteKey,
 			"isInvisible": false,
-			"sa":          cfg.CaptchaService.SiteAction,
-			"enterprisePayload": map[string]interface{}{ //  wtf is this shit you made up more bullshit? proof of concept did not have this anywhere!
-				"s": "", // this more bullshit as well? proof of concept did not have this anywhere!
-			},
 		},
 	}
 
@@ -165,6 +217,11 @@ func (s *EZCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 }
 
 func (s *TwoCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
+
+	if s.SoftID == "" {
+		return "", fmt.Errorf("SoftID is not configured")
+	}
+
 	payload := map[string]interface{}{
 		"clientKey": s.APIKey,
 		"softId":    s.SoftID,
@@ -198,6 +255,56 @@ func (s *TwoCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 	}
 
 	return fmt.Sprintf("%d", result.TaskId), nil
+}
+
+func (s *CapsolverSolver) getTaskResult(taskID string) (string, error) {
+	for i := 0; i < MaxRetries; i++ {
+		payload := map[string]interface{}{
+			"clientKey": s.APIKey,
+			"taskId":    taskID,
+		}
+
+		resp, err := sendRequest(CapsolverResultEndpoint, payload)
+		if err != nil {
+			return "", err
+		}
+
+		var result struct {
+			ErrorId          int    `json:"errorId"`
+			ErrorCode        string `json:"errorCode"`
+			ErrorDescription string `json:"errorDescription"`
+			Status           string `json:"status"`
+			Solution         struct {
+				GRecaptchaResponse string `json:"gRecaptchaResponse"`
+			} `json:"solution"`
+		}
+
+		if err := json.Unmarshal(resp, &result); err != nil {
+			return "", fmt.Errorf("failed to parse capsolver response: %w", err)
+		}
+
+		if result.ErrorId != 0 {
+			if strings.Contains(result.ErrorDescription, "insufficient balance") {
+				return "", fmt.Errorf("insufficient balance")
+			}
+			if i == MaxRetries-1 {
+				return "", fmt.Errorf("capsolver API error after %d retries: %s - %s", MaxRetries, result.ErrorCode, result.ErrorDescription)
+			}
+			time.Sleep(RetryInterval)
+			continue
+		}
+
+		if result.Status == "ready" {
+			if len(result.Solution.GRecaptchaResponse) < 50 {
+				return "", fmt.Errorf("invalid captcha response received from capsolver")
+			}
+			return result.Solution.GRecaptchaResponse, nil
+		}
+
+		time.Sleep(RetryInterval)
+	}
+
+	return "", errors.New("max retries reached waiting for capsolver result")
 }
 
 func (s *EZCaptchaSolver) getTaskResult(taskID string) (string, error) {
@@ -312,9 +419,12 @@ func sendRequest(url string, payload interface{}) ([]byte, error) {
 	return body, nil
 }
 
+// TODO check why this is not in use
 func getBalanceThreshold(provider string) float64 {
 	cfg := configuration.Get()
 	switch provider {
+	case "capsolver":
+		return cfg.CaptchaService.Capsolver.BalanceMin
 	case "ezcaptcha":
 		return cfg.CaptchaService.EZCaptcha.BalanceMin
 	case "2captcha":
@@ -326,6 +436,8 @@ func getBalanceThreshold(provider string) float64 {
 
 func ValidateCaptchaKey(apiKey, provider string) (bool, float64, error) {
 	switch provider {
+	case "capsolver":
+		return validateCapsolverKey(apiKey)
 	case "ezcaptcha":
 		return validateEZCaptchaKey(apiKey)
 	case "2captcha":
@@ -333,6 +445,34 @@ func ValidateCaptchaKey(apiKey, provider string) (bool, float64, error) {
 	default:
 		return false, 0, errors.New("unsupported captcha provider")
 	}
+}
+
+// TODO split check balance up and use url new cfg integration
+func validateCapsolverKey(apiKey string) (bool, float64, error) {
+	url := "https://api.capsolver.com/getBalance"
+	payload := map[string]string{
+		"clientKey": apiKey,
+	}
+
+	resp, err := sendRequest(url, payload)
+	if err != nil {
+		return false, 0, err
+	}
+
+	var result struct {
+		ErrorId int     `json:"errorId"`
+		Balance float64 `json:"balance"`
+	}
+
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return false, 0, fmt.Errorf("failed to parse capsolver response: %w", err)
+	}
+
+	if result.ErrorId != 0 {
+		return false, 0, nil
+	}
+
+	return true, result.Balance, nil
 }
 
 func validateEZCaptchaKey(apiKey string) (bool, float64, error) {

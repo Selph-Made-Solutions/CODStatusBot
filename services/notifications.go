@@ -145,7 +145,6 @@ func FormatDuration(d time.Duration) string {
 	}
 	return fmt.Sprintf("%dm", minutes)
 }
-
 func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64) {
 	cfg := configuration.Get()
 	userSettings, err := GetUserSettings(userID)

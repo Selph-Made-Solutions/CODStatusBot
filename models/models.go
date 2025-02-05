@@ -40,9 +40,10 @@ type UserSettings struct {
 	gorm.Model
 	UserID string `gorm:"type:varchar(255);uniqueIndex"` // The ID of the user.
 	//	UserID                       string               `gorm:"uniqueIndex"` // The ID of the user.
+	CapSolverAPIKey              string               // User's own Capsolver API key, if provided
 	EZCaptchaAPIKey              string               // User's own EZCaptcha API key, if provided
 	TwoCaptchaAPIKey             string               // User's own 2captcha API key, if provided
-	PreferredCaptchaProvider     string               `gorm:"default:'ezcaptcha'"` // 'ezcaptcha' or '2captcha'
+	PreferredCaptchaProvider     string               `gorm:"default:'capsolver'"` // 'capsolver', 'ezcaptcha' or '2captcha'
 	CaptchaBalance               float64              // Current balance for the selected provider
 	LastBalanceCheck             time.Time            // Last time the balance was checked
 	CheckInterval                int                  // the user's set check interval
@@ -96,6 +97,7 @@ const (
 type CaptchaProvider string
 
 const (
+	Capsolver  CaptchaProvider = "capsolver"
 	EZCaptcha  CaptchaProvider = "ezcaptcha"
 	TwoCaptcha CaptchaProvider = "2captcha"
 )

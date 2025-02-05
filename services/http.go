@@ -17,6 +17,7 @@ import (
 )
 
 const (
+	capsol = "capsolver"
 	ezcap  = "ezcaptcha"
 	twocap = "2captcha"
 )
@@ -132,12 +133,17 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 		return models.StatusInvalidCookie, nil
 	}
 
-	if !IsServiceEnabled("ezcaptcha") && !IsServiceEnabled("2captcha") {
+	if !IsServiceEnabled("ezcaptcha") &&
+		!IsServiceEnabled("capsolver") &&
+		!IsServiceEnabled("2captcha") {
 		return models.StatusUnknown, fmt.Errorf("no captcha services are currently enabled")
 	}
 
 	if !IsServiceEnabled(userSettings.PreferredCaptchaProvider) {
-		if IsServiceEnabled("ezcaptcha") {
+		if IsServiceEnabled("capsolver") {
+			userSettings.PreferredCaptchaProvider = capsol
+			database.DB.Save(&userSettings)
+		} else if IsServiceEnabled("ezcaptcha") {
 			userSettings.PreferredCaptchaProvider = ezcap
 			database.DB.Save(&userSettings)
 		} else if IsServiceEnabled("2captcha") {
@@ -305,21 +311,33 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 	return models.StatusUnknown, nil
 }
 
+// TODO: update with new capsolver details
+
 func UpdateCaptchaUsage(userID string) error {
 	settings, err := GetUserSettings(userID)
 	if err != nil {
 		return err
 	}
 
-	if settings.EZCaptchaAPIKey == "" && settings.TwoCaptchaAPIKey == "" {
+	if settings.EZCaptchaAPIKey == "" &&
+		settings.TwoCaptchaAPIKey == "" &&
+		settings.CapSolverAPIKey == "" {
 		return nil
 	}
 
-	apiKey := settings.EZCaptchaAPIKey
-	provider := "ezcaptcha"
-	if settings.PreferredCaptchaProvider == "2captcha" {
+	var apiKey string
+	var provider string
+
+	switch settings.PreferredCaptchaProvider {
+	case "ezcaptcha":
+		apiKey = settings.EZCaptchaAPIKey
+		provider = "ezcaptcha"
+	case "2captcha":
 		apiKey = settings.TwoCaptchaAPIKey
 		provider = "2captcha"
+	default:
+		apiKey = settings.CapSolverAPIKey
+		provider = "capsolver"
 	}
 
 	isValid, balance, err := ValidateCaptchaKey(apiKey, provider)

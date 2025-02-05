@@ -32,6 +32,12 @@ type Config struct {
 
 	// Captcha Service Settings
 	CaptchaService struct {
+		Capsolver struct {
+			Enabled    bool
+			ClientKey  string
+			AppID      string
+			BalanceMin float64
+		}
 		EZCaptcha struct {
 			Enabled    bool
 			ClientKey  string
@@ -40,13 +46,13 @@ type Config struct {
 		}
 		TwoCaptcha struct {
 			Enabled    bool
+			ClientKey  string
 			SoftID     string
 			BalanceMin float64
 		}
 		RecaptchaSiteKey string
 		RecaptchaURL     string
 		MaxRetries       int
-		SiteAction       string
 	}
 
 	CaptchaEndpoints struct {
@@ -146,19 +152,23 @@ func Load() error {
 	AppConfig.Discord.DeveloperID = os.Getenv("DEVELOPER_ID")
 
 	// Captcha Service Settings
+	AppConfig.CaptchaService.Capsolver.Enabled = os.Getenv("CAPSOLVER_ENABLED") == "true"
+	AppConfig.CaptchaService.Capsolver.ClientKey = os.Getenv("CAPSOLVER_CLIENT_KEY")
+	AppConfig.CaptchaService.Capsolver.AppID = os.Getenv("CAPSOLVER_APPID")
+	AppConfig.CaptchaService.Capsolver.BalanceMin = getEnvAsFloat("CAPSOLVERBALMIN", 0.10)
+
 	AppConfig.CaptchaService.EZCaptcha.Enabled = os.Getenv("EZCAPTCHA_ENABLED") == "true"
 	AppConfig.CaptchaService.EZCaptcha.ClientKey = os.Getenv("EZCAPTCHA_CLIENT_KEY")
 	AppConfig.CaptchaService.EZCaptcha.AppID = os.Getenv("EZAPPID")
-	AppConfig.CaptchaService.EZCaptcha.BalanceMin = getEnvAsFloat("EZCAPBALMIN", 100)
+	AppConfig.CaptchaService.EZCaptcha.BalanceMin = getEnvAsFloat("EZCAPBALMIN", 50)
 
 	AppConfig.CaptchaService.TwoCaptcha.Enabled = os.Getenv("TWOCAPTCHA_ENABLED") == "true"
 	AppConfig.CaptchaService.TwoCaptcha.SoftID = os.Getenv("SOFT_ID")
-	AppConfig.CaptchaService.TwoCaptcha.BalanceMin = getEnvAsFloat("TWOCAPBALMIN", 0.25)
+	AppConfig.CaptchaService.TwoCaptcha.BalanceMin = getEnvAsFloat("TWOCAPBALMIN", 0.10)
 
 	AppConfig.CaptchaService.RecaptchaSiteKey = os.Getenv("RECAPTCHA_SITE_KEY")
 	AppConfig.CaptchaService.RecaptchaURL = os.Getenv("RECAPTCHA_URL")
 	AppConfig.CaptchaService.MaxRetries = getEnvAsInt("MAX_RETRIES", 3)
-	AppConfig.CaptchaService.SiteAction = os.Getenv("SITE_ACTION")
 
 	// API Endpoints
 	AppConfig.API.CheckEndpoint = os.Getenv("CHECK_ENDPOINT")
