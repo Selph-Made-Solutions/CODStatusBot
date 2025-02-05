@@ -135,9 +135,16 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		settings.LastBalanceCheck = time.Now()
 
 		if provider == "ezcaptcha" {
+			settings.CapSolverAPIKey = ""
 			settings.EZCaptchaAPIKey = apiKey
 			settings.TwoCaptchaAPIKey = ""
-		} else {
+
+		} else if provider == "capsolver" {
+			settings.CapSolverAPIKey = apiKey
+			settings.EZCaptchaAPIKey = ""
+			settings.TwoCaptchaAPIKey = ""
+		} else if provider == "twocaptcha" {
+			settings.CapSolverAPIKey = ""
 			settings.TwoCaptchaAPIKey = apiKey
 			settings.EZCaptchaAPIKey = ""
 		}

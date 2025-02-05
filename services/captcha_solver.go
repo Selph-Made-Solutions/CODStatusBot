@@ -16,18 +16,17 @@ import (
 )
 
 const (
-	MaxRetries    = 6
-	RetryInterval = 10 * time.Second
-
 	CapsolverCreateEndpoint  = "https://api.capsolver.com/createTask"
 	CapsolverResultEndpoint  = "https://api.capsolver.com/getTaskResult"
 	EZCaptchaCreateEndpoint  = "https://api.ez-captcha.com/createTask"
 	EZCaptchaResultEndpoint  = "https://api.ez-captcha.com/getTaskResult"
 	TwoCaptchaCreateEndpoint = "https://api.2captcha.com/createTask"
 	TwoCaptchaResultEndpoint = "https://api.2captcha.com/getTaskResult"
-	//  capsol		       	     = "capsolver"
-	//	twocap                   = "2captcha"
+	MaxRetries               = 6
+	RetryInterval            = 10 * time.Second
+	//	capsol                   = "capsolver"
 	//	ezcap                    = "ezcaptcha"
+	//	twocap                   = "2captcha"
 )
 
 type CaptchaSolver interface {
@@ -258,6 +257,10 @@ func (s *TwoCaptchaSolver) createTask(siteKey, pageURL string) (string, error) {
 }
 
 func (s *CapsolverSolver) getTaskResult(taskID string) (string, error) {
+	cfg := configuration.Get()
+	MaxRetries := cfg.CaptchaService.Capsolver.MaxRetries
+	RetryInterval := cfg.CaptchaService.Capsolver.RetryInterval
+
 	for i := 0; i < MaxRetries; i++ {
 		payload := map[string]interface{}{
 			"clientKey": s.APIKey,
@@ -304,7 +307,8 @@ func (s *CapsolverSolver) getTaskResult(taskID string) (string, error) {
 		time.Sleep(RetryInterval)
 	}
 
-	return "", errors.New("max retries reached waiting for capsolver result")
+	return "", fmt.Errorf("max retries reached (%d) waiting for capsolver result", MaxRetries)
+
 }
 
 func (s *EZCaptchaSolver) getTaskResult(taskID string) (string, error) {
@@ -447,7 +451,6 @@ func ValidateCaptchaKey(apiKey, provider string) (bool, float64, error) {
 	}
 }
 
-// TODO split check balance up and use url new cfg integration
 func validateCapsolverKey(apiKey string) (bool, float64, error) {
 	url := "https://api.capsolver.com/getBalance"
 	payload := map[string]string{
@@ -456,12 +459,20 @@ func validateCapsolverKey(apiKey string) (bool, float64, error) {
 
 	resp, err := sendRequest(url, payload)
 	if err != nil {
-		return false, 0, err
+		if strings.Contains(err.Error(), "invalid token format") {
+			return false, 0, errors.New("invalid capsolver API key format")
+		}
+		if strings.Contains(err.Error(), "invalid key") {
+			return false, 0, errors.New("invalid capsolver API key")
+		}
+		return false, 0, fmt.Errorf("capsolver balance check failed: %w", err)
 	}
 
 	var result struct {
-		ErrorId int     `json:"errorId"`
-		Balance float64 `json:"balance"`
+		ErrorId          int     `json:"errorId"`
+		ErrorCode        string  `json:"errorCode"`
+		ErrorDescription string  `json:"errorDescription"`
+		Balance          float64 `json:"balance"`
 	}
 
 	if err := json.Unmarshal(resp, &result); err != nil {
@@ -469,7 +480,13 @@ func validateCapsolverKey(apiKey string) (bool, float64, error) {
 	}
 
 	if result.ErrorId != 0 {
-		return false, 0, nil
+		if strings.Contains(result.ErrorDescription, "Invalid token format") {
+			return false, 0, errors.New("invalid capsolver API key format")
+		}
+		if strings.Contains(result.ErrorDescription, "Invalid key") {
+			return false, 0, errors.New("invalid capsolver API key")
+		}
+		return false, 0, fmt.Errorf("capsolver API error: %s - %s", result.ErrorCode, result.ErrorDescription)
 	}
 
 	return true, result.Balance, nil

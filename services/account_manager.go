@@ -220,7 +220,7 @@ func shouldCheckAccount(account models.Account, settings models.UserSettings) bo
 	lastCheckTime := time.Unix(account.LastCheck, 0)
 	checkInterval := time.Duration(settings.CheckInterval) * time.Minute
 
-	if settings.EZCaptchaAPIKey == "" && settings.TwoCaptchaAPIKey == "" {
+	if settings.CapSolverAPIKey == "" && settings.EZCaptchaAPIKey == "" && settings.TwoCaptchaAPIKey == "" {
 		if time.Since(lastCheckTime) < cfg.RateLimits.Default {
 			return false
 		}
@@ -251,7 +251,7 @@ func shouldCheckAccount(account models.Account, settings models.UserSettings) bo
 	}
 
 	// For users with custom API keys, always allow checks
-	if settings.EZCaptchaAPIKey != "" || settings.TwoCaptchaAPIKey != "" {
+	if settings.CapSolverAPIKey != "" || settings.EZCaptchaAPIKey != "" || settings.TwoCaptchaAPIKey != "" {
 		return now.After(nextCheckTime)
 	}
 
@@ -335,7 +335,7 @@ func validateUserCaptchaService(userID string, userSettings models.UserSettings)
 		return fmt.Errorf("captcha service %s is disabled", userSettings.PreferredCaptchaProvider)
 	}
 
-	if userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != "" {
+	if userSettings.CapSolverAPIKey != "" || userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != "" {
 		_, balance, err := GetUserCaptchaKey(userID)
 		if err != nil {
 			return fmt.Errorf("failed to validate captcha key: %w", err)

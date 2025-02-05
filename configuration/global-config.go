@@ -33,10 +33,12 @@ type Config struct {
 	// Captcha Service Settings
 	CaptchaService struct {
 		Capsolver struct {
-			Enabled    bool
-			ClientKey  string
-			AppID      string
-			BalanceMin float64
+			Enabled       bool
+			ClientKey     string
+			AppID         string
+			BalanceMin    float64
+			MaxRetries    int
+			RetryInterval time.Duration
 		}
 		EZCaptcha struct {
 			Enabled    bool
@@ -56,6 +58,10 @@ type Config struct {
 	}
 
 	CaptchaEndpoints struct {
+		Capsolver struct {
+			Create string
+			Result string
+		}
 		EZCaptcha struct {
 			Create string
 			Result string
@@ -154,8 +160,10 @@ func Load() error {
 	// Captcha Service Settings
 	AppConfig.CaptchaService.Capsolver.Enabled = os.Getenv("CAPSOLVER_ENABLED") == "true"
 	AppConfig.CaptchaService.Capsolver.ClientKey = os.Getenv("CAPSOLVER_CLIENT_KEY")
-	AppConfig.CaptchaService.Capsolver.AppID = os.Getenv("CAPSOLVER_APPID")
-	AppConfig.CaptchaService.Capsolver.BalanceMin = getEnvAsFloat("CAPSOLVERBALMIN", 0.10)
+	AppConfig.CaptchaService.Capsolver.AppID = os.Getenv("CAPSOLVER_APP_ID")
+	AppConfig.CaptchaService.Capsolver.BalanceMin = getEnvAsFloat("CAPSOLVER_BALANCE_MIN", 0.10)
+	AppConfig.CaptchaService.Capsolver.MaxRetries = getEnvAsInt("CAPSOLVER_MAX_RETRIES", 6)                                     // TODO: Merge with MAX_RETRIES
+	AppConfig.CaptchaService.Capsolver.RetryInterval = time.Duration(getEnvAsInt("CAPSOLVER_RETRY_INTERVAL", 10)) * time.Second // TODO: Merge with RETRY_INTERVAL
 
 	AppConfig.CaptchaService.EZCaptcha.Enabled = os.Getenv("EZCAPTCHA_ENABLED") == "true"
 	AppConfig.CaptchaService.EZCaptcha.ClientKey = os.Getenv("EZCAPTCHA_CLIENT_KEY")

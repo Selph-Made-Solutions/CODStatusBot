@@ -21,7 +21,7 @@ func initDefaultSettings() {
 		CooldownDuration:         cfg.Intervals.Cooldown,
 		StatusChangeCooldown:     cfg.Intervals.StatusChange,
 		NotificationType:         "channel",
-		PreferredCaptchaProvider: "ezcaptcha",
+		PreferredCaptchaProvider: "capsolver",
 	}
 
 	logger.Log.Infof("Default settings loaded: CheckInterval=%d, NotificationInterval=%.2f, CooldownDuration=%.2f, StatusChangeCooldown=%.2f",
@@ -85,22 +85,108 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 
 	cfg := configuration.Get()
 
+	// Try user's preferred provider first
 	switch settings.PreferredCaptchaProvider {
-	case "2captcha":
-		if !cfg.CaptchaService.TwoCaptcha.Enabled {
-			logger.Log.Warn("Attempt to use disabled 2captcha service")
-			if cfg.CaptchaService.EZCaptcha.Enabled {
+	case "capsolver":
+		if !cfg.CaptchaService.Capsolver.Enabled {
+			logger.Log.Warn("Attempt to use disabled capsolver service")
+			// Try to fall back to next available service
+			if cfg.CaptchaService.EZCaptcha.Enabled && settings.EZCaptchaAPIKey != "" {
 				settings.PreferredCaptchaProvider = "ezcaptcha"
-				if settings.EZCaptchaAPIKey != "" {
-					isValid, balance, err := ValidateCaptchaKey(settings.EZCaptchaAPIKey, "ezcaptcha")
+				if err := database.DB.Save(&settings).Error; err != nil {
+					logger.Log.WithError(err).Error("Failed to update preferred provider")
+				}
+				return settings.EZCaptchaAPIKey, 0, nil
+			} else if cfg.CaptchaService.TwoCaptcha.Enabled && settings.TwoCaptchaAPIKey != "" {
+				settings.PreferredCaptchaProvider = "2captcha"
+				if err := database.DB.Save(&settings).Error; err != nil {
+					logger.Log.WithError(err).Error("Failed to update preferred provider")
+				}
+				return settings.TwoCaptchaAPIKey, 0, nil
+			}
+			return "", 0, fmt.Errorf("capsolver service is currently disabled")
+		}
+
+		// Check user's Capsolver key
+		if settings.CapSolverAPIKey != "" {
+			isValid, balance, err := ValidateCaptchaKey(settings.CapSolverAPIKey, "capsolver")
+			if err != nil {
+				return "", 0, err
+			}
+			if !isValid {
+				return "", 0, fmt.Errorf("invalid capsolver API key")
+			}
+			return settings.CapSolverAPIKey, balance, nil
+		}
+		// Use default Capsolver key
+		/*		defaultKey := cfg.CaptchaService.Capsolver.ClientKey
+				isValid, balance, err := ValidateCaptchaKey(defaultKey, "capsolver")
+				if err != nil {
+					return "", 0, err
+				}
+				if !isValid {
+					return "", 0, fmt.Errorf("invalid default capsolver API key")
+				}
+				return defaultKey, balance, nil
+					}
+					return settings.CapSolverAPIKey, balance, nil
+				}
+		*/
+	case "ezcaptcha":
+		if !cfg.CaptchaService.EZCaptcha.Enabled {
+			// If EZCaptcha is disabled but user has a key, try other services before defaulting to Capsolver
+			if settings.EZCaptchaAPIKey != "" {
+				logger.Log.Warn("EZCaptcha service disabled, checking for alternative services")
+				if cfg.CaptchaService.Capsolver.Enabled {
+					settings.PreferredCaptchaProvider = "capsolver"
+					if err := database.DB.Save(&settings).Error; err != nil {
+						logger.Log.WithError(err).Error("Failed to update preferred provider")
+					}
+					// Fall through to use default Capsolver key
+					defaultKey := cfg.CaptchaService.Capsolver.ClientKey
+					isValid, balance, err := ValidateCaptchaKey(defaultKey, "capsolver")
 					if err != nil {
 						return "", 0, err
 					}
 					if !isValid {
-						return "", 0, fmt.Errorf("invalid ezcaptcha API key")
+						return "", 0, fmt.Errorf("invalid default capsolver API key")
 					}
-					database.DB.Save(&settings)
-					return settings.EZCaptchaAPIKey, balance, nil
+					return defaultKey, balance, nil
+				}
+			}
+			return "", 0, fmt.Errorf("ezcaptcha service is currently disabled")
+		}
+		if settings.EZCaptchaAPIKey != "" {
+			isValid, balance, err := ValidateCaptchaKey(settings.EZCaptchaAPIKey, "ezcaptcha")
+			if err != nil {
+				return "", 0, err
+			}
+			if !isValid {
+				return "", 0, fmt.Errorf("invalid ezcaptcha API key")
+			}
+			return settings.EZCaptchaAPIKey, balance, nil
+		}
+
+	case "2captcha":
+		if !cfg.CaptchaService.TwoCaptcha.Enabled {
+			// If 2Captcha is disabled but user has a key, try other services before defaulting to Capsolver
+			if settings.TwoCaptchaAPIKey != "" {
+				logger.Log.Warn("2Captcha service disabled, checking for alternative services")
+				if cfg.CaptchaService.Capsolver.Enabled {
+					settings.PreferredCaptchaProvider = "capsolver"
+					if err := database.DB.Save(&settings).Error; err != nil {
+						logger.Log.WithError(err).Error("Failed to update preferred provider")
+					}
+					// Fall through to use default Capsolver key
+					defaultKey := cfg.CaptchaService.Capsolver.ClientKey
+					isValid, balance, err := ValidateCaptchaKey(defaultKey, "capsolver")
+					if err != nil {
+						return "", 0, err
+					}
+					if !isValid {
+						return "", 0, fmt.Errorf("invalid default capsolver API key")
+					}
+					return defaultKey, balance, nil
 				}
 			}
 			return "", 0, fmt.Errorf("2captcha service is currently disabled")
@@ -115,23 +201,27 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 			}
 			return settings.TwoCaptchaAPIKey, balance, nil
 		}
-	case "ezcaptcha":
-		if !cfg.CaptchaService.EZCaptcha.Enabled {
-			return "", 0, fmt.Errorf("ezcaptcha service is currently disabled")
-		}
-		if settings.EZCaptchaAPIKey != "" {
-			isValid, balance, err := ValidateCaptchaKey(settings.EZCaptchaAPIKey, "ezcaptcha")
-			if err != nil {
-				return "", 0, err
-			}
-			if !isValid {
-				return "", 0, fmt.Errorf("invalid ezcaptcha API key")
-			}
-			return settings.EZCaptchaAPIKey, balance, nil
-		}
 	}
 
-	if settings.PreferredCaptchaProvider == "ezcaptcha" && cfg.CaptchaService.EZCaptcha.Enabled {
+	// If no custom key is set or no specific provider is selected, use default Capsolver
+	if cfg.CaptchaService.Capsolver.Enabled {
+		defaultKey := cfg.CaptchaService.Capsolver.ClientKey
+		isValid, balance, err := ValidateCaptchaKey(defaultKey, "capsolver")
+		if err != nil {
+			return "", 0, err
+		}
+		if !isValid {
+			return "", 0, fmt.Errorf("invalid default capsolver API key")
+		}
+		return defaultKey, balance, nil
+	}
+
+	// If Capsolver is disabled, try other enabled services in order of preference
+	if cfg.CaptchaService.EZCaptcha.Enabled {
+		settings.PreferredCaptchaProvider = "ezcaptcha"
+		if err := database.DB.Save(&settings).Error; err != nil {
+			logger.Log.WithError(err).Error("Failed to update preferred provider")
+		}
 		defaultKey := cfg.CaptchaService.EZCaptcha.ClientKey
 		isValid, balance, err := ValidateCaptchaKey(defaultKey, "ezcaptcha")
 		if err != nil {
@@ -175,7 +265,7 @@ func RemoveCaptchaKey(userID string) error {
 		return result.Error
 	}
 
-	hadCustomKey := settings.EZCaptchaAPIKey != "" || settings.TwoCaptchaAPIKey != ""
+	hadCustomKey := settings.EZCaptchaAPIKey != "" || settings.TwoCaptchaAPIKey != "" || settings.CapSolverAPIKey != ""
 
 	var accountCount int64
 	if err := database.DB.Model(&models.Account{}).Where("user_id = ?", userID).Count(&accountCount).Error; err != nil {
@@ -187,7 +277,8 @@ func RemoveCaptchaKey(userID string) error {
 
 	settings.EZCaptchaAPIKey = ""
 	settings.TwoCaptchaAPIKey = ""
-	settings.PreferredCaptchaProvider = "ezcaptcha"
+	settings.CapSolverAPIKey = ""
+	settings.PreferredCaptchaProvider = "capsolver"
 	settings.CustomSettings = false
 	settings.CheckInterval = defaultSettings.CheckInterval
 	settings.NotificationInterval = defaultSettings.NotificationInterval

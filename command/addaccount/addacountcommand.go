@@ -47,7 +47,7 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	hasCustomKey := userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != ""
+	hasCustomKey := userSettings.CapSolverAPIKey != "" || userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != ""
 	if !hasCustomKey && !checkRateLimit(userID) {
 		respondToInteraction(s, i, fmt.Sprintf("Please wait %v before adding another account.", rateLimit))
 		return
@@ -64,6 +64,8 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			msg += "Please set up EZCaptcha using /setcaptchaservice before adding accounts."
 		} else if services.IsServiceEnabled("2captcha") {
 			msg += "Please set up 2Captcha using /setcaptchaservice before adding accounts."
+		} else if services.IsServiceEnabled("capsolver") {
+			msg += "Please set up Capsolver using /setcaptchaservice before adding accounts."
 		} else {
 			msg += "No captcha services are currently available. Please try again later."
 		}
@@ -71,7 +73,7 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	if userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != "" {
+	if userSettings.CapSolverAPIKey != "" || userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != "" {
 		_, balance, err := services.GetUserCaptchaKey(userID)
 		if err != nil {
 			logger.Log.WithError(err).Error("Error checking captcha balance")
@@ -123,8 +125,8 @@ func showAddAccountModal(s *discordgo.Session, i *discordgo.InteractionCreate) {
 							Style:       discordgo.TextInputShort,
 							Placeholder: "Enter a name for this account",
 							Required:    true,
-							MinLength:   1,
-							MaxLength:   40,
+							MinLength:   3,
+							MaxLength:   32,
 						},
 					},
 				},
@@ -137,7 +139,7 @@ func showAddAccountModal(s *discordgo.Session, i *discordgo.InteractionCreate) {
 							Placeholder: "Enter the SSO cookie for this account",
 							Required:    true,
 							MinLength:   1,
-							MaxLength:   100,
+							MaxLength:   90,
 						},
 					},
 				},
@@ -196,7 +198,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	hasCustomKey := userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != ""
+	hasCustomKey := userSettings.CapSolverAPIKey != "" || userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != ""
 	maxAccounts := getMaxAccounts(hasCustomKey)
 
 	if accountCount >= int64(maxAccounts) {

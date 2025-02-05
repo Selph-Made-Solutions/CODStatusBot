@@ -16,11 +16,15 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+/*
 const (
+
 	capsol = "capsolver"
 	ezcap  = "ezcaptcha"
 	twocap = "2captcha"
+
 )
+*/
 
 type AccountValidationResult struct {
 	IsValid     bool
@@ -122,10 +126,6 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 
 	userSettings, err := GetUserSettings(userID)
 	if err != nil {
-		if isCriticalError(err) {
-			logger.Log.WithError(err).Error("Critical error getting user settings")
-			return models.StatusUnknown, fmt.Errorf("critical error: %w", err)
-		}
 		return models.StatusUnknown, fmt.Errorf("failed to get user settings: %w", err)
 	}
 
@@ -141,13 +141,13 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 
 	if !IsServiceEnabled(userSettings.PreferredCaptchaProvider) {
 		if IsServiceEnabled("capsolver") {
-			userSettings.PreferredCaptchaProvider = capsol
+			userSettings.PreferredCaptchaProvider = "capsolver"
 			database.DB.Save(&userSettings)
 		} else if IsServiceEnabled("ezcaptcha") {
-			userSettings.PreferredCaptchaProvider = ezcap
+			userSettings.PreferredCaptchaProvider = "ezcaptcha"
 			database.DB.Save(&userSettings)
 		} else if IsServiceEnabled("2captcha") {
-			userSettings.PreferredCaptchaProvider = twocap
+			userSettings.PreferredCaptchaProvider = "2captcha"
 			database.DB.Save(&userSettings)
 		} else {
 			return models.StatusUnknown, fmt.Errorf("no captcha services are currently enabled")
