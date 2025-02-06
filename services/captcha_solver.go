@@ -445,19 +445,10 @@ func ValidateCaptchaKey(apiKey, provider string) (bool, float64, error) {
 
 	switch provider {
 	case "capsolver":
-		if !IsServiceEnabled("capsolver") {
-			return false, 0, fmt.Errorf("capsolver service is not enabled")
-		}
 		return validateCapsolverKey(apiKey)
 	case "ezcaptcha":
-		if !IsServiceEnabled("ezcaptcha") {
-			return false, 0, fmt.Errorf("ezcaptcha service is not enabled")
-		}
 		return validateEZCaptchaKey(apiKey)
 	case "2captcha":
-		if !IsServiceEnabled("2captcha") {
-			return false, 0, fmt.Errorf("2captcha service is not enabled")
-		}
 		return validate2CaptchaKey(apiKey)
 	default:
 		return false, 0, errors.New("unsupported captcha provider")

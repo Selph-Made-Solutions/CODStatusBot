@@ -22,25 +22,42 @@ func initDefaultSettings() {
 		StatusChangeCooldown:     cfg.Intervals.StatusChange,
 		NotificationType:         "channel",
 		PreferredCaptchaProvider: "capsolver",
+		CustomSettings:           false,
 	}
 
-	logger.Log.Infof("Default settings loaded: CheckInterval=%d, NotificationInterval=%.2f, CooldownDuration=%.2f, StatusChangeCooldown=%.2f",
-		defaultSettings.CheckInterval, defaultSettings.NotificationInterval, defaultSettings.CooldownDuration, defaultSettings.StatusChangeCooldown)
+	if cfg.CaptchaService.Capsolver.Enabled {
+		defaultSettings.PreferredCaptchaProvider = "capsolver"
+	} else if cfg.CaptchaService.EZCaptcha.Enabled {
+		defaultSettings.PreferredCaptchaProvider = "ezcaptcha"
+	}
+
+	logger.Log.Infof("Default settings initialized: CheckInterval=%d, NotificationInterval=%.2f, CooldownDuration=%.2f, StatusChangeCooldown=%.2f, Provider=%s",
+		defaultSettings.CheckInterval,
+		defaultSettings.NotificationInterval,
+		defaultSettings.CooldownDuration,
+		defaultSettings.StatusChangeCooldown,
+		defaultSettings.PreferredCaptchaProvider)
 }
 
 func GetUserSettings(userID string) (models.UserSettings, error) {
 	logger.Log.Infof("Getting user settings for user: %s", userID)
+	if defaultSettings.CheckInterval == 0 {
+		initDefaultSettings()
+	}
+
 	var settings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
 	if result.Error != nil {
 		return models.UserSettings{}, fmt.Errorf("error getting user settings: %w", result.Error)
 	}
 
-	if defaultSettings.CheckInterval == 0 {
-		initDefaultSettings()
-	}
+	// Check if user has custom API key
+	hasCustomKey := settings.CapSolverAPIKey != "" ||
+		settings.EZCaptchaAPIKey != "" ||
+		settings.TwoCaptchaAPIKey != ""
 
-	// Handle transition to Capsolver for existing users
+	settings.EnsureMapsInitialized()
+
 	if settings.PreferredCaptchaProvider == "" {
 		settings.PreferredCaptchaProvider = "capsolver"
 	}
@@ -49,24 +66,29 @@ func GetUserSettings(userID string) (models.UserSettings, error) {
 		settings.LastDailyUpdateNotification = time.Now().Add(-24 * time.Hour)
 	}
 
-	if settings.CheckInterval == 0 {
-		settings.CheckInterval = defaultSettings.CheckInterval
+	if !hasCustomKey || !settings.CustomSettings {
+		if settings.CheckInterval == 0 {
+			settings.CheckInterval = defaultSettings.CheckInterval
+		}
+		if settings.NotificationInterval == 0 {
+			settings.NotificationInterval = defaultSettings.NotificationInterval
+		}
+		if settings.CooldownDuration == 0 {
+			settings.CooldownDuration = defaultSettings.CooldownDuration
+		}
+		if settings.StatusChangeCooldown == 0 {
+			settings.StatusChangeCooldown = defaultSettings.StatusChangeCooldown
+		}
+		if settings.NotificationType == "" {
+			settings.NotificationType = defaultSettings.NotificationType
+		}
 	}
-	if settings.NotificationInterval == 0 {
-		settings.NotificationInterval = defaultSettings.NotificationInterval
-	}
-	if settings.CooldownDuration == 0 {
-		settings.CooldownDuration = defaultSettings.CooldownDuration
-	}
-	if settings.StatusChangeCooldown == 0 {
-		settings.StatusChangeCooldown = defaultSettings.StatusChangeCooldown
-	}
-	if settings.NotificationType == "" {
-		settings.NotificationType = defaultSettings.NotificationType
-	}
+
 	if settings.PreferredCaptchaProvider == "" {
-		settings.PreferredCaptchaProvider = defaultSettings.PreferredCaptchaProvider
+		settings.PreferredCaptchaProvider = "capsolver"
 	}
+
+	settings.CustomSettings = hasCustomKey
 
 	settings.EnsureMapsInitialized()
 
@@ -90,13 +112,11 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 
 	cfg := configuration.Get()
 
-	// Try user's preferred provider first
 	switch settings.PreferredCaptchaProvider {
 	case "capsolver":
 		if !cfg.CaptchaService.Capsolver.Enabled {
 			logger.Log.Warn("Capsolver service disabled, checking for alternative services")
 
-			// Try to fall back to other services if user has keys
 			if settings.EZCaptchaAPIKey != "" {
 				settings.PreferredCaptchaProvider = "ezcaptcha"
 				if err := database.DB.Save(&settings).Error; err != nil {
@@ -270,7 +290,10 @@ func RemoveCaptchaKey(userID string) error {
 		return result.Error
 	}
 
-	hadCustomKey := settings.EZCaptchaAPIKey != "" || settings.TwoCaptchaAPIKey != "" || settings.CapSolverAPIKey != ""
+	// Check if user had custom keys before removal
+	hadCustomKey := settings.CapSolverAPIKey != "" ||
+		settings.EZCaptchaAPIKey != "" ||
+		settings.TwoCaptchaAPIKey != ""
 
 	var accountCount int64
 	if err := database.DB.Model(&models.Account{}).Where("user_id = ?", userID).Count(&accountCount).Error; err != nil {
@@ -278,12 +301,17 @@ func RemoveCaptchaKey(userID string) error {
 	}
 
 	cfg := configuration.Get()
-	defaultMax := cfg.RateLimits.DefaultMaxAccounts
-
+	settings.CapSolverAPIKey = ""
 	settings.EZCaptchaAPIKey = ""
 	settings.TwoCaptchaAPIKey = ""
-	settings.CapSolverAPIKey = ""
-	settings.PreferredCaptchaProvider = "capsolver"
+
+	// Ensure we have default settings loaded
+	if defaultSettings.CheckInterval == 0 {
+		initDefaultSettings()
+	}
+
+	// Reset to default settings
+	settings.PreferredCaptchaProvider = defaultSettings.PreferredCaptchaProvider
 	settings.CustomSettings = false
 	settings.CheckInterval = defaultSettings.CheckInterval
 	settings.NotificationInterval = defaultSettings.NotificationInterval
@@ -291,20 +319,11 @@ func RemoveCaptchaKey(userID string) error {
 	settings.StatusChangeCooldown = defaultSettings.StatusChangeCooldown
 
 	settings.EnsureMapsInitialized()
-
 	settings.LastCommandTimes["api_key_removed"] = time.Now()
 
-	if err := database.DB.Save(&settings).Error; err != nil {
-		logger.Log.WithError(err).Error("Error saving user settings")
-		return err
-	}
+	defaultMax := cfg.RateLimits.DefaultMaxAccounts
 
-	if hadCustomKey {
-		logger.Log.Infof("Removed custom captcha key and reset settings for user: %s", userID)
-	} else {
-		logger.Log.Infof("Reset settings to default for user: %s (no custom key was present)", userID)
-	}
-
+	// If user exceeds default limits, send warning
 	if int64(defaultMax) < accountCount {
 		var accounts []models.Account
 		if err := database.DB.Where("user_id = ?", userID).Find(&accounts).Error; err != nil {
@@ -312,6 +331,7 @@ func RemoveCaptchaKey(userID string) error {
 			return err
 		}
 
+		// Update all accounts to default notification type
 		for _, account := range accounts {
 			account.NotificationType = defaultSettings.NotificationType
 			if err := database.DB.Save(&account).Error; err != nil {
@@ -319,13 +339,19 @@ func RemoveCaptchaKey(userID string) error {
 			}
 		}
 
+		// Create warning embed
 		embed := &discordgo.MessageEmbed{
 			Title: "Account Limit Warning",
-			Description: fmt.Sprintf("You currently have %d accounts monitored, which exceeds the default limit of %d accounts. "+
-				"You will not be able to add new accounts until you remove some existing ones or add a custom API key.",
+			Description: fmt.Sprintf("You currently have %d accounts monitored, which exceeds the default limit of %d accounts.\n"+
+				"To continue monitoring all accounts, please add your own Capsolver API key using /setcaptchaservice.",
 				accountCount, defaultMax),
 			Color: 0xFFA500,
 			Fields: []*discordgo.MessageEmbedField{
+				{
+					Name:   "Action Required",
+					Value:  fmt.Sprintf("Get your Capsolver API key at https://dashboard.capsolver.com/passport/register?inviteCode=6YjROhACQnvP"),
+					Inline: false,
+				},
 				{
 					Name:   "Current Accounts",
 					Value:  fmt.Sprintf("%d", accountCount),
@@ -336,15 +362,11 @@ func RemoveCaptchaKey(userID string) error {
 					Value:  fmt.Sprintf("%d", defaultMax),
 					Inline: true,
 				},
-				{
-					Name:   "Action Required",
-					Value:  "Please remove excess accounts or add a custom API key using /setcaptchaservice",
-					Inline: false,
-				},
 			},
 			Timestamp: time.Now().Format(time.RFC3339),
 		}
 
+		// Send warning notification
 		if len(accounts) > 0 {
 			if err := SendNotification(nil, accounts[0], embed, "", "api_key_removal_warning"); err != nil {
 				logger.Log.WithError(err).Error("Failed to send API key removal warning")
@@ -352,5 +374,12 @@ func RemoveCaptchaKey(userID string) error {
 		}
 	}
 
+	// Save updated settings
+	if err := database.DB.Save(&settings).Error; err != nil {
+		logger.Log.WithError(err).Error("Error saving user settings")
+		return err
+	}
+
+	logger.Log.Infof("Reset settings for user %s (had custom key: %v)", userID, hadCustomKey)
 	return nil
 }
