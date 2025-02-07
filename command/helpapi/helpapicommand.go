@@ -13,6 +13,9 @@ func CommandHelpApi(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	logger.Log.Info("Received help command")
 
 	var enabledServices []string
+	if services.IsServiceEnabled("capsolver") {
+		enabledServices = append(enabledServices, "Capsolver")
+	}
 	if services.IsServiceEnabled("ezcaptcha") {
 		enabledServices = append(enabledServices, "EZ-Captcha")
 	}
@@ -57,6 +60,14 @@ func CommandHelpApi(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 		"## Setting up your Captcha Service:\n" +
 			fmt.Sprintf("Currently available services: %s\n\n", strings.Join(enabledServices, ", ")),
+	}
+
+	if services.IsServiceEnabled("capsolver") {
+		helpApiGuide = append(helpApiGuide,
+			"## Setting up Capsolver (Recommended):\n"+
+				"1. Visit [Capsolver's website](https://dashboard.capsolver.com/passport/register?inviteCode=6YjROhACQnvP) to register.\n"+
+				"2. Purchase credits (as low as $0.001 per solve).\n"+
+				"3. Use the `/setcaptchaservice` command with `capsolver` as the provider.\n\n")
 	}
 
 	if services.IsServiceEnabled("ezcaptcha") {

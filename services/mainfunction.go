@@ -359,7 +359,7 @@ func disableAccount(s *discordgo.Session, account models.Account, reason string)
 func handlePermaBanNotification(s *discordgo.Session, account models.Account, ban models.Ban) {
 	permaBanEmbed := &discordgo.MessageEmbed{
 		Title: fmt.Sprintf("%s - Permanent Ban Detected", account.Title),
-		Description: "This account has been permanently banned. It's recommended to remove it from monitoring " +
+		Description: "This account has been permanently banned. The account will no longer be checked automatically.\n" +
 			"using the /removeaccount command to free up your account slot.",
 		Color:     GetColorForStatus(models.StatusPermaban, false, false),
 		Timestamp: time.Now().Format(time.RFC3339),
@@ -370,7 +370,7 @@ func handlePermaBanNotification(s *discordgo.Session, account models.Account, ba
 				Inline: true,
 			},
 			{
-				Name:   "Action Required",
+				Name:   "Sugested Action",
 				Value:  "Remove account using /removeaccount",
 				Inline: true,
 			},

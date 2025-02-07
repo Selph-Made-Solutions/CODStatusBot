@@ -29,6 +29,8 @@ func initDefaultSettings() {
 		defaultSettings.PreferredCaptchaProvider = "capsolver"
 	} else if cfg.CaptchaService.EZCaptcha.Enabled {
 		defaultSettings.PreferredCaptchaProvider = "ezcaptcha"
+	} else if cfg.CaptchaService.TwoCaptcha.Enabled {
+		defaultSettings.PreferredCaptchaProvider = "2captcha"
 	}
 
 	logger.Log.Infof("Default settings initialized: CheckInterval=%d, NotificationInterval=%.2f, CooldownDuration=%.2f, StatusChangeCooldown=%.2f, Provider=%s",
@@ -41,9 +43,6 @@ func initDefaultSettings() {
 
 func GetUserSettings(userID string) (models.UserSettings, error) {
 	logger.Log.Infof("Getting user settings for user: %s", userID)
-	if defaultSettings.CheckInterval == 0 {
-		initDefaultSettings()
-	}
 
 	var settings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&settings)
@@ -295,20 +294,16 @@ func RemoveCaptchaKey(userID string) error {
 		settings.EZCaptchaAPIKey != "" ||
 		settings.TwoCaptchaAPIKey != ""
 
+	// Get configuration and count accounts only once
+	cfg := configuration.Get()
 	var accountCount int64
 	if err := database.DB.Model(&models.Account{}).Where("user_id = ?", userID).Count(&accountCount).Error; err != nil {
 		return fmt.Errorf("failed to count user accounts: %w", err)
 	}
 
-	cfg := configuration.Get()
 	settings.CapSolverAPIKey = ""
 	settings.EZCaptchaAPIKey = ""
 	settings.TwoCaptchaAPIKey = ""
-
-	// Ensure we have default settings loaded
-	if defaultSettings.CheckInterval == 0 {
-		initDefaultSettings()
-	}
 
 	// Reset to default settings
 	settings.PreferredCaptchaProvider = defaultSettings.PreferredCaptchaProvider

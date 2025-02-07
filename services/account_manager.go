@@ -212,7 +212,11 @@ func shouldCheckAccount(account models.Account, settings models.UserSettings) bo
 		return false
 	}
 
-	// If last check time is 0, this is first check
+	if account.IsPermabanned {
+		logger.Log.Debugf("Account %s is permanently banned, skipping check", account.Title)
+		return false
+	}
+
 	if account.LastCheck == 0 {
 		return true
 	}
@@ -238,11 +242,9 @@ func shouldCheckAccount(account models.Account, settings models.UserSettings) bo
 	}
 
 	var nextCheckTime time.Time
-	// Different check intervals for permanently banned accounts
 	if account.IsPermabanned {
 		nextCheckTime = time.Unix(account.LastCheck, 0).Add(time.Duration(cfg.Intervals.PermaBanCheck) * time.Hour)
 	} else {
-		// Use user's check interval or default
 		checkInterval := settings.CheckInterval
 		if checkInterval < 1 {
 			checkInterval = cfg.Intervals.Check
@@ -250,12 +252,10 @@ func shouldCheckAccount(account models.Account, settings models.UserSettings) bo
 		nextCheckTime = time.Unix(account.LastCheck, 0).Add(time.Duration(checkInterval) * time.Minute)
 	}
 
-	// For users with custom API keys, always allow checks
 	if settings.CapSolverAPIKey != "" || settings.EZCaptchaAPIKey != "" || settings.TwoCaptchaAPIKey != "" {
 		return now.After(nextCheckTime)
 	}
 
-	// For default key users, apply rate limiting
 	return now.After(nextCheckTime) && time.Since(time.Unix(account.LastCheck, 0)) >= cfg.RateLimits.Default
 }
 

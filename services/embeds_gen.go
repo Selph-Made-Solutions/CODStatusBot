@@ -11,40 +11,51 @@ import (
 
 func CreateAnnouncementEmbed() *discordgo.MessageEmbed {
 	return &discordgo.MessageEmbed{
-		Title:       "Important Update: Changes to COD Status Bot",
-		Description: "Due to high demand, we've reached our limit of free EZCaptcha tokens. To ensure continued functionality, we're introducing some changes:",
-		Color:       0xFFD700, // Gold color
+		Title:       "Important Update: Changes to COD Status Bot's Captcha Service",
+		Description: "I am excited to announce that I have upgraded the captcha service to provide better reliability and performance:",
+		Color:       0xFFD700,
 		Fields: []*discordgo.MessageEmbedField{
 			{
 				Name: "What's Changing",
-				Value: "• The check ban feature now requires users to provide their own EZCaptcha API key.\n" +
-					"• Without an API key, the bot's check ban functionality will be limited.",
+				Value: "• I have switched to Capsolver as our primary captcha service provider\n" +
+					"• The bot now uses Capsolver's API for improved reliability\n" +
+					"• Users can still provide their own API keys for unlimited checks",
 			},
 			{
 				Name: "How to Get Your Own API Key",
-				Value: "1. Sign up at [EZ-Captcha](https://dashboard.ez-captcha.com/#/register?inviteCode=uyNrRgWlEKy) using our referral link.\n" +
-					"2. Request a free trial of 10,000 tokens.\n" +
-					"3. Use the `/setcaptchaservice` command to set your API key in the bot.",
+				Value: "1. Sign up at [Capsolver](https://dashboard.capsolver.com/passport/register?inviteCode=6YjROhACQnvP)\n" +
+					"2. Purchase credits (starting at just $0.001 per solve)\n" +
+					"3. Use the `/setcaptchaservice` command to set your API key in the bot",
+			},
+			{
+				Name: "Existing EZCaptcha Users",
+				Value: "• If you have an existing EZCaptcha key, it will continue to work\n" +
+					"• However, we highly recommend switching to Capsolver for:\n" +
+					"  - Better reliability and faster solves\n" +
+					"  - Lower cost per solve\n" +
+					"  - Improved enterprise support",
 			},
 			{
 				Name: "Benefits of Using Your Own API Key",
-				Value: "• Uninterrupted access to the check ban feature\n" +
+				Value: "• Uninterrupted access to the check now feature\n" +
 					"• Ability to customize check intervals\n" +
 					"• Support the bot's development through our referral program",
 			},
 			{
 				Name: "Next Steps",
-				Value: "1. Obtain your API key as soon as possible.\n" +
-					"2. Set up your key using the `/setcaptchaservice` command.\n" +
-					"3. Adjust your check interval preferences if desired.",
+				Value: "1. Visit Capsolver to obtain your API key\n" +
+					"2. Set up your key using the `/setcaptchaservice` command\n" +
+					"3. Adjust your check interval preferences if desired",
 			},
 			{
-				Name:  "Our Commitment",
-				Value: "We're actively exploring ways to maintain a free tier for all users. Your support through the referral program directly contributes to this goal.",
+				Name: "Our Commitment",
+				Value: "I am committed to providing the most reliable and cost-effective service.\n" +
+					"I have tried to maintain compatibility with EZCaptcha for existing users, but\n" +
+					"I strongly recommend Capsolver for its superior performance and cost benefits.",
 			},
 		},
 		Footer: &discordgo.MessageEmbedFooter{
-			Text: "Thank you for your understanding and continued support!",
+			Text: "Thank you for using CODStatusbot!",
 		},
 		Timestamp: time.Now().Format(time.RFC3339),
 	}
