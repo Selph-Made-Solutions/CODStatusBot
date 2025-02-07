@@ -16,16 +16,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-/*
-const (
-
-	capsol = "capsolver"
-	ezcap  = "ezcaptcha"
-	twocap = "2captcha"
-
-)
-*/
-
 type AccountValidationResult struct {
 	IsValid     bool
 	Created     int64

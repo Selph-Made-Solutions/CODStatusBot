@@ -436,7 +436,7 @@ func (nl *NotificationLimiter) CanSendNotification(userID string, notificationTy
 		return false
 	}
 
-	if userSettings.EZCaptchaAPIKey != "" || userSettings.CapSolverAPIKey != "" || userSettings.TwoCaptchaAPIKey != "" {
+	if userSettings.CapSolverAPIKey != "" || userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != "" {
 		return true
 	}
 
