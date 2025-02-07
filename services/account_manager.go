@@ -212,7 +212,11 @@ func shouldCheckAccount(account models.Account, settings models.UserSettings) bo
 		return false
 	}
 
-	// If last check time is 0, this is first check
+	if account.IsPermabanned {
+		logger.Log.Debugf("Account %s is permanently banned, skipping check", account.Title)
+		return false
+	}
+
 	if account.LastCheck == 0 {
 		return true
 	}
@@ -220,7 +224,7 @@ func shouldCheckAccount(account models.Account, settings models.UserSettings) bo
 	lastCheckTime := time.Unix(account.LastCheck, 0)
 	checkInterval := time.Duration(settings.CheckInterval) * time.Minute
 
-	if settings.EZCaptchaAPIKey == "" && settings.TwoCaptchaAPIKey == "" {
+	if settings.CapSolverAPIKey == "" && settings.EZCaptchaAPIKey == "" && settings.TwoCaptchaAPIKey == "" {
 		if time.Since(lastCheckTime) < cfg.RateLimits.Default {
 			return false
 		}
@@ -238,11 +242,9 @@ func shouldCheckAccount(account models.Account, settings models.UserSettings) bo
 	}
 
 	var nextCheckTime time.Time
-	// Different check intervals for permanently banned accounts
 	if account.IsPermabanned {
 		nextCheckTime = time.Unix(account.LastCheck, 0).Add(time.Duration(cfg.Intervals.PermaBanCheck) * time.Hour)
 	} else {
-		// Use user's check interval or default
 		checkInterval := settings.CheckInterval
 		if checkInterval < 1 {
 			checkInterval = cfg.Intervals.Check
@@ -250,12 +252,10 @@ func shouldCheckAccount(account models.Account, settings models.UserSettings) bo
 		nextCheckTime = time.Unix(account.LastCheck, 0).Add(time.Duration(checkInterval) * time.Minute)
 	}
 
-	// For users with custom API keys, always allow checks
-	if settings.EZCaptchaAPIKey != "" || settings.TwoCaptchaAPIKey != "" {
+	if settings.CapSolverAPIKey != "" || settings.EZCaptchaAPIKey != "" || settings.TwoCaptchaAPIKey != "" {
 		return now.After(nextCheckTime)
 	}
 
-	// For default key users, apply rate limiting
 	return now.After(nextCheckTime) && time.Since(time.Unix(account.LastCheck, 0)) >= cfg.RateLimits.Default
 }
 
@@ -335,7 +335,7 @@ func validateUserCaptchaService(userID string, userSettings models.UserSettings)
 		return fmt.Errorf("captcha service %s is disabled", userSettings.PreferredCaptchaProvider)
 	}
 
-	if userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != "" {
+	if userSettings.CapSolverAPIKey != "" || userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != "" {
 		_, balance, err := GetUserCaptchaKey(userID)
 		if err != nil {
 			return fmt.Errorf("failed to validate captcha key: %w", err)
@@ -343,6 +343,26 @@ func validateUserCaptchaService(userID string, userSettings models.UserSettings)
 		if balance <= 0 {
 			return fmt.Errorf("insufficient captcha balance: %.2f", balance)
 		}
+	}
+
+	return nil
+}
+
+func ValidateDefaultCapsolverConfig() error {
+	cfg := configuration.Get()
+	if cfg.CaptchaService.Capsolver.ClientKey == "" {
+		return fmt.Errorf("capsolver client key not configured")
+	}
+	if cfg.CaptchaService.Capsolver.AppID == "" {
+		return fmt.Errorf("capsolver App ID not configured")
+	}
+
+	isValid, _, err := validateCapsolverKey(cfg.CaptchaService.Capsolver.ClientKey)
+	if err != nil {
+		return fmt.Errorf("failed to validate Capsolver key: %w", err)
+	}
+	if !isValid {
+		return fmt.Errorf("invalid Capsolver configuration")
 	}
 
 	return nil

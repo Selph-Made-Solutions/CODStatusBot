@@ -12,12 +12,6 @@ import (
 )
 
 func DecodeSSOCookie(encodedStr string) (int64, error) {
-	encodedStr = strings.TrimSpace(encodedStr)
-
-	if len(encodedStr)%4 != 0 {
-		encodedStr += strings.Repeat("=", 4-len(encodedStr)%4)
-	}
-
 	decodedBytes, err := base64.StdEncoding.DecodeString(encodedStr)
 	if err != nil {
 		return 0, fmt.Errorf("failed to decode base64: %w", err)

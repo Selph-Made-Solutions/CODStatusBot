@@ -55,14 +55,14 @@ func CommandCheckNow(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	if userSettings.EZCaptchaAPIKey == "" && userSettings.TwoCaptchaAPIKey == "" {
+	if userSettings.CapSolverAPIKey != "" && userSettings.EZCaptchaAPIKey == "" && userSettings.TwoCaptchaAPIKey == "" {
 		if !checkRateLimit(userID) {
 			respondToInteraction(s, i, fmt.Sprintf("You're using the bot's default API key and are rate limited. Please wait %v before trying again, or set up your own API key using /setcaptchaservice for unlimited checks.", rateLimit))
 			return
 		}
 	}
 
-	if userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != "" {
+	if userSettings.CapSolverAPIKey != "" || userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != "" {
 		_, balance, err := services.GetUserCaptchaKey(userID)
 		if err != nil {
 			logger.Log.WithError(err).Error("Error getting captcha key")
@@ -163,7 +163,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		return
 	}
 
-	if userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != "" {
+	if userSettings.CapSolverAPIKey != "" || userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != "" {
 		apiKey, balance, err := services.GetUserCaptchaKey(userID)
 		if err != nil || apiKey == "" {
 			logger.Log.WithError(err).Error("Error getting captcha key")

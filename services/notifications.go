@@ -145,10 +145,10 @@ func FormatDuration(d time.Duration) string {
 	}
 	return fmt.Sprintf("%dm", minutes)
 }
-
 func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64) {
 	cfg := configuration.Get()
 	userSettings, err := GetUserSettings(userID)
+
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to get user settings for balance check: %s", userID)
 		return
@@ -202,6 +202,8 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 
 	var threshold float64
 	switch userSettings.PreferredCaptchaProvider {
+	case "capsolver":
+		threshold = cfg.CaptchaService.Capsolver.BalanceMin
 	case "ezcaptcha":
 		threshold = cfg.CaptchaService.EZCaptcha.BalanceMin
 	case "2captcha":
@@ -260,12 +262,12 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 	}
 }
 
-func BalanceWarningFields(donations configuration.DonationsConfig) []*discordgo.MessageEmbedField {
+func BalanceWarningFields(config configuration.DonationsConfig) []*discordgo.MessageEmbedField {
 	cfg := configuration.Get()
 	fields := []*discordgo.MessageEmbedField{
 		{
 			Name: "Option 1: Add Your Own API Key",
-			Value: "Use `/setcaptchaservice` to configure your own EZCaptcha API key. " +
+			Value: "Use `/setcaptchaservice` to configure your own Captcha API key. " +
 				"This gives you unlimited checks and customizable intervals.",
 			Inline: false,
 		},
@@ -313,13 +315,16 @@ func ScheduleBalanceChecks(s *discordgo.Session) {
 				continue
 			}
 
-			if user.EZCaptchaAPIKey == "" && user.TwoCaptchaAPIKey == "" {
+			if user.EZCaptchaAPIKey == "" && user.TwoCaptchaAPIKey == "" && user.CapSolverAPIKey == "" {
 				continue
 			}
 
 			var apiKey string
 			var provider string
 			switch {
+			case user.PreferredCaptchaProvider == "capsolver" && user.CapSolverAPIKey != "":
+				apiKey = user.CapSolverAPIKey
+				provider = "capsolver"
 			case user.PreferredCaptchaProvider == "2captcha" && user.TwoCaptchaAPIKey != "":
 				apiKey = user.TwoCaptchaAPIKey
 				provider = "2captcha"
@@ -363,12 +368,14 @@ func DisableUserCaptcha(s *discordgo.Session, userID string, reason string) erro
 
 	settings.TwoCaptchaAPIKey = ""
 	switch {
+	case IsServiceEnabled("capsolver"):
+		settings.PreferredCaptchaProvider = "capsolver"
 	case IsServiceEnabled("ezcaptcha"):
 		settings.PreferredCaptchaProvider = "ezcaptcha"
 	case IsServiceEnabled("2captcha"):
 		settings.PreferredCaptchaProvider = "2captcha"
 	default:
-		settings.PreferredCaptchaProvider = "ezcaptcha"
+		settings.PreferredCaptchaProvider = "capsolver"
 	}
 
 	settings.EZCaptchaAPIKey = ""
@@ -401,6 +408,10 @@ func DisableUserCaptcha(s *discordgo.Session, userID string, reason string) erro
 
 func getEnabledServicesString() string {
 	var enabledServices []string
+	if IsServiceEnabled("capsolver") {
+		enabledServices = append(enabledServices, "Capsolver")
+	}
+
 	if IsServiceEnabled("ezcaptcha") {
 		enabledServices = append(enabledServices, "EZCaptcha")
 	}
@@ -425,7 +436,7 @@ func (nl *NotificationLimiter) CanSendNotification(userID string, notificationTy
 		return false
 	}
 
-	if userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != "" {
+	if userSettings.CapSolverAPIKey != "" || userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != "" {
 		return true
 	}
 

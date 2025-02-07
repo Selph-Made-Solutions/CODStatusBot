@@ -17,11 +17,19 @@ import (
 func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	cfg := configuration.Get()
 	var enabledServices []string
+	if cfg.CaptchaService.Capsolver.Enabled {
+		enabledServices = append(enabledServices, "capsolver")
+	}
 	if cfg.CaptchaService.EZCaptcha.Enabled {
 		enabledServices = append(enabledServices, "ezcaptcha")
 	}
 	if cfg.CaptchaService.TwoCaptcha.Enabled {
 		enabledServices = append(enabledServices, "2captcha")
+	}
+
+	if len(enabledServices) == 0 {
+		respondToInteraction(s, i, "No captcha services are currently enabled. Please contact the bot administrator.")
+		return
 	}
 
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -47,8 +55,8 @@ func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCrea
 							CustomID:    "api_key",
 							Label:       "API Key",
 							Style:       discordgo.TextInputShort,
-							Placeholder: "Leave blank to use bot's default key",
-							Required:    false,
+							Placeholder: "Enter your API key",
+							Required:    true,
 						},
 					},
 				},
@@ -82,9 +90,9 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	logger.Log.Infof("Received setcaptchaservice command. Provider: %s, API Key length: %d", provider, len(apiKey))
 
 	cfg := configuration.Get()
-	if provider != "ezcaptcha" && provider != "2captcha" {
+	if provider != "ezcaptcha" && provider != "2captcha" && provider != "capsolver" {
 		logger.Log.Errorf("Invalid captcha provider: %s", provider)
-		respondToInteraction(s, i, "Invalid captcha provider. Please enter 'ezcaptcha' or '2captcha'.")
+		respondToInteraction(s, i, "Invalid captcha provider. Please enter 'capsolver', 'ezcaptcha' or '2captcha'.")
 		return
 	}
 
@@ -135,9 +143,16 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		settings.LastBalanceCheck = time.Now()
 
 		if provider == "ezcaptcha" {
+			settings.CapSolverAPIKey = ""
 			settings.EZCaptchaAPIKey = apiKey
 			settings.TwoCaptchaAPIKey = ""
-		} else {
+
+		} else if provider == "capsolver" {
+			settings.CapSolverAPIKey = apiKey
+			settings.EZCaptchaAPIKey = ""
+			settings.TwoCaptchaAPIKey = ""
+		} else if provider == "twocaptcha" {
+			settings.CapSolverAPIKey = ""
 			settings.TwoCaptchaAPIKey = apiKey
 			settings.EZCaptchaAPIKey = ""
 		}

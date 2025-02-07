@@ -119,12 +119,6 @@ func RegisterCommands(s *discordgo.Session) error {
 		},
 	}
 
-	_, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, "", commands)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error registering global commands")
-		return err
-	}
-
 	Handlers["checkcaptchabalance"] = checkcaptchabalance.CommandCheckCaptchaBalance
 	Handlers["globalannouncement"] = globalannouncement.CommandGlobalAnnouncement
 	Handlers["setcaptchaservice"] = setcaptchaservice.CommandSetCaptchaService
@@ -160,6 +154,12 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["confirm_remove"] = removeaccount.HandleConfirmation
 	Handlers["confirm_reenable"] = togglecheck.HandleConfirmation
 	Handlers["cancel_reenable"] = togglecheck.HandleConfirmation
+
+	_, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, "", commands)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error registering global commands")
+		return err
+	}
 
 	logger.Log.Info("Global commands registered and handlers set up")
 	return nil

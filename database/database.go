@@ -42,6 +42,15 @@ func Databaselogin() error {
 
 	DB = db
 
+	// Configure connection pool
+	sqlDB, err := DB.DB()
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to get database instance")
+		return err
+	}
+	sqlDB.SetMaxIdleConns(10)
+	sqlDB.SetMaxOpenConns(100)
+
 	err = DB.AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{}, &models.SuppressedNotification{})
 	if err != nil {
 		logger.Log.WithError(err).WithField("Bot Startup ", "Database Models Problem ").Error()

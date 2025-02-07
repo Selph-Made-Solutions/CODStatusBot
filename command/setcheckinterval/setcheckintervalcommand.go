@@ -33,8 +33,8 @@ func CommandSetCheckInterval(s *discordgo.Session, i *discordgo.InteractionCreat
 		return
 	}
 
-	if userSettings.EZCaptchaAPIKey == "" && userSettings.TwoCaptchaAPIKey == "" {
-		respondToInteraction(s, i, "You need to set your own EZ-Captcha or 2captcha API key using the /setcaptchaservice command before you can modify these settings.")
+	if userSettings.CapSolverAPIKey == "" && userSettings.EZCaptchaAPIKey == "" && userSettings.TwoCaptchaAPIKey == "" {
+		respondToInteraction(s, i, "You need to set your own Capsolver or EZ-Captcha or 2captcha API key using the /setcaptchaservice command before you can modify these settings.")
 		return
 	}
 

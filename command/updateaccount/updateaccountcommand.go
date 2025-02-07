@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bradselph/CODStatusBot/database"
@@ -201,8 +202,15 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	if !services.VerifySSOCookie(newSSOCookie) {
-		respondToInteractionWithEmbed(s, i, "Error: The provided SSO cookie is invalid. Please check and try again.", nil)
+	validationResult, err := services.ValidateAndGetAccountInfo(newSSOCookie)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error validating new SSO cookie")
+		respondToInteractionWithEmbed(s, i, fmt.Sprintf("Error validating cookie: %v", err), nil)
+		return
+	}
+
+	if !validationResult.IsValid {
+		respondToInteractionWithEmbed(s, i, "Error: The provided SSO cookie is invalid.", nil)
 		return
 	}
 
@@ -244,12 +252,47 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	expirationTimestamp, err := services.DecodeSSOCookie(newSSOCookie)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error decoding SSO cookie")
-		respondToInteractionWithEmbed(s, i, fmt.Sprintf("Error processing SSO cookie: %v", err), nil)
+	var statusCheck bool
+	var statusErr error
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+		statusCheck = services.VerifySSOCookie(newSSOCookie)
+		if !statusCheck {
+			statusErr = fmt.Errorf("invalid SSO cookie verification")
+		}
+	}()
+
+	wg.Wait()
+	if !statusCheck {
+		logger.Log.WithError(statusErr).Error("SSO cookie validation failed")
+		respondToInteractionWithEmbed(s, i, "Error: SSO cookie validation failed. Please try again.", nil)
 		return
 	}
+
+	services.DBMutex.Lock()
+	account.LastNotification = time.Now().Unix()
+	account.LastCookieNotification = 0
+	account.SSOCookie = newSSOCookie
+	account.SSOCookieExpiration = validationResult.ExpiresAt
+	account.Created = validationResult.Created
+	account.IsVIP = validationResult.IsVIP
+	account.IsExpiredCookie = false
+	wasDisabled := account.IsCheckDisabled
+	account.IsCheckDisabled = false
+	account.DisabledReason = ""
+	account.ConsecutiveErrors = 0
+	account.LastSuccessfulCheck = time.Now()
+
+	if err := database.DB.Save(&account).Error; err != nil {
+		services.DBMutex.Unlock()
+		logger.Log.WithError(err).Error("Failed to update account")
+		respondToInteractionWithEmbed(s, i, "Error updating account. Please try again.", nil)
+		return
+	}
+	services.DBMutex.Unlock()
 
 	oldVIP, _ := services.CheckVIPStatus(account.SSOCookie)
 	newVIP, _ := services.CheckVIPStatus(newSSOCookie)
@@ -263,46 +306,27 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		}
 	}
 
-	services.DBMutex.Lock()
-	account.LastNotification = time.Now().Unix()
-	account.LastCookieNotification = 0
-	account.SSOCookie = newSSOCookie
-	account.SSOCookieExpiration = expirationTimestamp
-	account.IsExpiredCookie = false
-	wasDisabled := account.IsCheckDisabled
-	account.IsCheckDisabled = false
-	account.DisabledReason = ""
-	account.ConsecutiveErrors = 0
-	account.LastSuccessfulCheck = time.Now()
-
-	if err := database.DB.Save(&account).Error; err != nil {
-		services.DBMutex.Unlock()
-		logger.Log.WithError(err).Error("Failed to update account after modification")
-		respondToInteractionWithEmbed(s, i, "Error updating account. Please try again.", nil)
-		return
-	}
-	services.DBMutex.Unlock()
-
-	embed := createSuccessEmbed(&account, wasDisabled, vipStatusChange, expirationTimestamp, newVIP)
+	embed := createSuccessEmbed(&account, wasDisabled, vipStatusChange, validationResult.ExpiresAt, account.IsVIP)
 	respondToInteractionWithEmbed(s, i, "", embed)
 
+	statusCheckDone := make(chan bool)
 	go func() {
-		time.Sleep(2 * time.Second)
-
+		defer close(statusCheckDone)
+		time.Sleep(1 * time.Second)
 		status, err := services.CheckAccount(newSSOCookie, userID, "")
 		if err != nil {
 			logger.Log.WithError(err).Error("Error performing status check after update")
 			return
 		}
 
-		var updatedAccount models.Account
-		if err := database.DB.First(&updatedAccount, account.ID).Error; err != nil {
-			logger.Log.WithError(err).Error("Error fetching account for status update")
-			return
-		}
-
-		services.HandleStatusChange(s, updatedAccount, status, userSettings)
+		services.HandleStatusChange(s, account, status, userSettings)
 	}()
+
+	select {
+	case <-statusCheckDone:
+	case <-time.After(10 * time.Second):
+		logger.Log.Warn("Status check timed out but account update completed")
+	}
 }
 
 func createSuccessEmbed(account *models.Account, wasDisabled bool, vipStatusChange string, expirationTimestamp int64, isVIP bool) *discordgo.MessageEmbed {
