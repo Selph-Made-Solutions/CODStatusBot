@@ -119,6 +119,15 @@ func RegisterCommands(s *discordgo.Session) error {
 		},
 	}
 
+	Handlers["set_captcha_service_modal_capsolver"] = setcaptchaservice.HandleModalSubmit
+	Handlers["set_captcha_service_modal_ezcaptcha"] = setcaptchaservice.HandleModalSubmit
+	Handlers["set_captcha_service_modal_2captcha"] = setcaptchaservice.HandleModalSubmit
+
+	Handlers["set_captcha_capsolver"] = setcaptchaservice.HandleCaptchaServiceSelection
+	Handlers["set_captcha_ezcaptcha"] = setcaptchaservice.HandleCaptchaServiceSelection
+	Handlers["set_captcha_2captcha"] = setcaptchaservice.HandleCaptchaServiceSelection
+	Handlers["set_captcha_remove"] = setcaptchaservice.HandleCaptchaServiceSelection
+
 	Handlers["checkcaptchabalance"] = checkcaptchabalance.CommandCheckCaptchaBalance
 	Handlers["globalannouncement"] = globalannouncement.CommandGlobalAnnouncement
 	Handlers["setcaptchaservice"] = setcaptchaservice.CommandSetCaptchaService

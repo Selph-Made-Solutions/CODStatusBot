@@ -2,6 +2,7 @@ package checkcaptchabalance
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/bradselph/CODStatusBot/configuration"
@@ -29,72 +30,115 @@ func CommandCheckCaptchaBalance(s *discordgo.Session, i *discordgo.InteractionCr
 		return
 	}
 
-	if !services.IsServiceEnabled("ezcaptcha") && !services.IsServiceEnabled("2captcha") {
+	cfg := configuration.Get()
+
+	// Initial check for any enabled services
+	if !services.IsServiceEnabled("capsolver") &&
+		!services.IsServiceEnabled("ezcaptcha") &&
+		!services.IsServiceEnabled("2captcha") {
 		respondToInteraction(s, i, "No captcha services are currently available. Please try again later.")
 		return
 	}
 
-	if !services.IsServiceEnabled(userSettings.PreferredCaptchaProvider) {
-		msg := fmt.Sprintf("Your preferred captcha service (%s) is currently disabled. ", userSettings.PreferredCaptchaProvider)
-		if services.IsServiceEnabled("ezcaptcha") {
-			msg += "Please switch to EZCaptcha using /setcaptchaservice."
-		} else if services.IsServiceEnabled("2captcha") {
-			msg += "Please switch to 2Captcha using /setcaptchaservice."
-		}
-		respondToInteraction(s, i, msg)
-		return
-	}
-
-	apiKey, balance, err := services.GetUserCaptchaKey(userID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error getting user captcha key")
-		respondToInteraction(s, i, fmt.Sprintf("Error checking balance: %v", err))
-		return
-	}
-
 	embed := &discordgo.MessageEmbed{
-		Title: "Captcha Service Balance",
-		Color: 0x00ff00,
-		Fields: []*discordgo.MessageEmbedField{
-			{
-				Name:   "Current Service",
-				Value:  userSettings.PreferredCaptchaProvider,
-				Inline: true,
-			},
-		},
+		Title:     "Captcha Service Status",
+		Color:     0x00ff00,
 		Timestamp: time.Now().Format(time.RFC3339),
+		Fields:    []*discordgo.MessageEmbedField{},
 	}
 
-	if apiKey == "" {
-		embed.Description = "You are currently using the bot's default API key. Consider setting up your own key using /setcaptchaservice for unlimited checks."
+	var availableServices []string
+	if services.IsServiceEnabled("capsolver") {
+		availableServices = append(availableServices, "Capsolver")
+	}
+	if services.IsServiceEnabled("ezcaptcha") {
+		availableServices = append(availableServices, "EZCaptcha")
+	}
+	if services.IsServiceEnabled("2captcha") {
+		availableServices = append(availableServices, "2Captcha")
+	}
+
+	if !services.IsServiceEnabled(userSettings.PreferredCaptchaProvider) {
+		embed.Description = fmt.Sprintf("Warning: Your preferred service (%s) is currently disabled.\n"+
+			"Available services: %s\n"+
+			"Use /setcaptchaservice to switch to an available service.",
+			userSettings.PreferredCaptchaProvider,
+			strings.Join(availableServices, ", "))
 		embed.Color = 0xFFA500
-	} else {
-		embed.Fields = append(embed.Fields,
-			&discordgo.MessageEmbedField{
-				Name:   "Balance",
-				Value:  fmt.Sprintf("%.2f points", balance),
+	}
+
+	hasUserKey := false
+
+	if userSettings.CapSolverAPIKey != "" && services.IsServiceEnabled("capsolver") {
+		isValid, balance, err := services.ValidateCaptchaKey(userSettings.CapSolverAPIKey, "capsolver")
+		if err == nil && isValid {
+			hasUserKey = true
+			embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+				Name:   "Capsolver Balance",
+				Value:  fmt.Sprintf("$%.3f", balance),
 				Inline: true,
 			})
-
-		cfg := configuration.Get()
-		var threshold float64
-		if userSettings.PreferredCaptchaProvider == "ezcaptcha" {
-			threshold = cfg.CaptchaService.EZCaptcha.BalanceMin
-		} else {
-			threshold = cfg.CaptchaService.TwoCaptcha.BalanceMin
-		}
-
-		if balance < threshold {
-			embed.Description = fmt.Sprintf("⚠️ Your balance is below the recommended threshold of %.2f points. Please recharge soon to avoid service interruption.", threshold)
-			embed.Color = 0xFFA500
 		}
 	}
 
-	lastCheckTime := userSettings.LastBalanceCheck
-	if !lastCheckTime.IsZero() {
+	if userSettings.EZCaptchaAPIKey != "" && services.IsServiceEnabled("ezcaptcha") {
+		isValid, balance, err := services.ValidateCaptchaKey(userSettings.EZCaptchaAPIKey, "ezcaptcha")
+		if err == nil && isValid {
+			hasUserKey = true
+			embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+				Name:   "EZCaptcha Balance",
+				Value:  fmt.Sprintf("%.0f points", balance),
+				Inline: true,
+			})
+		}
+	}
+
+	if userSettings.TwoCaptchaAPIKey != "" && services.IsServiceEnabled("2captcha") {
+		isValid, balance, err := services.ValidateCaptchaKey(userSettings.TwoCaptchaAPIKey, "2captcha")
+		if err == nil && isValid {
+			hasUserKey = true
+			embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+				Name:   "2Captcha Balance",
+				Value:  fmt.Sprintf("$%.2f", balance),
+				Inline: true,
+			})
+		}
+	}
+
+	if !hasUserKey {
+		embed.Description = "You are currently using the bot's default API key. Consider setting up your own key using /setcaptchaservice for unlimited checks."
+		embed.Color = 0xFFA500
+
+		if services.IsServiceEnabled(userSettings.PreferredCaptchaProvider) {
+			embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+				Name:   "Default Service",
+				Value:  userSettings.PreferredCaptchaProvider,
+				Inline: true,
+			})
+		}
+	} else {
 		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-			Name:   "Last Balance Check",
-			Value:  lastCheckTime.Format("2006-01-02 15:04:05"),
+			Name:   "Preferred Provider",
+			Value:  userSettings.PreferredCaptchaProvider,
+			Inline: false,
+		})
+	}
+
+	var thresholds []string
+	if services.IsServiceEnabled("capsolver") {
+		thresholds = append(thresholds, fmt.Sprintf("Capsolver: $%.3f", cfg.CaptchaService.Capsolver.BalanceMin))
+	}
+	if services.IsServiceEnabled("ezcaptcha") {
+		thresholds = append(thresholds, fmt.Sprintf("EZCaptcha: %.0f points", cfg.CaptchaService.EZCaptcha.BalanceMin))
+	}
+	if services.IsServiceEnabled("2captcha") {
+		thresholds = append(thresholds, fmt.Sprintf("2Captcha: $%.2f", cfg.CaptchaService.TwoCaptcha.BalanceMin))
+	}
+
+	if len(thresholds) > 0 {
+		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+			Name:   "Minimum Balance Thresholds",
+			Value:  strings.Join(thresholds, "\n"),
 			Inline: false,
 		})
 	}

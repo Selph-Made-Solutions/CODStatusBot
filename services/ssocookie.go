@@ -12,35 +12,35 @@ import (
 )
 
 func DecodeSSOCookie(encodedStr string) (int64, error) {
+	encodedStr = strings.TrimSpace(encodedStr)
+	padding := len(encodedStr) % 4
+	if padding != 0 {
+		encodedStr += strings.Repeat("=", 4-padding)
+	}
 	decodedBytes, err := base64.StdEncoding.DecodeString(encodedStr)
 	if err != nil {
-		return 0, fmt.Errorf("failed to decode base64: %w", err)
+		decodedBytes, err = base64.URLEncoding.DecodeString(encodedStr)
+		if err != nil {
+			return 0, fmt.Errorf("invalid SSO cookie format: %w", err)
+		}
 	}
-
 	decodedStr := string(decodedBytes)
 	parts := strings.Split(decodedStr, ":")
-
 	if len(parts) < 2 {
-		return 0, errors.New("invalid cookie format")
+		return 0, errors.New("invalid SSO cookie structure: missing timestamp")
 	}
-
 	expirationStr := parts[1]
-
 	logger.Log.Infof("Decoded cookie expiration: %s", expirationStr)
-
 	expirationTimestamp, err := strconv.ParseInt(expirationStr, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse expiration timestamp: %w", err)
+		return 0, fmt.Errorf("invalid expiration timestamp in SSO cookie: %w", err)
 	}
-
 	if len(expirationStr) > 10 {
 		expirationTimestamp /= 1000
 	}
-
 	if expirationTimestamp < time.Now().Unix() {
-		return 0, errors.New("SSO cookie has already expired")
+		return 0, errors.New("SSO cookie has expired")
 	}
-
 	return expirationTimestamp, nil
 }
 

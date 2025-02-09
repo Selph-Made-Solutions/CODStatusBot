@@ -30,7 +30,7 @@ var discord *discordgo.Session
 func StartBot() (*discordgo.Session, error) {
 	cfg := configuration.Get()
 	if cfg.Discord.Token == "" {
-		return nil, errors.New("Discord token not configured")
+		return nil, errors.New("discord token not configured")
 	}
 
 	var err error
@@ -71,7 +71,10 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	switch {
 	case strings.HasPrefix(customID, "set_notifications_modal_"):
 		setnotifications.HandleModalSubmit(s, i)
-	case customID == "set_captcha_service_modal":
+	case customID == "set_captcha_service_modal" ||
+		strings.HasPrefix(customID, "set_captcha_service_modal_capsolver") ||
+		strings.HasPrefix(customID, "set_captcha_service_modal_ezcaptcha") ||
+		strings.HasPrefix(customID, "set_captcha_service_modal_2captcha"):
 		setcaptchaservice.HandleModalSubmit(s, i)
 	case customID == "add_account_modal":
 		addaccount.HandleModalSubmit(s, i)
@@ -91,6 +94,8 @@ func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate
 	switch {
 	case customID == "listaccounts":
 		listaccounts.CommandListAccounts(s, i)
+	case strings.HasPrefix(customID, "set_captcha_"):
+		setcaptchaservice.HandleCaptchaServiceSelection(s, i)
 	case strings.HasPrefix(customID, "feedback_"):
 		feedback.HandleFeedbackChoice(s, i)
 	case strings.HasPrefix(customID, "account_age_"):

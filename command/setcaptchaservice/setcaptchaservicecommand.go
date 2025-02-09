@@ -14,49 +14,128 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+var providerLabels = map[string]string{
+	"capsolver": "Capsolver",
+	"ezcaptcha": "EZCaptcha",
+	"2captcha":  "2Captcha",
+}
+
 func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	cfg := configuration.Get()
-	var enabledServices []string
+	var components []discordgo.MessageComponent
+
 	if cfg.CaptchaService.Capsolver.Enabled {
-		enabledServices = append(enabledServices, "capsolver")
-	}
-	if cfg.CaptchaService.EZCaptcha.Enabled {
-		enabledServices = append(enabledServices, "ezcaptcha")
-	}
-	if cfg.CaptchaService.TwoCaptcha.Enabled {
-		enabledServices = append(enabledServices, "2captcha")
+		components = append(components, createProviderButton("capsolver"))
 	}
 
-	if len(enabledServices) == 0 {
+	if cfg.CaptchaService.EZCaptcha.Enabled {
+		components = append(components, createProviderButton("ezcaptcha"))
+	}
+
+	if cfg.CaptchaService.TwoCaptcha.Enabled {
+		components = append(components, createProviderButton("2captcha"))
+	}
+
+	components = append(components, discordgo.Button{
+		Label:    "Remove API Key",
+		Style:    discordgo.DangerButton,
+		CustomID: "set_captcha_remove",
+	})
+
+	if len(components) == 1 {
 		respondToInteraction(s, i, "No captcha services are currently enabled. Please contact the bot administrator.")
 		return
 	}
 
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: "Select a captcha service provider:",
+			Components: []discordgo.MessageComponent{
+				discordgo.ActionsRow{Components: components},
+			},
+			Flags: discordgo.MessageFlagsEphemeral,
+		},
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Error responding with service selection")
+	}
+}
+
+func HandleCaptchaServiceSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	customID := i.MessageComponentData().CustomID
+
+	if customID == "set_captcha_remove" {
+		handleAPIKeyRemoval(s, i)
+		return
+	}
+
+	provider := strings.TrimPrefix(customID, "set_captcha_")
+	if _, ok := providerLabels[provider]; !ok {
+		respondToInteraction(s, i, "Invalid service selection")
+		return
+	}
+
+	showAPIKeyModal(s, i, provider)
+}
+
+func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	data := i.ModalSubmitData()
+	provider := strings.TrimPrefix(data.CustomID, "set_captcha_service_modal_")
+
+	userID, err := services.GetUserID(i)
+	if err != nil {
+		respondToInteraction(s, i, "An error occurred while processing your request.")
+		return
+	}
+
+	apiKey := getAPIKeyFromModal(data)
+	if err := validateAndSaveAPIKey(s, i, userID, provider, apiKey); err != nil {
+		respondToInteraction(s, i, fmt.Sprintf("Error: %v", err))
+		return
+	}
+}
+
+func createProviderButton(provider string) discordgo.Button {
+	return discordgo.Button{
+		Label:    providerLabels[provider],
+		Style:    discordgo.PrimaryButton,
+		CustomID: fmt.Sprintf("set_captcha_%s", provider),
+	}
+}
+
+func handleAPIKeyRemoval(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	userID, err := services.GetUserID(i)
+	if err != nil {
+		respondToInteraction(s, i, "An error occurred while processing your request.")
+		return
+	}
+
+	if err := services.RemoveCaptchaKey(userID); err != nil {
+		respondToInteraction(s, i, "Error removing API key. Please try again.")
+		return
+	}
+
+	respondToInteraction(s, i, "Your API key has been removed. The bot's default API key will be used. Your check interval and notification settings have been reset to default values.")
+}
+
+func showAPIKeyModal(s *discordgo.Session, i *discordgo.InteractionCreate, provider string) {
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseModal,
 		Data: &discordgo.InteractionResponseData{
-			CustomID: "set_captcha_service_modal",
-			Title:    "Set Captcha Service API Key",
+			CustomID: fmt.Sprintf("set_captcha_service_modal_%s", provider),
+			Title:    fmt.Sprintf("Set %s API Key", providerLabels[provider]),
 			Components: []discordgo.MessageComponent{
 				discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
 						discordgo.TextInput{
-							CustomID:    "captcha_provider",
-							Label:       fmt.Sprintf("Captcha Provider (%s)", strings.Join(enabledServices, " or ")),
-							Style:       discordgo.TextInputShort,
-							Placeholder: fmt.Sprintf("Enter '%s'", strings.Join(enabledServices, "' or '")),
-							Required:    true,
-						},
-					},
-				},
-				discordgo.ActionsRow{
-					Components: []discordgo.MessageComponent{
-						discordgo.TextInput{
 							CustomID:    "api_key",
-							Label:       "API Key",
+							Label:       fmt.Sprintf("Enter your %s API key", providerLabels[provider]),
 							Style:       discordgo.TextInputShort,
-							Placeholder: "Enter your API key",
+							Placeholder: "Enter your new API key",
 							Required:    true,
+							MinLength:   32,
+							MaxLength:   90,
 						},
 					},
 				},
@@ -64,117 +143,112 @@ func CommandSetCaptchaService(s *discordgo.Session, i *discordgo.InteractionCrea
 		},
 	})
 	if err != nil {
-		logger.Log.WithError(err).Error("Error responding with modal")
+		logger.Log.WithError(err).Error("Error showing API key modal")
 	}
 }
 
-func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	data := i.ModalSubmitData()
-
-	var provider, apiKey string
+func getAPIKeyFromModal(data discordgo.ModalSubmitInteractionData) string {
 	for _, comp := range data.Components {
 		if row, ok := comp.(*discordgo.ActionsRow); ok {
 			for _, rowComp := range row.Components {
-				if textInput, ok := rowComp.(*discordgo.TextInput); ok {
-					switch textInput.CustomID {
-					case "captcha_provider":
-						provider = strings.ToLower(utils.SanitizeInput(strings.TrimSpace(textInput.Value)))
-					case "api_key":
-						apiKey = utils.SanitizeInput(strings.TrimSpace(textInput.Value))
-					}
+				if textInput, ok := rowComp.(*discordgo.TextInput); ok && textInput.CustomID == "api_key" {
+					return utils.SanitizeInput(strings.TrimSpace(textInput.Value))
 				}
 			}
 		}
 	}
+	return ""
+}
 
-	logger.Log.Infof("Received setcaptchaservice command. Provider: %s, API Key length: %d", provider, len(apiKey))
+func validateAndSaveAPIKey(s *discordgo.Session, i *discordgo.InteractionCreate, userID, provider, apiKey string) error {
+	isValid, balance, err := services.ValidateCaptchaKey(apiKey, provider)
+	if err != nil {
+		return fmt.Errorf("error validating the %s API key: %v", provider, err)
+	}
+	if !isValid {
+		return fmt.Errorf("the provided %s API key is invalid", provider)
+	}
+
+	settings := models.UserSettings{UserID: userID}
+	if err := database.DB.Where("user_id = ?", userID).FirstOrCreate(&settings).Error; err != nil {
+		return fmt.Errorf("error updating settings")
+	}
 
 	cfg := configuration.Get()
-	if provider != "ezcaptcha" && provider != "2captcha" && provider != "capsolver" {
-		logger.Log.Errorf("Invalid captcha provider: %s", provider)
-		respondToInteraction(s, i, "Invalid captcha provider. Please enter 'capsolver', 'ezcaptcha' or '2captcha'.")
-		return
+	settings.PreferredCaptchaProvider = provider
+	settings.CheckInterval = cfg.Intervals.Check
+	settings.NotificationInterval = cfg.Intervals.Notification
+	settings.CustomSettings = true
+	settings.CaptchaBalance = balance
+	settings.LastBalanceCheck = time.Now()
+
+	updateAPIKeys(&settings, provider, apiKey)
+
+	if err := database.DB.Save(&settings).Error; err != nil {
+		return fmt.Errorf("error saving settings")
 	}
 
-	if (provider == "ezcaptcha" && !cfg.CaptchaService.EZCaptcha.Enabled) ||
-		(provider == "2captcha" && !cfg.CaptchaService.TwoCaptcha.Enabled) {
-		logger.Log.Errorf("Attempt to use disabled captcha service: %s", provider)
-		respondToInteraction(s, i, fmt.Sprintf("The %s service is currently disabled. Please use an enabled service.", provider))
-		return
-	}
+	if apiKey != cfg.CaptchaService.Capsolver.ClientKey &&
+		apiKey != cfg.CaptchaService.EZCaptcha.ClientKey &&
+		apiKey != cfg.CaptchaService.TwoCaptcha.ClientKey {
 
-	var userID string
-	if i.Member != nil {
-		userID = i.Member.User.ID
-	} else if i.User != nil {
-		userID = i.User.ID
+		embed := &discordgo.MessageEmbed{
+			Title:       "API Key Configuration Updated",
+			Description: fmt.Sprintf("Your %s API key has been configured successfully!", providerLabels[provider]),
+			Color:       0x00ff00,
+			Fields: []*discordgo.MessageEmbedField{
+				{
+					Name:   "Premium Features Unlocked",
+					Value:  "• Faster check intervals\n• Increased account limits\n• Priority status updates",
+					Inline: false,
+				},
+				{
+					Name:   "Service Provider",
+					Value:  providerLabels[provider],
+					Inline: true,
+				},
+				{
+					Name:   "Current Balance",
+					Value:  fmt.Sprintf("%.2f points", balance),
+					Inline: true,
+				},
+			},
+			Timestamp: time.Now().Format(time.RFC3339),
+		}
+		respondToInteractionWithEmbed(s, i, "", embed)
 	} else {
-		logger.Log.Error("Interaction doesn't have Member or User")
-		respondToInteraction(s, i, "An error occurred while processing your request.")
-		return
+		embed := &discordgo.MessageEmbed{
+			Title:       "API Key Configuration Updated",
+			Description: fmt.Sprintf("Your %s API key has been configured successfully!", providerLabels[provider]),
+			Color:       0x00ff00,
+			Fields: []*discordgo.MessageEmbedField{
+				{
+					Name:   "Service Provider",
+					Value:  providerLabels[provider],
+					Inline: true,
+				},
+			},
+			Timestamp: time.Now().Format(time.RFC3339),
+		}
+		respondToInteractionWithEmbed(s, i, "", embed)
 	}
 
-	var message string
-	if apiKey != "" {
-		isValid, balance, err := services.ValidateCaptchaKey(apiKey, provider)
-		if err != nil {
-			logger.Log.WithError(err).Errorf("Error validating %s API key for user %s", provider, userID)
-			respondToInteraction(s, i, fmt.Sprintf("Error validating the %s API key: %v. Please try again.", provider, err))
-			return
-		}
-		if !isValid {
-			logger.Log.Errorf("Invalid %s API key provided by user %s", provider, userID)
-			respondToInteraction(s, i, fmt.Sprintf("The provided %s API key is invalid. Please check and try again.", provider))
-			return
-		}
+	return nil
+}
 
-		var settings models.UserSettings
-		if err := database.DB.Where("user_id = ?", userID).FirstOrCreate(&settings).Error; err != nil {
-			logger.Log.WithError(err).Error("Error getting/creating user settings")
-			respondToInteraction(s, i, "Error updating settings. Please try again.")
-			return
-		}
+func updateAPIKeys(settings *models.UserSettings, provider, apiKey string) {
+	settings.CapSolverAPIKey = ""
+	settings.EZCaptchaAPIKey = ""
+	settings.TwoCaptchaAPIKey = ""
 
-		settings.PreferredCaptchaProvider = provider
-		settings.CheckInterval = cfg.Intervals.Check
-		settings.NotificationInterval = cfg.Intervals.Notification
-		settings.CustomSettings = true
-		settings.CaptchaBalance = balance
-		settings.LastBalanceCheck = time.Now()
-
-		if provider == "ezcaptcha" {
-			settings.CapSolverAPIKey = ""
-			settings.EZCaptchaAPIKey = apiKey
-			settings.TwoCaptchaAPIKey = ""
-
-		} else if provider == "capsolver" {
-			settings.CapSolverAPIKey = apiKey
-			settings.EZCaptchaAPIKey = ""
-			settings.TwoCaptchaAPIKey = ""
-		} else if provider == "twocaptcha" {
-			settings.CapSolverAPIKey = ""
-			settings.TwoCaptchaAPIKey = apiKey
-			settings.EZCaptchaAPIKey = ""
-		}
-
-		if err := database.DB.Save(&settings).Error; err != nil {
-			logger.Log.WithError(err).Error("Error saving user settings")
-			respondToInteraction(s, i, "Error saving settings. Please try again.")
-			return
-		}
-
-		logger.Log.Infof("Valid %s key set for user: %s. Balance: %.2f points", provider, userID, balance)
-		message = fmt.Sprintf("Your %s API key has been set successfully. Your current balance is %.2f points. You now have access to faster check intervals and no rate limits!", provider, balance)
-	} else {
-		if err := services.RemoveCaptchaKey(userID); err != nil {
-			logger.Log.WithError(err).Error("Error removing API key")
-			respondToInteraction(s, i, "Error removing API key. Please try again.")
-			return
-		}
-		message = "Your API key has been removed. The bot's default API key will be used. Your check interval and notification settings have been reset to default values."
+	switch provider {
+	case "capsolver":
+		settings.CapSolverAPIKey = apiKey
+	case "ezcaptcha":
+		settings.EZCaptchaAPIKey = apiKey
+	case "2captcha":
+		settings.TwoCaptchaAPIKey = apiKey
 	}
-
-	respondToInteraction(s, i, message)
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
@@ -187,5 +261,26 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	})
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction")
+	}
+}
+
+func respondToInteractionWithEmbed(s *discordgo.Session, i *discordgo.InteractionCreate, message string, embed *discordgo.MessageEmbed) {
+	response := &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Flags: discordgo.MessageFlagsEphemeral,
+		},
+	}
+
+	if message != "" {
+		response.Data.Content = message
+	}
+	if embed != nil {
+		response.Data.Embeds = []*discordgo.MessageEmbed{embed}
+	}
+
+	err := s.InteractionRespond(i.Interaction, response)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error responding to interaction with embed")
 	}
 }

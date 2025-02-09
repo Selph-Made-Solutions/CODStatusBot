@@ -171,6 +171,11 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 }
 
 func notifyUserOfServiceIssue(s *discordgo.Session, userID string, err error) {
+	cfg := configuration.Get()
+	if userID != cfg.Discord.DeveloperID {
+		return
+	}
+
 	channel, err := s.UserChannelCreate(userID)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to create DM channel for service issue")
@@ -179,15 +184,19 @@ func notifyUserOfServiceIssue(s *discordgo.Session, userID string, err error) {
 
 	embed := &discordgo.MessageEmbed{
 		Title: "Service Issue Detected",
-		Description: fmt.Sprintf("There is an issue with your account monitoring service: %v\n"+
-			"Please check your settings and ensure your captcha service is properly configured.",
-			err),
+		Description: fmt.Sprintf("A service issue has been detected: %v\n"+
+			"User ID: %s", err, userID),
 		Color: 0xFF0000,
 		Fields: []*discordgo.MessageEmbedField{
 			{
-				Name:   "Action Required",
-				Value:  "Please use /setcaptchaservice to review and update your settings.",
-				Inline: false,
+				Name:   "Issue Type",
+				Value:  "Captcha Service Configuration",
+				Inline: true,
+			},
+			{
+				Name:   "Timestamp",
+				Value:  time.Now().Format(time.RFC3339),
+				Inline: true,
 			},
 		},
 		Timestamp: time.Now().Format(time.RFC3339),
@@ -195,7 +204,7 @@ func notifyUserOfServiceIssue(s *discordgo.Session, userID string, err error) {
 
 	_, err = s.ChannelMessageSendEmbed(channel.ID, embed)
 	if err != nil {
-		logger.Log.WithError(err).Error("Failed to send service issue notification")
+		logger.Log.WithError(err).Error("Failed to send admin service issue notification")
 	}
 }
 
