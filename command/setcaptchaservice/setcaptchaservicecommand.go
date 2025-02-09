@@ -188,26 +188,51 @@ func validateAndSaveAPIKey(s *discordgo.Session, i *discordgo.InteractionCreate,
 		return fmt.Errorf("error saving settings")
 	}
 
-	embed := &discordgo.MessageEmbed{
-		Title:       "API Key Configuration Updated",
-		Description: fmt.Sprintf("Your %s API key has been configured successfully!", providerLabels[provider]),
-		Color:       0x00ff00,
-		Fields: []*discordgo.MessageEmbedField{
-			{
-				Name:   "Premium Features Unlocked",
-				Value:  "• Faster check intervals\n• Increased account limits\n• Priority status updates",
-				Inline: false,
+	if apiKey != cfg.CaptchaService.Capsolver.ClientKey &&
+		apiKey != cfg.CaptchaService.EZCaptcha.ClientKey &&
+		apiKey != cfg.CaptchaService.TwoCaptcha.ClientKey {
+
+		embed := &discordgo.MessageEmbed{
+			Title:       "API Key Configuration Updated",
+			Description: fmt.Sprintf("Your %s API key has been configured successfully!", providerLabels[provider]),
+			Color:       0x00ff00,
+			Fields: []*discordgo.MessageEmbedField{
+				{
+					Name:   "Premium Features Unlocked",
+					Value:  "• Faster check intervals\n• Increased account limits\n• Priority status updates",
+					Inline: false,
+				},
+				{
+					Name:   "Service Provider",
+					Value:  providerLabels[provider],
+					Inline: true,
+				},
+				{
+					Name:   "Current Balance",
+					Value:  fmt.Sprintf("%.2f points", balance),
+					Inline: true,
+				},
 			},
-			{
-				Name:   "Service Provider",
-				Value:  providerLabels[provider],
-				Inline: true,
+			Timestamp: time.Now().Format(time.RFC3339),
+		}
+		respondToInteractionWithEmbed(s, i, "", embed)
+	} else {
+		embed := &discordgo.MessageEmbed{
+			Title:       "API Key Configuration Updated",
+			Description: fmt.Sprintf("Your %s API key has been configured successfully!", providerLabels[provider]),
+			Color:       0x00ff00,
+			Fields: []*discordgo.MessageEmbedField{
+				{
+					Name:   "Service Provider",
+					Value:  providerLabels[provider],
+					Inline: true,
+				},
 			},
-		},
-		Timestamp: time.Now().Format(time.RFC3339),
+			Timestamp: time.Now().Format(time.RFC3339),
+		}
+		respondToInteractionWithEmbed(s, i, "", embed)
 	}
 
-	respondToInteractionWithEmbed(s, i, "", embed)
 	return nil
 }
 
