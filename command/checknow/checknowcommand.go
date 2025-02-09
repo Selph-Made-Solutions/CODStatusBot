@@ -163,7 +163,40 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		return
 	}
 
-	if userSettings.CapSolverAPIKey != "" || userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != "" {
+	isUsingDefaultKey := userSettings.CapSolverAPIKey == "" &&
+		userSettings.EZCaptchaAPIKey == "" &&
+		userSettings.TwoCaptchaAPIKey == ""
+
+	if isUsingDefaultKey {
+		lastCheck := userSettings.LastCommandTimes["check_now"]
+		cfg := configuration.Get()
+		if !lastCheck.IsZero() && time.Since(lastCheck) < cfg.RateLimits.CheckNow {
+			timeUntilNext := cfg.RateLimits.CheckNow - time.Since(lastCheck)
+			embed := &discordgo.MessageEmbed{
+				Title: "Rate Limit Reached",
+				Description: fmt.Sprintf("You are using the bot's default API key which has check limits.\n\n"+
+					"You can check again in: %s\n\n"+
+					"To remove this limit, set up your own API key using `/setcaptchaservice`",
+					formatDuration(timeUntilNext)),
+				Color: 0xFFA500,
+				Fields: []*discordgo.MessageEmbedField{
+					{
+						Name:   "Current Limit",
+						Value:  fmt.Sprintf("1 check per %s", formatDuration(cfg.RateLimits.CheckNow)),
+						Inline: true,
+					},
+					{
+						Name:   "Remove Limits",
+						Value:  "Add your own API key to get:\n• Unlimited checks\n• Faster intervals\n• More account slots",
+						Inline: true,
+					},
+				},
+				Timestamp: time.Now().Format(time.RFC3339),
+			}
+			respondToInteractionWithEmbed(s, i, "", embed)
+			return
+		}
+	} else {
 		apiKey, balance, err := services.GetUserCaptchaKey(userID)
 		if err != nil || apiKey == "" {
 			logger.Log.WithError(err).Error("Error getting captcha key")
@@ -205,6 +238,44 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 
 	checkAccounts(s, i, accounts)
+}
+
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+	h := d / time.Hour
+	d -= h * time.Hour
+	m := d / time.Minute
+	d -= m * time.Minute
+	s := d / time.Second
+
+	if h > 0 {
+		return fmt.Sprintf("%dh %dm %ds", h, m, s)
+	}
+	if m > 0 {
+		return fmt.Sprintf("%dm %ds", m, s)
+	}
+	return fmt.Sprintf("%ds", s)
+}
+
+func respondToInteractionWithEmbed(s *discordgo.Session, i *discordgo.InteractionCreate, content string, embed *discordgo.MessageEmbed) {
+	responseData := &discordgo.InteractionResponseData{
+		Flags: discordgo.MessageFlagsEphemeral,
+	}
+
+	if content != "" {
+		responseData.Content = content
+	}
+	if embed != nil {
+		responseData.Embeds = []*discordgo.MessageEmbed{embed}
+	}
+
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: responseData,
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Error responding to interaction with embed")
+	}
 }
 
 func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, accounts []models.Account) {

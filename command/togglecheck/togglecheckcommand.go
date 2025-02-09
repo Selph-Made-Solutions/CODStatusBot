@@ -40,7 +40,7 @@ func CommandToggleCheck(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	)
 
 	for _, account := range accounts {
-		label := fmt.Sprintf("%s (%s)", account.Title, getCheckStatus(account.IsCheckDisabled))
+		label := fmt.Sprintf("%s (%s)", account.Title, services.GetCheckStatus(account.IsCheckDisabled))
 		currentRow = append(currentRow, discordgo.Button{
 			Label:    label,
 			Style:    discordgo.PrimaryButton,
@@ -195,13 +195,6 @@ func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	respondToInteraction(s, i, fmt.Sprintf("Checks for account '%s' have been re-enabled.", account.Title))
-}
-
-func getCheckStatus(isDisabled bool) string {
-	if isDisabled {
-		return "disabled"
-	}
-	return "enabled"
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {

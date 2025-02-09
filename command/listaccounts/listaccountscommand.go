@@ -70,7 +70,7 @@ func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	for _, account := range accounts {
-		checkStatus := getCheckStatus(account.IsCheckDisabled)
+		checkStatus := services.GetCheckStatus(account.IsCheckDisabled)
 		cookieExpiration := services.FormatExpirationTime(account.SSOCookieExpiration)
 		creationDate := time.Unix(account.Created, 0).Format("2006-01-02")
 		lastCheckTime := time.Unix(account.LastCheck, 0).Format("2006-01-02 15:04:05")
@@ -136,13 +136,6 @@ func sendFollowup(s *discordgo.Session, i *discordgo.InteractionCreate, content 
 	if err != nil {
 		logger.Log.WithError(err).Error("Error sending followup message")
 	}
-}
-
-func getCheckStatus(isDisabled bool) string {
-	if isDisabled {
-		return "Disabled"
-	}
-	return "Enabled"
 }
 
 func getDisabledEmoji(isDisabled bool) string {

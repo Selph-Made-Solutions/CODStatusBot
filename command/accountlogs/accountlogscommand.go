@@ -9,6 +9,7 @@ import (
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
+	"github.com/bradselph/CODStatusBot/services"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -191,7 +192,7 @@ func createAccountLogEmbed(account models.Account) *discordgo.MessageEmbed {
 	embed := &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%s - Account History", account.Title),
 		Description: fmt.Sprintf("Recent account history (showing last %d entries)", len(logs)),
-		Color:       0x00ff00,
+		Color:       services.GetColorForStatus(account.LastStatus, account.IsExpiredCookie, account.IsCheckDisabled),
 		Fields:      make([]*discordgo.MessageEmbedField, 0),
 		Timestamp:   time.Now().Format(time.RFC3339),
 	}
@@ -205,6 +206,7 @@ func createAccountLogEmbed(account models.Account) *discordgo.MessageEmbed {
 		Name: "Account Information",
 		Value: fmt.Sprintf("Current Status: %s\nCreated: %s\nLast Checked: %s",
 			account.LastStatus,
+			services.GetCheckStatus(account.IsCheckDisabled),
 			time.Unix(account.Created, 0).Format("Jan 02, 2006 15:04:05"),
 			time.Unix(account.LastCheck, 0).Format("Jan 02, 2006 15:04:05")),
 		Inline: false,
@@ -218,14 +220,14 @@ func createAccountLogEmbed(account models.Account) *discordgo.MessageEmbed {
 			fieldValue.WriteString("Account added to monitoring\n")
 		case "status_change":
 			fieldValue.WriteString(fmt.Sprintf("%s\n", log.Message))
-		}
 
-		if log.Status != models.StatusGood && log.Status != models.StatusUnknown {
-			if log.AffectedGames != "" {
-				fieldValue.WriteString(fmt.Sprintf("Affected Games: %s\n", log.AffectedGames))
-			}
-			if log.TempBanDuration != "" {
-				fieldValue.WriteString(fmt.Sprintf("Duration: %s\n", log.TempBanDuration))
+			if log.Status != models.StatusGood && log.Status != models.StatusUnknown {
+				if log.AffectedGames != "" {
+					fieldValue.WriteString(fmt.Sprintf("Affected Games: %s\n", log.AffectedGames))
+				}
+				if log.TempBanDuration != "" {
+					fieldValue.WriteString(fmt.Sprintf("Duration: %s\n", log.TempBanDuration))
+				}
 			}
 		}
 
