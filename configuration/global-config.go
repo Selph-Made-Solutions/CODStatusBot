@@ -12,7 +12,7 @@ import (
 type Config struct {
 	// Environment
 	Environment string
-	LogDir      string // TODO: Add this to the config.env file
+	LogDir      string
 
 	// Database Settings
 	Database struct {
