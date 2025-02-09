@@ -170,30 +170,89 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	if isUsingDefaultKey {
 		lastCheck := userSettings.LastCommandTimes["check_now"]
 		cfg := configuration.Get()
-		if !lastCheck.IsZero() && time.Since(lastCheck) < cfg.RateLimits.CheckNow {
-			timeUntilNext := cfg.RateLimits.CheckNow - time.Since(lastCheck)
-			embed := &discordgo.MessageEmbed{
-				Title: "Rate Limit Reached",
-				Description: fmt.Sprintf("You are using the bot's default API key which has check limits.\n\n"+
-					"You can check again in: %s\n\n"+
-					"To remove this limit, set up your own API key using `/setcaptchaservice`",
-					formatDuration(timeUntilNext)),
-				Color: 0xFFA500,
-				Fields: []*discordgo.MessageEmbedField{
-					{
-						Name:   "Current Limit",
-						Value:  fmt.Sprintf("1 check per %s", formatDuration(cfg.RateLimits.CheckNow)),
-						Inline: true,
-					},
-					{
-						Name:   "Remove Limits",
-						Value:  "Add your own API key to get:\n• Unlimited checks\n• Faster intervals\n• More account slots",
-						Inline: true,
-					},
-				},
-				Timestamp: time.Now().Format(time.RFC3339),
+
+		userSettings.EnsureMapsInitialized()
+		checksUsed := userSettings.ActionCounts["check_now"]
+		maxChecks := cfg.RateLimits.DefaultMaxAccounts
+
+		if !lastCheck.IsZero() && time.Since(lastCheck) >= cfg.RateLimits.CheckNow {
+			checksUsed = 0
+			userSettings.ActionCounts["check_now"] = 0
+			userSettings.LastCommandTimes["check_now"] = time.Now()
+			if err := database.DB.Save(&userSettings).Error; err != nil {
+				logger.Log.WithError(err).Error("Error resetting check count")
 			}
-			respondToInteractionWithEmbed(s, i, "", embed)
+		}
+
+		if accountIDOrAll == "all" {
+			var accountCount int64
+			if err := database.DB.Model(&models.Account{}).Where("user_id = ?", userID).Count(&accountCount).Error; err != nil {
+				logger.Log.WithError(err).Error("Error counting accounts")
+				respondToInteraction(s, i, "Error counting accounts. Please try again.")
+				return
+			}
+
+			if int(accountCount) > (maxChecks - checksUsed) {
+				timeUntilNext := cfg.RateLimits.CheckNow - time.Since(lastCheck)
+				embed := &discordgo.MessageEmbed{
+					Title: "Insufficient Checks Available",
+					Description: fmt.Sprintf("You need %d checks but only have %d remaining.\n\n"+
+						"Next reset in: %s\n\n"+
+						"To remove this limit, set up your own API key using `/setcaptchaservice`",
+						accountCount, maxChecks-checksUsed, formatDuration(timeUntilNext)),
+					Color: 0xFFA500,
+					Fields: []*discordgo.MessageEmbedField{
+						{
+							Name:   "Available Checks",
+							Value:  fmt.Sprintf("%d/%d checks remaining", maxChecks-checksUsed, maxChecks),
+							Inline: true,
+						},
+						{
+							Name:   "Remove Limits",
+							Value:  "Add your own API key to get:\n• Unlimited checks\n• Faster intervals\n• More account slots",
+							Inline: true,
+						},
+					},
+					Timestamp: time.Now().Format(time.RFC3339),
+				}
+				respondToInteractionWithEmbed(s, i, "", embed)
+				return
+			}
+
+			userSettings.ActionCounts["check_now"] += int(accountCount)
+		} else {
+			if checksUsed >= maxChecks {
+				timeUntilNext := cfg.RateLimits.CheckNow - time.Since(lastCheck)
+				embed := &discordgo.MessageEmbed{
+					Title: "Rate Limit Reached",
+					Description: fmt.Sprintf("You have used all available checks.\n\n"+
+						"Next reset in: %s\n\n"+
+						"To remove this limit, set up your own API key using `/setcaptchaservice`",
+						formatDuration(timeUntilNext)),
+					Color: 0xFFA500,
+					Fields: []*discordgo.MessageEmbedField{
+						{
+							Name:   "Check Status",
+							Value:  fmt.Sprintf("%d/%d checks used", checksUsed, maxChecks),
+							Inline: true,
+						},
+						{
+							Name:   "Remove Limits",
+							Value:  "Add your own API key to get:\n• Unlimited checks\n• Faster intervals\n• More account slots",
+							Inline: true,
+						},
+					},
+					Timestamp: time.Now().Format(time.RFC3339),
+				}
+				respondToInteractionWithEmbed(s, i, "", embed)
+				return
+			}
+			userSettings.ActionCounts["check_now"]++
+		}
+
+		if err := database.DB.Save(&userSettings).Error; err != nil {
+			logger.Log.WithError(err).Error("Error saving check count")
+			respondToInteraction(s, i, "Error updating check count. Please try again.")
 			return
 		}
 	} else {
@@ -393,19 +452,29 @@ func checkRateLimit(userID string) bool {
 	}
 
 	userSettings.EnsureMapsInitialized()
-
 	now := time.Now()
 	lastCheckTime := userSettings.LastCommandTimes["check_now"]
 
 	if lastCheckTime.IsZero() || time.Since(lastCheckTime) >= rateLimit {
+		userSettings.ActionCounts["check_now"] = 0
 		userSettings.LastCommandTimes["check_now"] = now
-		if err := database.DB.Save(&userSettings).Error; err != nil {
-			logger.Log.WithError(err).Error("Error saving user settings")
-			return false
-		}
-		return true
 	}
-	return false
+
+	cfg := configuration.Get()
+	maxChecks := cfg.RateLimits.DefaultMaxAccounts
+
+	if userSettings.ActionCounts["check_now"] >= maxChecks {
+		return false
+	}
+
+	userSettings.ActionCounts["check_now"]++
+
+	if err := database.DB.Save(&userSettings).Error; err != nil {
+		logger.Log.WithError(err).Error("Error saving user settings")
+		return false
+	}
+
+	return true
 }
 
 func getUserID(i *discordgo.InteractionCreate) (string, error) {
