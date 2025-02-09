@@ -69,11 +69,14 @@ type UserSettings struct {
 
 type Ban struct {
 	gorm.Model
-	Account         Account // The account that has a status history.
-	AccountID       uint    // The ID of the account.
-	Status          Status  // The status of the ban.
-	TempBanDuration string  // Duration of the temporary ban (if applicable)
-	AffectedGames   string  // Comma-separated list of affected games
+	Account         Account   // The account that has a status history.
+	AccountID       uint      // The ID of the account.
+	Status          Status    // The status of the ban.
+	LogType         string    // Type of log entry ("account_added", "status_change", etc.)
+	Message         string    // Detailed message about the log entry
+	TempBanDuration string    // Duration of the temporary ban (if applicable)
+	AffectedGames   string    // Comma-separated list of affected games
+	Timestamp       time.Time // When this log entry was created
 }
 type SuppressedNotification struct {
 	gorm.Model

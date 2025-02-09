@@ -32,13 +32,14 @@ func initDefaultSettings() {
 	} else if cfg.CaptchaService.TwoCaptcha.Enabled {
 		defaultSettings.PreferredCaptchaProvider = "2captcha"
 	}
-
-	logger.Log.Infof("Default settings initialized: CheckInterval=%d, NotificationInterval=%.2f, CooldownDuration=%.2f, StatusChangeCooldown=%.2f, Provider=%s",
-		defaultSettings.CheckInterval,
-		defaultSettings.NotificationInterval,
-		defaultSettings.CooldownDuration,
-		defaultSettings.StatusChangeCooldown,
-		defaultSettings.PreferredCaptchaProvider)
+	/*
+		logger.Log.Infof("Default settings initialized: CheckInterval=%d, NotificationInterval=%.2f, CooldownDuration=%.2f, StatusChangeCooldown=%.2f, Provider=%s",
+			defaultSettings.CheckInterval,
+			defaultSettings.NotificationInterval,
+			defaultSettings.CooldownDuration,
+			defaultSettings.StatusChangeCooldown,
+			defaultSettings.PreferredCaptchaProvider)
+	*/
 }
 
 func GetUserSettings(userID string) (models.UserSettings, error) {
@@ -133,7 +134,6 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 			return "", 0, fmt.Errorf("capsolver service is currently disabled")
 		}
 
-		// Check user's Capsolver key
 		if settings.CapSolverAPIKey != "" {
 			isValid, balance, err := ValidateCaptchaKey(settings.CapSolverAPIKey, "capsolver")
 			if err != nil {
@@ -145,7 +145,6 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 			return settings.CapSolverAPIKey, balance, nil
 		}
 
-		// Use default Capsolver key
 		defaultKey := cfg.CaptchaService.Capsolver.ClientKey
 		isValid, balance, err := ValidateCaptchaKey(defaultKey, "capsolver")
 		if err != nil {
@@ -158,7 +157,6 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 
 	case "ezcaptcha":
 		if !cfg.CaptchaService.EZCaptcha.Enabled {
-			// If EZCaptcha is disabled, try to transition to Capsolver
 			if cfg.CaptchaService.Capsolver.Enabled {
 				settings.PreferredCaptchaProvider = "capsolver"
 				if err := database.DB.Save(&settings).Error; err != nil {

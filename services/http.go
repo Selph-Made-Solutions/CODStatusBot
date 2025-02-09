@@ -144,6 +144,16 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 		}
 	}
 
+	isUsingDefaultKey := userSettings.CapSolverAPIKey == "" &&
+		userSettings.EZCaptchaAPIKey == "" &&
+		userSettings.TwoCaptchaAPIKey == ""
+
+	if isUsingDefaultKey {
+		if !validateRateLimit(userID, "check_account", cfg.RateLimits.CheckNow) {
+			return models.StatusUnknown, fmt.Errorf("rate limit exceeded for default key users")
+		}
+	}
+
 	solver, err := GetCaptchaSolver(userID)
 	if err != nil {
 		if strings.Contains(err.Error(), "insufficient balance") {

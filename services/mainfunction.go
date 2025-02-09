@@ -30,6 +30,7 @@ func init() {}
 
 func InitializeServices() {
 	cfg := configuration.Get()
+	initDefaultSettings()
 	logger.Log.Infof("Loaded rate limits and intervals: CHECK_INTERVAL=%d, NOTIFICATION_INTERVAL=%.2f, "+
 		"COOLDOWN_DURATION=%.2f, SLEEP_DURATION=%d, COOKIE_CHECK_INTERVAL_PERMABAN=%.2f, "+
 		"STATUS_CHANGE_COOLDOWN=%.2f, GLOBAL_NOTIFICATION_COOLDOWN=%.2f, COOKIE_EXPIRATION_WARNING=%.2f, "+
@@ -66,7 +67,7 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 		}
 	}
 
-	if account.LastStatus == newStatus {
+	if account.LastStatus == newStatus && account.LastStatus != models.StatusUnknown {
 		logger.Log.Debugf("No status change for account %s, skipping notification", account.Title)
 		return
 	}
@@ -75,13 +76,14 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 	defer DBMutex.Unlock()
 
 	now := time.Now()
+	previousStatus := account.LastStatus
 	lastStatusChange := time.Unix(account.LastStatusChange, 0)
 	if now.Sub(lastStatusChange) < time.Duration(userSettings.StatusChangeCooldown)*time.Hour {
 		logger.Log.Debugf("Status change notification for account %s is on cooldown", account.Title)
 		return
 	}
 
-	previousStatus := account.LastStatus
+	//	previousStatus := account.LastStatus
 	account.LastStatus = newStatus
 	account.LastStatusChange = now.Unix()
 	account.IsPermabanned = newStatus == models.StatusPermaban
@@ -95,6 +97,26 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 		return
 	}
 
+	// Create status change log
+	statusLog := models.Ban{
+		AccountID: account.ID,
+		Status:    newStatus,
+		LogType:   "status_change",
+		Message:   fmt.Sprintf("Status changed from %s to %s", previousStatus, newStatus),
+		Timestamp: now,
+	}
+
+	if newStatus == models.StatusPermaban ||
+		newStatus == models.StatusTempban ||
+		newStatus == models.StatusShadowban {
+		statusLog.AffectedGames = getAffectedGames(account.SSOCookie)
+	}
+
+	if newStatus == models.StatusTempban {
+		statusLog.TempBanDuration = calculateBanDuration(time.Now().Add(24 * time.Hour))
+	}
+
+	// Create ban record
 	ban := models.Ban{
 		AccountID: account.ID,
 		Status:    newStatus,
@@ -107,11 +129,19 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 		ban.AffectedGames = getAffectedGames(account.SSOCookie)
 	}
 
+	// Save both the status log and ban record
+	if err := database.DB.Create(&statusLog).Error; err != nil {
+		logger.Log.WithError(err).Error("Failed to create status change log")
+	}
+
 	if err := database.DB.Create(&ban).Error; err != nil {
 		logger.Log.WithError(err).Error("Failed to create ban record")
 	} else {
 		logger.Log.Infof("Created ban record for account %s: %s -> %s", account.Title, previousStatus, newStatus)
 	}
+
+	//	account.LastStatus = newStatus
+	//	account.LastStatusChange = now.Unix()
 
 	embed := &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%s - %s", account.Title, EmbedTitleFromStatus(newStatus)),
