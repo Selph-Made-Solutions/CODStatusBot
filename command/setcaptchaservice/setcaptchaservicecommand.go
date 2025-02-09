@@ -132,8 +132,10 @@ func showAPIKeyModal(s *discordgo.Session, i *discordgo.InteractionCreate, provi
 							CustomID:    "api_key",
 							Label:       fmt.Sprintf("Enter your %s API key", providerLabels[provider]),
 							Style:       discordgo.TextInputShort,
-							Placeholder: "Enter your API key",
+							Placeholder: "Enter your new API key",
 							Required:    true,
+							MinLength:   32,
+							MaxLength:   90,
 						},
 					},
 				},
@@ -186,10 +188,26 @@ func validateAndSaveAPIKey(s *discordgo.Session, i *discordgo.InteractionCreate,
 		return fmt.Errorf("error saving settings")
 	}
 
-	respondToInteraction(s, i, fmt.Sprintf(
-		"Your %s API key has been set successfully. Your current balance is %.2f points. You now have access to faster check intervals and no rate limits!",
-		providerLabels[provider], balance))
+	embed := &discordgo.MessageEmbed{
+		Title:       "API Key Configuration Updated",
+		Description: fmt.Sprintf("Your %s API key has been configured successfully!", providerLabels[provider]),
+		Color:       0x00ff00,
+		Fields: []*discordgo.MessageEmbedField{
+			{
+				Name:   "Premium Features Unlocked",
+				Value:  "• Faster check intervals\n• Increased account limits\n• Priority status updates",
+				Inline: false,
+			},
+			{
+				Name:   "Service Provider",
+				Value:  providerLabels[provider],
+				Inline: true,
+			},
+		},
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
 
+	respondToInteractionWithEmbed(s, i, "", embed)
 	return nil
 }
 
@@ -218,5 +236,26 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	})
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction")
+	}
+}
+
+func respondToInteractionWithEmbed(s *discordgo.Session, i *discordgo.InteractionCreate, message string, embed *discordgo.MessageEmbed) {
+	response := &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Flags: discordgo.MessageFlagsEphemeral,
+		},
+	}
+
+	if message != "" {
+		response.Data.Content = message
+	}
+	if embed != nil {
+		response.Data.Embeds = []*discordgo.MessageEmbed{embed}
+	}
+
+	err := s.InteractionRespond(i.Interaction, response)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error responding to interaction with embed")
 	}
 }
