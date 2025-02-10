@@ -204,11 +204,11 @@ func createAccountLogEmbed(account models.Account) *discordgo.MessageEmbed {
 
 	embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
 		Name: "Account Information",
-		Value: fmt.Sprintf("Current Status: %s\nCreated: %s\nLast Checked: %s",
+		Value: fmt.Sprintf("Current Status: %s\nChecks: %s\nCreated: %s\nLast Checked: %s",
 			account.LastStatus,
 			services.GetCheckStatus(account.IsCheckDisabled),
-			time.Unix(account.Created, 0).Format("Jan 02, 2006 15:04:05"),
-			time.Unix(account.LastCheck, 0).Format("Jan 02, 2006 15:04:05")),
+			time.Unix(account.Created, 0).Format("Jan 02, 2006 15:04:05 MST"),
+			time.Unix(account.LastCheck, 0).Format("Jan 02, 2006 15:04:05 MST")),
 		Inline: false,
 	})
 
@@ -232,7 +232,7 @@ func createAccountLogEmbed(account models.Account) *discordgo.MessageEmbed {
 		}
 
 		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
-			Name:   fmt.Sprintf("%s", log.Timestamp.Format("Jan 02, 2006 15:04:05")),
+			Name:   fmt.Sprintf("%s", log.Timestamp.Format("Jan 02, 2006 15:04:05 MST")),
 			Value:  fieldValue.String(),
 			Inline: false,
 		})
