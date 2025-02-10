@@ -376,3 +376,10 @@ func ValidateDefaultCapsolverConfig() error {
 
 	return nil
 }
+
+func GetCheckStatus(isCheckDisabled bool) string {
+	if isCheckDisabled {
+		return "Disabled"
+	}
+	return "Enabled"
+}

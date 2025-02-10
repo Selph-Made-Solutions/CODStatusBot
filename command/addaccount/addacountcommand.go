@@ -231,6 +231,18 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
+	accountLog := models.Ban{
+		AccountID: account.ID,
+		Status:    models.StatusUnknown,
+		LogType:   "account_added",
+		Message:   fmt.Sprintf("Account '%s' was added to monitoring", account.Title),
+		Timestamp: time.Now(),
+	}
+
+	if err := database.DB.Create(&accountLog).Error; err != nil {
+		logger.Log.WithError(err).Error("Failed to create account creation log")
+	}
+
 	vipStatus := "Regular Account"
 	if account.IsVIP {
 		vipStatus = "VIP Account"

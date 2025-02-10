@@ -9,6 +9,7 @@ import (
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
+	"github.com/bradselph/CODStatusBot/services"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -186,25 +187,59 @@ func handleAllAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate) 
 
 func createAccountLogEmbed(account models.Account) *discordgo.MessageEmbed {
 	var logs []models.Ban
-	database.DB.Where("account_id = ?", account.ID).Order("created_at desc").Limit(10).Find(&logs)
+	database.DB.Where("account_id = ?", account.ID).Order("timestamp desc").Limit(15).Find(&logs)
 
 	embed := &discordgo.MessageEmbed{
-		Title:       fmt.Sprintf("%s - Account Logs", account.Title),
-		Description: "The last 10 status changes for this account",
-		Color:       0x00ff00,
-		Fields:      make([]*discordgo.MessageEmbedField, len(logs)),
-	}
-
-	for i, log := range logs {
-		embed.Fields[i] = &discordgo.MessageEmbedField{
-			Name:   fmt.Sprintf("Status Change %d", i+1),
-			Value:  fmt.Sprintf("Status: %s\nTime: %s", log.Status, log.CreatedAt.Format(time.RFC1123)),
-			Inline: false,
-		}
+		Title:       fmt.Sprintf("%s - Account History", account.Title),
+		Description: fmt.Sprintf("Recent account history (showing last %d entries)", len(logs)),
+		Color:       services.GetColorForStatus(account.LastStatus, account.IsExpiredCookie, account.IsCheckDisabled),
+		Fields:      make([]*discordgo.MessageEmbedField, 0),
+		Timestamp:   time.Now().Format(time.RFC3339),
 	}
 
 	if len(logs) == 0 {
-		embed.Description = "No status changes logged for this account yet."
+		embed.Description = "No history found for this account."
+		return embed
+	}
+
+	embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+		Name: "Account Information",
+		Value: fmt.Sprintf("Current Status: %s\nChecks: %s\nCreated: %s\nLast Checked: %s",
+			account.LastStatus,
+			services.GetCheckStatus(account.IsCheckDisabled),
+			time.Unix(account.Created, 0).Format("Jan 02, 2006 15:04:05 MST"),
+			time.Unix(account.LastCheck, 0).Format("Jan 02, 2006 15:04:05 MST")),
+		Inline: false,
+	})
+
+	for _, log := range logs {
+		var fieldValue strings.Builder
+
+		switch log.LogType {
+		case "account_added":
+			fieldValue.WriteString("Account added to monitoring\n")
+		case "status_change":
+			fieldValue.WriteString(fmt.Sprintf("%s\n", log.Message))
+
+			if log.Status != models.StatusGood && log.Status != models.StatusUnknown {
+				if log.AffectedGames != "" {
+					fieldValue.WriteString(fmt.Sprintf("Affected Games: %s\n", log.AffectedGames))
+				}
+				if log.TempBanDuration != "" {
+					fieldValue.WriteString(fmt.Sprintf("Duration: %s\n", log.TempBanDuration))
+				}
+			}
+		}
+
+		embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+			Name:   fmt.Sprintf("%s", log.Timestamp.Format("Jan 02, 2006 15:04:05 MST")),
+			Value:  fieldValue.String(),
+			Inline: false,
+		})
+	}
+
+	embed.Footer = &discordgo.MessageEmbedFooter{
+		Text: "Use /checknow to perform an immediate status check",
 	}
 
 	return embed
