@@ -452,7 +452,7 @@ func ScheduleTempBanNotification(s *discordgo.Session, account models.Account, d
 		}
 	}
 
-	result, err := CheckAccount(account.SSOCookie, account.UserID, "")
+	result, err := CheckAccount(account.SSOCookie, account.UserID, "", "")
 	if err != nil {
 		logger.Log.WithError(err).Errorf("Failed to check account %s after temporary ban duration", account.Title)
 		return

@@ -294,7 +294,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	go func() {
 		time.Sleep(2 * time.Second)
 
-		status, err := services.CheckAccount(ssoCookie, userID, "")
+		status, err := services.CheckAccount(ssoCookie, userID, "", "user")
 		if err != nil {
 			logger.Log.WithError(err).Error("Error performing initial status check")
 			return

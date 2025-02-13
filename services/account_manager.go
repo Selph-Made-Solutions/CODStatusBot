@@ -133,7 +133,7 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 			continue
 		}
 
-		result, err := CheckAccount(account.SSOCookie, userID, "")
+		result, err := CheckAccount(account.SSOCookie, userID, "", "automated")
 		if err != nil {
 			handleCheckError(s, &account, err)
 			continue

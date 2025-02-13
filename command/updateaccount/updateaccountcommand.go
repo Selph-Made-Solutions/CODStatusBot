@@ -313,7 +313,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	go func() {
 		defer close(statusCheckDone)
 		time.Sleep(1 * time.Second)
-		status, err := services.CheckAccount(newSSOCookie, userID, "")
+		status, err := services.CheckAccount(newSSOCookie, userID, "", "user")
 		if err != nil {
 			logger.Log.WithError(err).Error("Error performing status check after update")
 			return

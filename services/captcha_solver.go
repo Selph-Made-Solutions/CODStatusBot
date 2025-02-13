@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bradselph/CODStatusBot/configuration"
@@ -24,27 +25,35 @@ const (
 	TwoCaptchaResultEndpoint = "https://api.2captcha.com/getTaskResult"
 	MaxRetries               = 6
 	RetryInterval            = 10 * time.Second
-	//	capsol                   = "capsolver"
-	//	ezcap                    = "ezcaptcha"
-	//	twocap                   = "2captcha"
+	capsol                   = "capsolver"
+	ezcap                    = "ezcaptcha"
+	twocap                   = "2captcha"
 )
+
+var captchaChecks sync.Map
 
 type CaptchaSolver interface {
 	SolveReCaptchaV2(siteKey, pageURL string) (string, error)
 }
 type CapsolverSolver struct {
-	APIKey string
-	AppID  string
+	APIKey    string
+	AppID     string
+	userID    string
+	initiator string
 }
 
 type EZCaptchaSolver struct {
-	APIKey  string
-	EzappID string
+	APIKey    string
+	EzappID   string
+	userID    string
+	initiator string
 }
 
 type TwoCaptchaSolver struct {
-	APIKey string
-	SoftID string
+	APIKey    string
+	SoftID    string
+	userID    string
+	initiator string
 }
 
 func IsServiceEnabled(provider string) bool {
@@ -83,7 +92,7 @@ func VerifyEZCaptchaConfig() bool {
 	return true
 }
 
-func NewCaptchaSolver(apiKey, provider string) (CaptchaSolver, error) {
+func NewCaptchaSolver(apiKey, provider string, userID string, initiator string) (CaptchaSolver, error) {
 	cfg := configuration.Get()
 
 	if !IsServiceEnabled(provider) {
@@ -93,18 +102,24 @@ func NewCaptchaSolver(apiKey, provider string) (CaptchaSolver, error) {
 	switch provider {
 	case "capsolver":
 		return &CapsolverSolver{
-			APIKey: apiKey,
-			AppID:  cfg.CaptchaService.Capsolver.AppID,
+			APIKey:    apiKey,
+			AppID:     cfg.CaptchaService.Capsolver.AppID,
+			userID:    userID,
+			initiator: initiator,
 		}, nil
 	case "ezcaptcha":
 		return &EZCaptchaSolver{
-			APIKey:  apiKey,
-			EzappID: cfg.CaptchaService.EZCaptcha.AppID,
+			APIKey:    apiKey,
+			EzappID:   cfg.CaptchaService.EZCaptcha.AppID,
+			userID:    userID,
+			initiator: initiator,
 		}, nil
 	case "2captcha":
 		return &TwoCaptchaSolver{
-			APIKey: apiKey,
-			SoftID: cfg.CaptchaService.TwoCaptcha.SoftID,
+			APIKey:    apiKey,
+			SoftID:    cfg.CaptchaService.TwoCaptcha.SoftID,
+			userID:    userID,
+			initiator: initiator,
 		}, nil
 	default:
 		return nil, errors.New("unsupported captcha provider")
@@ -112,27 +127,99 @@ func NewCaptchaSolver(apiKey, provider string) (CaptchaSolver, error) {
 }
 
 func (s *CapsolverSolver) SolveReCaptchaV2(siteKey, pageURL string) (string, error) {
-	taskID, err := s.createTask(siteKey, pageURL)
-	if err != nil {
-		return "", fmt.Errorf("failed to create capsolver task: %w", err)
+	check := map[string]interface{}{
+		"user_id":    s.userID,
+		"provider":   "capsolver",
+		"start_time": time.Now(),
+		"initiator":  s.initiator,
 	}
-	return s.getTaskResult(taskID)
-}
-func (s *EZCaptchaSolver) SolveReCaptchaV2(siteKey, pageURL string) (string, error) {
+	captchaChecks.Store(s.userID, check)
 
 	taskID, err := s.createTask(siteKey, pageURL)
 	if err != nil {
-		return "", fmt.Errorf("failed to create captcha task: %w", err)
+		check["end_time"] = time.Now()
+		check["success"] = false
+		check["error"] = err.Error()
+		logger.Log.WithFields(check).Info("Captcha solve failed at task creation")
+		captchaChecks.Delete(s.userID)
+		return "", fmt.Errorf("failed to create capsolver task: %w", err)
 	}
-	return s.getTaskResult(taskID)
+
+	result, err := s.getTaskResult(taskID)
+
+	check["end_time"] = time.Now()
+	check["success"] = err == nil
+	if err != nil {
+		check["error"] = err.Error()
+	}
+	logger.Log.WithFields(check).Info("Captcha solve completed")
+	captchaChecks.Delete(s.userID)
+
+	return result, err
+}
+
+func (s *EZCaptchaSolver) SolveReCaptchaV2(siteKey, pageURL string) (string, error) {
+	check := map[string]interface{}{
+		"user_id":    s.userID,
+		"provider":   "capsolver",
+		"start_time": time.Now(),
+		"initiator":  s.initiator,
+	}
+	captchaChecks.Store(s.userID, check)
+
+	taskID, err := s.createTask(siteKey, pageURL)
+	if err != nil {
+		check["end_time"] = time.Now()
+		check["success"] = false
+		check["error"] = err.Error()
+		logger.Log.WithFields(check).Info("Captcha solve failed at task creation")
+		captchaChecks.Delete(s.userID)
+		return "", fmt.Errorf("failed to create ezcaptcha task: %w", err)
+	}
+
+	result, err := s.getTaskResult(taskID)
+
+	check["end_time"] = time.Now()
+	check["success"] = err == nil
+	if err != nil {
+		check["error"] = err.Error()
+	}
+	logger.Log.WithFields(check).Info("Captcha solve completed")
+	captchaChecks.Delete(s.userID)
+
+	return result, err
 }
 
 func (s *TwoCaptchaSolver) SolveReCaptchaV2(siteKey, pageURL string) (string, error) {
+	check := map[string]interface{}{
+		"user_id":    s.userID,
+		"provider":   "capsolver",
+		"start_time": time.Now(),
+		"initiator":  s.initiator,
+	}
+	captchaChecks.Store(s.userID, check)
+
 	taskID, err := s.createTask(siteKey, pageURL)
 	if err != nil {
-		return "", fmt.Errorf("failed to create captcha task: %w", err)
+		check["end_time"] = time.Now()
+		check["success"] = false
+		check["error"] = err.Error()
+		logger.Log.WithFields(check).Info("Captcha solve failed at task creation")
+		captchaChecks.Delete(s.userID)
+		return "", fmt.Errorf("failed to create twocaptcha task: %w", err)
 	}
-	return s.getTaskResult(taskID)
+
+	result, err := s.getTaskResult(taskID)
+
+	check["end_time"] = time.Now()
+	check["success"] = err == nil
+	if err != nil {
+		check["error"] = err.Error()
+	}
+	logger.Log.WithFields(check).Info("Captcha solve completed")
+	captchaChecks.Delete(s.userID)
+
+	return result, err
 }
 
 func (s *CapsolverSolver) createTask(siteKey, pageURL string) (string, error) {

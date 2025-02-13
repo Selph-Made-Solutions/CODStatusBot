@@ -32,14 +32,6 @@ func initDefaultSettings() {
 	} else if cfg.CaptchaService.TwoCaptcha.Enabled {
 		defaultSettings.PreferredCaptchaProvider = "2captcha"
 	}
-	/*
-		logger.Log.Infof("Default settings initialized: CheckInterval=%d, NotificationInterval=%.2f, CooldownDuration=%.2f, StatusChangeCooldown=%.2f, Provider=%s",
-			defaultSettings.CheckInterval,
-			defaultSettings.NotificationInterval,
-			defaultSettings.CooldownDuration,
-			defaultSettings.StatusChangeCooldown,
-			defaultSettings.PreferredCaptchaProvider)
-	*/
 }
 
 func GetUserSettings(userID string) (models.UserSettings, error) {
@@ -51,7 +43,6 @@ func GetUserSettings(userID string) (models.UserSettings, error) {
 		return models.UserSettings{}, fmt.Errorf("error getting user settings: %w", result.Error)
 	}
 
-	// Check if user has custom API key
 	hasCustomKey := settings.CapSolverAPIKey != "" ||
 		settings.EZCaptchaAPIKey != "" ||
 		settings.TwoCaptchaAPIKey != ""
@@ -161,18 +152,6 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 				settings.PreferredCaptchaProvider = "capsolver"
 				if err := database.DB.Save(&settings).Error; err != nil {
 					logger.Log.WithError(err).Error("Failed to update preferred provider")
-					/*					}
-										// Fall through to use default Capsolver key
-										defaultKey := cfg.CaptchaService.Capsolver.ClientKey
-										isValid, balance, err := ValidateCaptchaKey(defaultKey, "capsolver")
-										if err != nil {
-											return "", 0, err
-										}
-										if !isValid {
-											return "", 0, fmt.Errorf("invalid default capsolver API key")
-										}
-										return defaultKey, balance, nil
-					*/
 				}
 				return GetUserCaptchaKey(userID)
 			}
@@ -191,23 +170,10 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 
 	case "2captcha":
 		if !cfg.CaptchaService.TwoCaptcha.Enabled {
-			// If 2Captcha is disabled, try to transition to Capsolver
 			if cfg.CaptchaService.Capsolver.Enabled {
 				settings.PreferredCaptchaProvider = "capsolver"
 				if err := database.DB.Save(&settings).Error; err != nil {
 					logger.Log.WithError(err).Error("Failed to update preferred provider")
-					/*					}
-										// Fall through to use default Capsolver key
-										defaultKey := cfg.CaptchaService.Capsolver.ClientKey
-										isValid, balance, err := ValidateCaptchaKey(defaultKey, "capsolver")
-										if err != nil {
-											return "", 0, err
-										}
-										if !isValid {
-											return "", 0, fmt.Errorf("invalid default capsolver API key")
-										}
-										return defaultKey, balance, nil
-					*/
 				}
 				return GetUserCaptchaKey(userID)
 			}
@@ -225,7 +191,6 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 		}
 	}
 
-	// If no custom key is set or no specific provider is selected, use default Capsolver
 	if cfg.CaptchaService.Capsolver.Enabled {
 		defaultKey := cfg.CaptchaService.Capsolver.ClientKey
 		isValid, balance, err := ValidateCaptchaKey(defaultKey, "capsolver")
@@ -238,7 +203,6 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 		return defaultKey, balance, nil
 	}
 
-	// If Capsolver is disabled, try other enabled services in order of preference
 	if cfg.CaptchaService.EZCaptcha.Enabled {
 		settings.PreferredCaptchaProvider = "ezcaptcha"
 		if err := database.DB.Save(&settings).Error; err != nil {
@@ -258,7 +222,7 @@ func GetUserCaptchaKey(userID string) (string, float64, error) {
 	return "", 0, fmt.Errorf("no valid API key found for provider %s", settings.PreferredCaptchaProvider)
 }
 
-func GetCaptchaSolver(userID string) (CaptchaSolver, error) {
+func GetCaptchaSolver(userID string, initiator string) (CaptchaSolver, error) {
 	settings, err := GetUserSettings(userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user settings: %w", err)
@@ -266,10 +230,10 @@ func GetCaptchaSolver(userID string) (CaptchaSolver, error) {
 
 	apiKey, _, err := GetUserCaptchaKey(userID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user captcha key: %w", err)
+		return nil, err
 	}
 
-	return NewCaptchaSolver(apiKey, settings.PreferredCaptchaProvider)
+	return NewCaptchaSolver(apiKey, settings.PreferredCaptchaProvider, userID, initiator)
 }
 
 func GetDefaultSettings() (models.UserSettings, error) {
@@ -287,12 +251,10 @@ func RemoveCaptchaKey(userID string) error {
 		return result.Error
 	}
 
-	// Check if user had custom keys before removal
 	hadCustomKey := settings.CapSolverAPIKey != "" ||
 		settings.EZCaptchaAPIKey != "" ||
 		settings.TwoCaptchaAPIKey != ""
 
-	// Get configuration and count accounts only once
 	cfg := configuration.Get()
 	var accountCount int64
 	if err := database.DB.Model(&models.Account{}).Where("user_id = ?", userID).Count(&accountCount).Error; err != nil {
@@ -303,7 +265,6 @@ func RemoveCaptchaKey(userID string) error {
 	settings.EZCaptchaAPIKey = ""
 	settings.TwoCaptchaAPIKey = ""
 
-	// Reset to default settings
 	settings.PreferredCaptchaProvider = defaultSettings.PreferredCaptchaProvider
 	settings.CustomSettings = false
 	settings.CheckInterval = defaultSettings.CheckInterval
@@ -316,7 +277,6 @@ func RemoveCaptchaKey(userID string) error {
 
 	defaultMax := cfg.RateLimits.DefaultMaxAccounts
 
-	// If user exceeds default limits, send warning
 	if int64(defaultMax) < accountCount {
 		var accounts []models.Account
 		if err := database.DB.Where("user_id = ?", userID).Find(&accounts).Error; err != nil {
@@ -324,7 +284,6 @@ func RemoveCaptchaKey(userID string) error {
 			return err
 		}
 
-		// Update all accounts to default notification type
 		for _, account := range accounts {
 			account.NotificationType = defaultSettings.NotificationType
 			if err := database.DB.Save(&account).Error; err != nil {
@@ -332,7 +291,6 @@ func RemoveCaptchaKey(userID string) error {
 			}
 		}
 
-		// Create warning embed
 		embed := &discordgo.MessageEmbed{
 			Title: "Account Limit Warning",
 			Description: fmt.Sprintf("You currently have %d accounts monitored, which exceeds the default limit of %d accounts.\n"+
@@ -359,7 +317,6 @@ func RemoveCaptchaKey(userID string) error {
 			Timestamp: time.Now().Format(time.RFC3339),
 		}
 
-		// Send warning notification
 		if len(accounts) > 0 {
 			if err := SendNotification(nil, accounts[0], embed, "", "api_key_removal_warning"); err != nil {
 				logger.Log.WithError(err).Error("Failed to send API key removal warning")
@@ -367,7 +324,6 @@ func RemoveCaptchaKey(userID string) error {
 		}
 	}
 
-	// Save updated settings
 	if err := database.DB.Save(&settings).Error; err != nil {
 		logger.Log.WithError(err).Error("Error saving user settings")
 		return err

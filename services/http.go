@@ -110,7 +110,7 @@ func VerifySSOCookie(ssoCookie string) bool {
 	return false
 }
 
-func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models.Status, error) {
+func CheckAccount(ssoCookie string, userID string, captchaAPIKey string, initiator string) (models.Status, error) {
 	cfg := configuration.Get()
 	logger.Log.Info("Starting CheckAccount function")
 
@@ -154,7 +154,7 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 		}
 	}
 
-	solver, err := GetCaptchaSolver(userID)
+	solver, err := GetCaptchaSolver(userID, "user")
 	if err != nil {
 		if strings.Contains(err.Error(), "insufficient balance") {
 			if err := DisableUserCaptcha(nil, userID, "Insufficient balance"); err != nil {

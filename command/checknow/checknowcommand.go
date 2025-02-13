@@ -388,7 +388,7 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 			continue
 		}
 
-		status, err := services.CheckAccount(account.SSOCookie, account.UserID, "")
+		status, err := services.CheckAccount(account.SSOCookie, account.UserID, "", "user")
 		if err != nil {
 			logger.Log.WithError(err).Errorf("Error checking account %s", account.Title)
 			description := "An error occurred while checking this account. "
