@@ -68,7 +68,7 @@ type NotificationState struct {
 	lastSent    time.Time
 }
 
-func NotifyAdmin(s *discordgo.Session, message string) {
+func NotifyAdmin(s *discordgo.Session, message *discordgo.MessageEmbed) {
 	cfg := configuration.Get()
 	adminID := cfg.Discord.DeveloperID
 	if adminID == "" {

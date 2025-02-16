@@ -43,7 +43,7 @@ func validateRateLimit(userID, action string, duration time.Duration) bool {
 	return true
 }
 
-func isChannelError(err error) bool {
+func IsChannelError(err error) bool {
 	return strings.Contains(err.Error(), "Missing Access") ||
 		strings.Contains(err.Error(), "Unknown Channel") ||
 		strings.Contains(err.Error(), "Missing Permissions")

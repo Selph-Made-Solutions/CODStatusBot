@@ -38,8 +38,9 @@ type Account struct {
 
 type UserSettings struct {
 	gorm.Model
-	UserID string `gorm:"type:varchar(255);uniqueIndex"` // The ID of the user.
-	//	UserID                       string               `gorm:"uniqueIndex"` // The ID of the user.
+	InstallationType             string               `gorm:"default:'guild'"`               // 'guild' or 'user'
+	GuildID                      string               `gorm:"index"`                         // Only populated for guild installations
+	UserID                       string               `gorm:"type:varchar(255);uniqueIndex"` // The ID of the user.
 	CapSolverAPIKey              string               // User's own Capsolver API key, if provided
 	EZCaptchaAPIKey              string               // User's own EZCaptcha API key, if provided
 	TwoCaptchaAPIKey             string               // User's own 2captcha API key, if provided

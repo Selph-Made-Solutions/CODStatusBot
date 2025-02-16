@@ -93,7 +93,6 @@ func run() error {
 	services.InitializeServices()
 	cfg := configuration.Get()
 
-	// Check if at least one service is properly configured
 	if !cfg.CaptchaService.Capsolver.Enabled && !cfg.CaptchaService.EZCaptcha.Enabled && !cfg.CaptchaService.TwoCaptcha.Enabled {
 		logger.Log.Warn("No captcha services are enabled - functionality will be limited")
 	} else {
@@ -246,6 +245,20 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 	}()
 
 	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				cleanupStaleEntries(s)
+			}
+		}
+	}()
+
+	go func() {
 		ticker := time.NewTicker(12 * time.Hour)
 		defer ticker.Stop()
 
@@ -261,4 +274,61 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 
 	logger.Log.Info("Periodic tasks started successfully")
 
+}
+
+/*
+	func isChannelError(err error) bool {
+		if err == nil {
+			return false
+		}
+		return strings.Contains(err.Error(), "Missing Access") ||
+			strings.Contains(err.Error(), "Unknown Channel") ||
+			strings.Contains(err.Error(), "Missing Permissions")
+	}
+*/
+func cleanupStaleEntries(s *discordgo.Session) {
+	var accounts []models.Account
+	if err := database.DB.Find(&accounts).Error; err != nil {
+		logger.Log.WithError(err).Error("Failed to fetch accounts for cleanup")
+		return
+	}
+
+	var staleAccounts []models.Account
+	for _, account := range accounts {
+		_, err := s.Channel(account.ChannelID)
+		if err != nil && services.IsChannelError(err) {
+			staleAccounts = append(staleAccounts, account)
+		}
+	}
+
+	if len(staleAccounts) > 0 {
+		embed := &discordgo.MessageEmbed{
+			Title:       "Stale Accounts Detected",
+			Description: fmt.Sprintf("Found %d accounts that may need cleanup due to lost access.", len(staleAccounts)),
+			Color:       0xFF0000,
+			Fields:      make([]*discordgo.MessageEmbedField, 0),
+			Timestamp:   time.Now().Format(time.RFC3339),
+		}
+
+		accountsByUser := make(map[string][]models.Account)
+		for _, account := range staleAccounts {
+			accountsByUser[account.UserID] = append(accountsByUser[account.UserID], account)
+		}
+
+		for userID, userAccounts := range accountsByUser {
+			accountsList := strings.Builder{}
+			for _, acc := range userAccounts {
+				accountsList.WriteString(fmt.Sprintf("- %s (ID: %d)\n", acc.Title, acc.ID))
+			}
+
+			embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+				Name:   fmt.Sprintf("User ID: %s", userID),
+				Value:  accountsList.String(),
+				Inline: false,
+			})
+		}
+
+		services.NotifyAdminWithCooldown(s, "Stale accounts detected requiring review", 24*time.Hour)
+		services.NotifyAdmin(s, embed)
+	}
 }

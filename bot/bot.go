@@ -19,7 +19,9 @@ import (
 	"github.com/bradselph/CODStatusBot/command/togglecheck"
 	"github.com/bradselph/CODStatusBot/command/updateaccount"
 	"github.com/bradselph/CODStatusBot/configuration"
+	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
+	"github.com/bradselph/CODStatusBot/models"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -60,6 +62,8 @@ func StartBot() (*discordgo.Session, error) {
 			handleModalSubmit(s, i)
 		case discordgo.InteractionMessageComponent:
 			handleMessageComponent(s, i)
+		case discordgo.InteractionWebhook:
+			handleWebhook(s, i)
 		}
 	})
 
@@ -122,4 +126,32 @@ func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate
 		logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 	}
 
+}
+
+func handleWebhook(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	if i.Type == discordgo.InteractionApplicationCommand {
+		command.HandleCommand(s, i)
+	} else {
+		switch i.Data.(type) {
+		case *discordgo.ApplicationCommandInteractionData:
+			if i.ApplicationCommandData().Name == "APPLICATION_AUTHORIZED" {
+				installationType := i.ApplicationCommandData().Options[0].IntValue()
+				userID := i.Member.User.ID
+				guildID := ""
+				if installationType == 0 {
+					guildID = i.GuildID
+				}
+
+				settings := models.UserSettings{
+					UserID:           userID,
+					InstallationType: map[int64]string{0: "guild", 1: "user"}[installationType],
+					GuildID:          guildID,
+				}
+
+				if err := database.DB.Create(&settings).Error; err != nil {
+					logger.Log.WithError(err).Error("Failed to create user settings for new installation")
+				}
+			}
+		}
+	}
 }
