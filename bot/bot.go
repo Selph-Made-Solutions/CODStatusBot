@@ -2,7 +2,9 @@ package bot
 
 import (
 	"errors"
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/bradselph/CODStatusBot/command"
 	"github.com/bradselph/CODStatusBot/command/accountage"
@@ -22,6 +24,7 @@ import (
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
+	"github.com/bradselph/CODStatusBot/services"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -62,12 +65,37 @@ func StartBot() (*discordgo.Session, error) {
 			handleModalSubmit(s, i)
 		case discordgo.InteractionMessageComponent:
 			handleMessageComponent(s, i)
-		case discordgo.InteractionWebhook:
-			handleWebhook(s, i)
 		}
 	})
 
+	discord.AddHandler(func(s *discordgo.Session, e *discordgo.GuildCreate) {
+		handleGuildOrUserAuthorization(s, e.Guild.ID, e.Guild.OwnerID, "guild")
+	})
+
 	return discord, nil
+}
+
+func handleGuildOrUserAuthorization(s *discordgo.Session, guildID string, userID string, installationType string) {
+	settings := models.UserSettings{
+		UserID:           userID,
+		InstallationType: installationType,
+		GuildID:          guildID,
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title:       "New Installation",
+		Description: fmt.Sprintf("New %s installation from user %s", installationType, userID),
+		Color:       0x00ff00,
+		Timestamp:   time.Now().Format(time.RFC3339),
+	}
+
+	if err := database.DB.Create(&settings).Error; err != nil {
+		logger.Log.WithError(err).Error("Failed to create user settings for new installation")
+		embed.Color = 0xFF0000
+		embed.Description += fmt.Sprintf("\nError: %v", err)
+	}
+
+	services.NotifyAdmin(s, embed)
 }
 
 func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -126,32 +154,4 @@ func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate
 		logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 	}
 
-}
-
-func handleWebhook(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	if i.Type == discordgo.InteractionApplicationCommand {
-		command.HandleCommand(s, i)
-	} else {
-		switch i.Data.(type) {
-		case *discordgo.ApplicationCommandInteractionData:
-			if i.ApplicationCommandData().Name == "APPLICATION_AUTHORIZED" {
-				installationType := i.ApplicationCommandData().Options[0].IntValue()
-				userID := i.Member.User.ID
-				guildID := ""
-				if installationType == 0 {
-					guildID = i.GuildID
-				}
-
-				settings := models.UserSettings{
-					UserID:           userID,
-					InstallationType: map[int64]string{0: "guild", 1: "user"}[installationType],
-					GuildID:          guildID,
-				}
-
-				if err := database.DB.Create(&settings).Error; err != nil {
-					logger.Log.WithError(err).Error("Failed to create user settings for new installation")
-				}
-			}
-		}
-	}
 }

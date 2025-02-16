@@ -82,14 +82,7 @@ func NotifyAdmin(s *discordgo.Session, message *discordgo.MessageEmbed) {
 		return
 	}
 
-	embed := &discordgo.MessageEmbed{
-		Title:       "Admin Notification",
-		Description: message,
-		Color:       0xFF0000,
-		Timestamp:   time.Now().Format(time.RFC3339),
-	}
-
-	_, err = s.ChannelMessageSendEmbed(channel.ID, embed)
+	_, err = s.ChannelMessageSendEmbed(channel.ID, message)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to send admin notification")
 	}
@@ -581,7 +574,13 @@ func NotifyAdminWithCooldown(s *discordgo.Session, message string, cooldownDurat
 	lastNotification := admin.LastCommandTimes[notificationType]
 
 	if lastNotification.IsZero() || now.Sub(lastNotification) >= cooldownDuration {
-		NotifyAdmin(s, message)
+		embed := &discordgo.MessageEmbed{
+			Title:       "Admin Notification",
+			Description: message,
+			Color:       0xFF0000,
+			Timestamp:   time.Now().Format(time.RFC3339),
+		}
+		NotifyAdmin(s, embed)
 		admin.LastCommandTimes[notificationType] = now
 		if err := database.DB.Save(&admin).Error; err != nil {
 			logger.Log.WithError(err).Error("Error saving admin settings")
