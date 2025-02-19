@@ -2,7 +2,6 @@ package services
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/bradselph/CODStatusBot/configuration"
@@ -43,11 +42,13 @@ func validateRateLimit(userID, action string, duration time.Duration) bool {
 	return true
 }
 
-func isChannelError(err error) bool {
-	return strings.Contains(err.Error(), "Missing Access") ||
-		strings.Contains(err.Error(), "Unknown Channel") ||
-		strings.Contains(err.Error(), "Missing Permissions")
-}
+/*
+	func isChannelError(err error) bool {
+		return strings.Contains(err.Error(), "Missing Access") ||
+			strings.Contains(err.Error(), "Unknown Channel") ||
+			strings.Contains(err.Error(), "Missing Permissions")
+	}
+*/
 
 func checkActionRateLimit(userID, action string, duration time.Duration) bool {
 	var userSettings models.UserSettings
