@@ -762,22 +762,6 @@ func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettin
 	checkAccountsNeedingAttention(s, accounts, userSettings)
 }
 
-/*
-	func isCriticalError(err error) bool {
-		criticalErrors := []string{
-			"invalid captcha API key",
-			"insufficient balance",
-			"bot removed from server/channel",
-		}
-
-		for _, criticalErr := range criticalErrors {
-			if strings.Contains(err.Error(), criticalErr) {
-				return true
-			}
-		}
-		return false
-	}
-*/
 func GetStatusIcon(status models.Status) string {
 	cfg := configuration.Get()
 	switch status {
