@@ -311,8 +311,6 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 	return models.StatusUnknown, nil
 }
 
-// TODO: update with new capsolver details
-
 func UpdateCaptchaUsage(userID string) error {
 	settings, err := GetUserSettings(userID)
 	if err != nil {
