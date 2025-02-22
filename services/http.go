@@ -294,6 +294,16 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 
 	for _, ban := range data.Bans {
 		logger.Log.WithField("ban", ban).Info("Processing ban")
+		banLog := models.Ban{
+			Status:    determineBanStatus(ban.Enforcement),
+			LogType:   "status_change",
+			Timestamp: time.Now(),
+		}
+
+		if err := database.DB.Create(&banLog).Error; err != nil {
+			logger.Log.WithError(err).Error("Failed to log ban details")
+		}
+
 		switch ban.Enforcement {
 		case "PERMANENT":
 			logger.Log.Info("Permanent ban detected")
@@ -311,7 +321,18 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 	return models.StatusUnknown, nil
 }
 
-// TODO: update with new capsolver details
+func determineBanStatus(enforcement string) models.Status {
+	switch enforcement {
+	case "PERMANENT":
+		return models.StatusPermaban
+	case "UNDER_REVIEW":
+		return models.StatusShadowban
+	case "TEMPORARY":
+		return models.StatusTempban
+	default:
+		return models.StatusUnknown
+	}
+}
 
 func UpdateCaptchaUsage(userID string) error {
 	settings, err := GetUserSettings(userID)

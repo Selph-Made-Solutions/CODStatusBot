@@ -387,7 +387,7 @@ func handlePermaBanNotification(s *discordgo.Session, account models.Account, ba
 				Inline: true,
 			},
 			{
-				Name:   "Sugested Action",
+				Name:   "Suggested Action",
 				Value:  "Remove account using /removeaccount",
 				Inline: true,
 			},
