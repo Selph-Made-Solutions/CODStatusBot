@@ -112,13 +112,6 @@ func GetCooldownDuration(userSettings models.UserSettings, notificationType stri
 	}
 }
 
-/*
-func IsDonationsEnabled() bool {
-	cfg := configuration.Get()
-	return cfg.Donations.Enabled
-}
-*/
-
 func GetNotificationChannel(s *discordgo.Session, account models.Account, userSettings models.UserSettings) (string, error) {
 	if userSettings.NotificationType == "dm" {
 		channel, err := s.UserChannelCreate(account.UserID)
@@ -179,7 +172,7 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 					Description: fmt.Sprintf("The bot's default API key balance is currently low (%.2f points). "+
 						"To ensure uninterrupted service, consider the following options:", balance),
 					Color:     0xFFA500,
-					Fields:    BalanceWarningFields(cfg.Donations),
+					Fields:    BalanceWarningFields(),
 					Timestamp: time.Now().Format(time.RFC3339),
 					Footer: &discordgo.MessageEmbedFooter{
 						Text: "Thank you for using COD Status Bot!",
@@ -253,8 +246,7 @@ func CheckAndNotifyBalance(s *discordgo.Session, userID string, balance float64)
 	}
 }
 
-func BalanceWarningFields(config configuration.DonationsConfig) []*discordgo.MessageEmbedField {
-	cfg := configuration.Get()
+func BalanceWarningFields() []*discordgo.MessageEmbedField {
 	fields := []*discordgo.MessageEmbedField{
 		{
 			Name: "Option 1: Add Your Own API Key",
@@ -268,23 +260,6 @@ func BalanceWarningFields(config configuration.DonationsConfig) []*discordgo.Mes
 				"Checks will still work but may be delayed.",
 			Inline: false,
 		},
-	}
-
-	if cfg.Donations.Enabled {
-		supportField := &discordgo.MessageEmbedField{
-			Name:   "Support the Bot",
-			Value:  "Help maintain the service by contributing:\n",
-			Inline: false,
-		}
-
-		if cfg.Donations.BitcoinAddress != "" {
-			supportField.Value += fmt.Sprintf("• Bitcoin: `%s`\n", cfg.Donations.BitcoinAddress)
-		}
-		if cfg.Donations.CashAppID != "" {
-			supportField.Value += fmt.Sprintf("• CashApp: `%s`", cfg.Donations.CashAppID)
-		}
-
-		fields = append(fields, supportField)
 	}
 
 	return fields

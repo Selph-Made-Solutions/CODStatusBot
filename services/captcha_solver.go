@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bradselph/CODStatusBot/configuration"
@@ -16,14 +17,15 @@ import (
 )
 
 const (
-	CapsolverCreateEndpoint  = "https://api.capsolver.com/createTask"
-	CapsolverResultEndpoint  = "https://api.capsolver.com/getTaskResult"
-	EZCaptchaCreateEndpoint  = "https://api.ez-captcha.com/createTask"
-	EZCaptchaResultEndpoint  = "https://api.ez-captcha.com/getTaskResult"
-	TwoCaptchaCreateEndpoint = "https://api.2captcha.com/createTask"
-	TwoCaptchaResultEndpoint = "https://api.2captcha.com/getTaskResult"
-	MaxRetries               = 6
-	RetryInterval            = 10 * time.Second
+	CapsolverCreateEndpoint   = "https://api.capsolver.com/createTask"
+	CapsolverResultEndpoint   = "https://api.capsolver.com/getTaskResult"
+	CapsolverFeedbackEndpoint = "https://api.capsolver.com/feedbackTask"
+	EZCaptchaCreateEndpoint   = "https://api.ez-captcha.com/createTask"
+	EZCaptchaResultEndpoint   = "https://api.ez-captcha.com/getTaskResult"
+	TwoCaptchaCreateEndpoint  = "https://api.2captcha.com/createTask"
+	TwoCaptchaResultEndpoint  = "https://api.2captcha.com/getTaskResult"
+	MaxRetries                = 6
+	RetryInterval             = 10 * time.Second
 )
 
 type CaptchaSolver interface {
@@ -42,6 +44,93 @@ type EZCaptchaSolver struct {
 type TwoCaptchaSolver struct {
 	APIKey string
 	SoftID string
+}
+
+var capsolverTasksMutex sync.RWMutex
+var capsolverTasks = make(map[string]string)
+
+func StoreCapsolverTaskInfo(taskID, token string) {
+	capsolverTasksMutex.Lock()
+	defer capsolverTasksMutex.Unlock()
+	capsolverTasks[taskID] = token
+}
+
+func ReportCapsolverTaskResult(token string, isValid bool, errorMessage string) {
+	capsolverTasksMutex.RLock()
+	var taskID string
+	for id, storedToken := range capsolverTasks {
+		if storedToken == token {
+			taskID = id
+			break
+		}
+	}
+	capsolverTasksMutex.RUnlock()
+
+	if taskID == "" {
+		logger.Log.Warn("Cannot report Capsolver result: no task ID found for token")
+		return
+	}
+
+	cfg := configuration.Get()
+	reportErr := reportCapsolverTaskResult(cfg.CaptchaService.Capsolver.ClientKey, cfg.CaptchaService.Capsolver.AppID, taskID, isValid, 0, errorMessage)
+	if reportErr != nil {
+		logger.Log.WithError(reportErr).Warn("Failed to report Capsolver task result")
+	} else {
+		logger.Log.Infof("Successfully reported Capsolver task result for task %s, valid: %v", taskID, isValid)
+	}
+
+	capsolverTasksMutex.Lock()
+	delete(capsolverTasks, taskID)
+	capsolverTasksMutex.Unlock()
+}
+
+func reportCapsolverTaskResult(apiKey, appID, taskID string, isValid bool, errorCode int, errorMessage string) error {
+	if apiKey == "" || taskID == "" {
+		return errors.New("missing required parameters for feedback report")
+	}
+
+	payload := map[string]interface{}{
+		"clientKey": apiKey,
+		"taskId":    taskID,
+		"result": map[string]interface{}{
+			"invalid": !isValid,
+		},
+	}
+
+	if appID != "" {
+		payload["appId"] = appID
+	}
+
+	if !isValid && errorCode > 0 {
+		resultMap := payload["result"].(map[string]interface{})
+		resultMap["code"] = errorCode
+		if errorMessage != "" {
+			resultMap["message"] = errorMessage
+		}
+	}
+
+	resp, err := sendRequest(CapsolverFeedbackEndpoint, payload)
+	if err != nil {
+		return fmt.Errorf("failed to send feedback: %w", err)
+	}
+
+	var result struct {
+		ErrorId          int    `json:"errorId"`
+		ErrorCode        string `json:"errorCode"`
+		ErrorDescription string `json:"errorDescription"`
+		Message          string `json:"message"`
+	}
+
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return fmt.Errorf("failed to parse feedback response: %w", err)
+	}
+
+	if result.ErrorId != 0 {
+		return fmt.Errorf("feedback API error: %s - %s", result.ErrorCode, result.ErrorDescription)
+	}
+
+	logger.Log.Infof("Successfully reported Capsolver task result for task %s, valid: %v", taskID, isValid)
+	return nil
 }
 
 func IsServiceEnabled(provider string) bool {
@@ -113,8 +202,25 @@ func (s *CapsolverSolver) SolveReCaptchaV2(siteKey, pageURL string) (string, err
 	if err != nil {
 		return "", fmt.Errorf("failed to create capsolver task: %w", err)
 	}
-	return s.getTaskResult(taskID)
+
+	response, err := s.getTaskResult(taskID)
+	if err != nil {
+		if !strings.Contains(err.Error(), "failed to send request") &&
+			!strings.Contains(err.Error(), "failed to read response") {
+			logger.Log.Infof("Reporting Capsolver task failure for task %s", taskID)
+			reportErr := reportCapsolverTaskResult(s.APIKey, s.AppID, taskID, false, 1001, err.Error())
+			if reportErr != nil {
+				logger.Log.WithError(reportErr).Warn("Failed to report Capsolver task failure")
+			}
+		}
+		return "", err
+	}
+
+	StoreCapsolverTaskInfo(taskID, response)
+
+	return response, nil
 }
+
 func (s *EZCaptchaSolver) SolveReCaptchaV2(siteKey, pageURL string) (string, error) {
 
 	taskID, err := s.createTask(siteKey, pageURL)

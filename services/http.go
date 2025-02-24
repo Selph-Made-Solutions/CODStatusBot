@@ -26,6 +26,7 @@ type AccountValidationResult struct {
 
 func init() {
 	cfg := configuration.Get()
+	InitHTTPClients()
 	logger.Log.Infof("Initialized endpoints: Profile URL: %s", cfg.API.ProfileEndpoint)
 }
 
@@ -39,10 +40,7 @@ func VerifySSOCookie(ssoCookie string) bool {
 		return false
 	}
 
-	client := &http.Client{
-		Timeout: 120 * time.Second,
-	}
-
+	client := GetLongTimeoutHTTPClient()
 	maxRetries := 3
 	var lastError error
 
@@ -185,9 +183,7 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 	checkRequest := fmt.Sprintf("%s?locale=en&g-cc=%s", cfg.API.CheckEndpoint, gRecaptchaResponse)
 	logger.Log.WithField("url", checkRequest).Info("Constructed account check request")
 
-	client := &http.Client{
-		Timeout: 120 * time.Second,
-	}
+	client := GetLongTimeoutHTTPClient()
 
 	req, err := http.NewRequest("GET", checkRequest, nil)
 	if err != nil {
@@ -283,6 +279,13 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 	}
 	logger.Log.WithField("data", data).Info("Parsed ban data")
 
+	if strings.Contains(string(body), "InvalidCaptchaException") || resp.StatusCode == 400 {
+		ReportCapsolverTaskResult(gRecaptchaResponse, false, "Invalid captcha token rejected by Activision API")
+		return models.StatusUnknown, fmt.Errorf("invalid captcha response")
+	} else if resp.StatusCode == 200 {
+		ReportCapsolverTaskResult(gRecaptchaResponse, true, "")
+	}
+
 	if data.Success == "true" && len(data.Bans) == 0 {
 		logger.Log.Info("No bans found, account status is good")
 		return models.StatusGood, nil
@@ -356,6 +359,9 @@ func UpdateCaptchaUsage(userID string) error {
 func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 	logger.Log.Info("Starting CheckAccountAge function")
 	cfg := configuration.Get()
+
+	client := GetDefaultHTTPClient()
+
 	req, err := http.NewRequest("GET", cfg.API.ProfileEndpoint, nil)
 	if err != nil {
 		return 0, 0, 0, 0, errors.New("failed to create HTTP request to check account age")
@@ -364,9 +370,7 @@ func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	client := &http.Client{
-		Timeout: 60 * time.Second,
-	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, 0, 0, 0, errors.New("failed to send HTTP request to check account age")
@@ -409,6 +413,9 @@ func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 func CheckVIPStatus(ssoCookie string) (bool, error) {
 	cfg := configuration.Get()
 	logger.Log.Info("Checking VIP status")
+
+	client := GetDefaultHTTPClient()
+
 	req, err := http.NewRequest("GET", cfg.API.CheckVIPEndpoint+ssoCookie, nil)
 	if err != nil {
 		return false, fmt.Errorf("failed to create HTTP request to check VIP status: %w", err)
@@ -417,9 +424,7 @@ func CheckVIPStatus(ssoCookie string) (bool, error) {
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return false, fmt.Errorf("failed to send HTTP request to check VIP status: %w", err)
@@ -456,6 +461,9 @@ func CheckVIPStatus(ssoCookie string) (bool, error) {
 
 func ValidateAndGetAccountInfo(ssoCookie string) (*AccountValidationResult, error) {
 	cfg := configuration.Get()
+
+	client := GetDefaultHTTPClient()
+
 	req, err := http.NewRequest("GET", cfg.API.ProfileEndpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create profile request: %w", err)
@@ -464,10 +472,6 @@ func ValidateAndGetAccountInfo(ssoCookie string) (*AccountValidationResult, erro
 	headers := GenerateHeaders(ssoCookie)
 	for k, v := range headers {
 		req.Header.Set(k, v)
-	}
-
-	client := &http.Client{
-		Timeout: 60 * time.Second,
 	}
 
 	resp, err := client.Do(req)
