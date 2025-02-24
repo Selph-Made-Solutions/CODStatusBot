@@ -112,13 +112,6 @@ func GetCooldownDuration(userSettings models.UserSettings, notificationType stri
 	}
 }
 
-/*
-func IsDonationsEnabled() bool {
-	cfg := configuration.Get()
-	return cfg.Donations.Enabled
-}
-*/
-
 func GetNotificationChannel(s *discordgo.Session, account models.Account, userSettings models.UserSettings) (string, error) {
 	if userSettings.NotificationType == "dm" {
 		channel, err := s.UserChannelCreate(account.UserID)

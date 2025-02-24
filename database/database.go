@@ -42,7 +42,6 @@ func Databaselogin() error {
 
 	DB = db
 
-	// Configure connection pool
 	sqlDB, err := DB.DB()
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to get database instance")
