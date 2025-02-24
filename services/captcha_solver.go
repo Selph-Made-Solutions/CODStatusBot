@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bradselph/CODStatusBot/configuration"
@@ -43,6 +44,44 @@ type EZCaptchaSolver struct {
 type TwoCaptchaSolver struct {
 	APIKey string
 	SoftID string
+}
+
+var capsolverTasksMutex sync.RWMutex
+var capsolverTasks = make(map[string]string)
+
+func StoreCapsolverTaskInfo(taskID, token string) {
+	capsolverTasksMutex.Lock()
+	defer capsolverTasksMutex.Unlock()
+	capsolverTasks[taskID] = token
+}
+
+func ReportCapsolverTaskResult(token string, isValid bool, errorMessage string) {
+	capsolverTasksMutex.RLock()
+	var taskID string
+	for id, storedToken := range capsolverTasks {
+		if storedToken == token {
+			taskID = id
+			break
+		}
+	}
+	capsolverTasksMutex.RUnlock()
+
+	if taskID == "" {
+		logger.Log.Warn("Cannot report Capsolver result: no task ID found for token")
+		return
+	}
+
+	cfg := configuration.Get()
+	reportErr := reportCapsolverTaskResult(cfg.CaptchaService.Capsolver.ClientKey, cfg.CaptchaService.Capsolver.AppID, taskID, isValid, 0, errorMessage)
+	if reportErr != nil {
+		logger.Log.WithError(reportErr).Warn("Failed to report Capsolver task result")
+	} else {
+		logger.Log.Infof("Successfully reported Capsolver task result for task %s, valid: %v", taskID, isValid)
+	}
+
+	capsolverTasksMutex.Lock()
+	delete(capsolverTasks, taskID)
+	capsolverTasksMutex.Unlock()
 }
 
 func reportCapsolverTaskResult(apiKey, appID, taskID string, isValid bool, errorCode int, errorMessage string) error {
@@ -177,17 +216,7 @@ func (s *CapsolverSolver) SolveReCaptchaV2(siteKey, pageURL string) (string, err
 		return "", err
 	}
 
-	if len(response) >= 50 {
-		reportErr := reportCapsolverTaskResult(s.APIKey, s.AppID, taskID, true, 0, "")
-		if reportErr != nil {
-			logger.Log.WithError(reportErr).Warn("Failed to report Capsolver task success")
-		}
-	} else {
-		reportErr := reportCapsolverTaskResult(s.APIKey, s.AppID, taskID, false, 1002, "Invalid token length")
-		if reportErr != nil {
-			logger.Log.WithError(reportErr).Warn("Failed to report Capsolver invalid token")
-		}
-	}
+	StoreCapsolverTaskInfo(taskID, response)
 
 	return response, nil
 }

@@ -279,6 +279,13 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 	}
 	logger.Log.WithField("data", data).Info("Parsed ban data")
 
+	if strings.Contains(string(body), "InvalidCaptchaException") || resp.StatusCode == 400 {
+		ReportCapsolverTaskResult(gRecaptchaResponse, false, "Invalid captcha token rejected by Activision API")
+		return models.StatusUnknown, fmt.Errorf("invalid captcha response")
+	} else if resp.StatusCode == 200 {
+		ReportCapsolverTaskResult(gRecaptchaResponse, true, "")
+	}
+
 	if data.Success == "true" && len(data.Bans) == 0 {
 		logger.Log.Info("No bans found, account status is good")
 		return models.StatusGood, nil
