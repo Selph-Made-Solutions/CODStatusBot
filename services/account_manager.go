@@ -289,18 +289,23 @@ func processNotifications(s *discordgo.Session, accounts []models.Account, userS
 			continue
 		}
 
-		switch account.LastStatus {
-		case models.StatusPermaban, models.StatusShadowban, models.StatusTempban:
-			HandleStatusChange(s, account, account.LastStatus, userSettings)
-		case models.StatusGood:
-			if isComingFromBannedState(account) {
-				HandleStatusChange(s, account, account.LastStatus, userSettings)
-			}
-		}
+		logger.Log.Infof("Processing notification for account %s with status: %s", account.Title, account.LastStatus)
+		HandleStatusChange(s, account, account.LastStatus, userSettings)
 	}
 }
 
 func isComingFromBannedState(account models.Account) bool {
+	var previousBan models.Ban
+	result := database.DB.Where("account_id = ?", account.ID).
+		Order("timestamp DESC").
+		First(&previousBan)
+
+	if result.Error != nil {
+		logger.Log.WithError(result.Error).
+			Errorf("Could not check previous ban state for account %s", account.Title)
+		return false
+	}
+
 	bannedStates := []models.Status{
 		models.StatusPermaban,
 		models.StatusShadowban,
@@ -308,7 +313,7 @@ func isComingFromBannedState(account models.Account) bool {
 	}
 
 	for _, state := range bannedStates {
-		if account.LastStatus == state {
+		if previousBan.Status == state {
 			return true
 		}
 	}
