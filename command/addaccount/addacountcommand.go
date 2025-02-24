@@ -165,36 +165,47 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	logger.Log.Infof("Attempting to add account. Title: %s, SSO Cookie length: %d", title, len(ssoCookie))
 
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Flags: discordgo.MessageFlagsEphemeral,
+		},
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Error sending deferred response")
+		return
+	}
+
 	validationResult, err := services.ValidateAndGetAccountInfo(ssoCookie)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error validating account")
-		respondToInteraction(s, i, fmt.Sprintf("Error processing account: %v", err))
+		sendFollowupMessage(s, i, fmt.Sprintf("Error processing account: %v", err))
 		return
 	}
 
 	if !validationResult.IsValid {
 		logger.Log.Error("Invalid SSO cookie provided")
-		respondToInteraction(s, i, "Invalid SSO cookie. Please make sure you've copied the entire cookie value.")
+		sendFollowupMessage(s, i, "Invalid SSO cookie. Please make sure you've copied the entire cookie value.")
 		return
 	}
 
 	channelID := getChannelID(s, i)
 	if channelID == "" {
-		respondToInteraction(s, i, "An error occurred while processing your request.")
+		sendFollowupMessage(s, i, "An error occurred while processing your request.")
 		return
 	}
 
 	userSettings, err := services.GetUserSettings(userID)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error fetching user settings")
-		respondToInteraction(s, i, "Error fetching user settings. Please try again.")
+		sendFollowupMessage(s, i, "Error fetching user settings. Please try again.")
 		return
 	}
 
 	var accountCount int64
 	if err := database.DB.Model(&models.Account{}).Where("user_id = ?", userID).Count(&accountCount).Error; err != nil {
 		logger.Log.WithError(err).Error("Error counting user accounts")
-		respondToInteraction(s, i, "Error checking account limit. Please try again.")
+		sendFollowupMessage(s, i, "Error checking account limit. Please try again.")
 		return
 	}
 
@@ -208,7 +219,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		} else {
 			msg += " Please remove some accounts before adding new ones."
 		}
-		respondToInteraction(s, i, msg)
+		sendFollowupMessage(s, i, msg)
 		return
 	}
 
@@ -227,7 +238,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	if err := database.DB.Create(&account).Error; err != nil {
 		logger.Log.WithError(err).WithFields(logrus.Fields{"userID": userID, "title": title}).Error("Error creating account")
-		respondToInteraction(s, i, "Error creating account. Please try again.")
+		sendFollowupMessage(s, i, "Error creating account. Please try again.")
 		return
 	}
 
@@ -283,13 +294,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		},
 	}
 
-	if err := services.SendNotification(s, account, embed, "", "account_added"); err != nil {
-		logger.Log.WithError(err).Error("Failed to send account added notification")
-		respondToInteraction(s, i, fmt.Sprintf("Account added successfully, but there was an error sending the confirmation message: %v", err))
-		return
-	}
-
-	respondToInteraction(s, i, "Account added successfully!")
+	sendFollowupMessageWithEmbed(s, i, "Account added successfully!", embed)
 
 	go func() {
 		time.Sleep(2 * time.Second)
@@ -308,6 +313,27 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 		services.HandleStatusChange(s, updatedAccount, status, userSettings)
 	}()
+}
+
+func sendFollowupMessage(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {
+	_, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+		Content: content,
+		Flags:   discordgo.MessageFlagsEphemeral,
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Error sending followup message")
+	}
+}
+
+func sendFollowupMessageWithEmbed(s *discordgo.Session, i *discordgo.InteractionCreate, content string, embed *discordgo.MessageEmbed) {
+	_, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+		Content: content,
+		Embeds:  []*discordgo.MessageEmbed{embed},
+		Flags:   discordgo.MessageFlagsEphemeral,
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Error sending followup message with embed")
+	}
 }
 
 func formatAccountAge(created time.Time) string {
@@ -344,6 +370,7 @@ func getChannelID(s *discordgo.Session, i *discordgo.InteractionCreate) string {
 	}
 	return channel.ID
 }
+
 func checkRateLimit(userID string) bool {
 	var userSettings models.UserSettings
 	if err := database.DB.Where("user_id = ?", userID).First(&userSettings).Error; err != nil {
