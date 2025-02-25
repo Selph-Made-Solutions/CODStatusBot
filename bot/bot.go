@@ -39,6 +39,10 @@ func StartBot() (*discordgo.Session, error) {
 		return nil, err
 	}
 
+	discord.Identify.Intents = discordgo.IntentsGuildMessages |
+		discordgo.IntentsDirectMessages |
+		discordgo.IntentsGuilds
+
 	err = discord.Open()
 	if err != nil {
 		return nil, err
@@ -53,6 +57,9 @@ func StartBot() (*discordgo.Session, error) {
 	logger.Log.Info("Registering global commands")
 
 	discord.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		installationType := getInstallationType(i)
+		logger.Log.Infof("Handling interaction in context: %s", installationType)
+
 		switch i.Type {
 		case discordgo.InteractionApplicationCommand:
 			command.HandleCommand(s, i)
@@ -63,7 +70,25 @@ func StartBot() (*discordgo.Session, error) {
 		}
 	})
 
+	discord.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
+		if m.Author.ID == s.State.User.ID {
+			return
+		}
+
+		channel, err := s.Channel(m.ChannelID)
+		if err == nil && channel.Type == discordgo.ChannelTypeDM {
+			logger.Log.Infof("Received DM from user %s: %s", m.Author.Username, m.Content)
+		}
+	})
+
 	return discord, nil
+}
+
+func getInstallationType(i *discordgo.InteractionCreate) string {
+	if i.GuildID != "" {
+		return "server"
+	}
+	return "direct"
 }
 
 func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -121,5 +146,4 @@ func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate
 	default:
 		logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 	}
-
 }
