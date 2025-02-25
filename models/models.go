@@ -8,7 +8,8 @@ import (
 
 type Account struct {
 	gorm.Model
-	UserID                 string    `gorm:"index"` // The ID of the user.
+	UserID                 string    `gorm:"index"`      // The ID of the user.
+	GuildID                string    `gorm:"default:''"` // The guild ID if the account was added in a server context
 	ChannelID              string    // The ID of the channel associated with the account.
 	Title                  string    // user assigned title for the account
 	LastStatus             Status    `gorm:"default:unknown"` // The last known status of the account.
@@ -64,6 +65,12 @@ type UserSettings struct {
 	CustomSettings               bool                 `gorm:"default:false"`   // Flag to indicate if user has custom settings
 	LastCommandTimes             map[string]time.Time `gorm:"serializer:json"` // Map of command names to their last execution time
 	RateLimitExpiration          map[string]time.Time `gorm:"serializer:json"` // Map of command names to their rate limit expiration time
+	InstallationType             string               `gorm:"default:''"`      // 'server' or 'direct' - how the user installed the bot
+	InstallationGuildID          string               `gorm:"default:''"`      // The guild ID where the bot was installed (if server)
+	InstallationTime             time.Time            // When the user first interacted with the bot
+	LastGuildInteraction         time.Time            // Last time the user interacted in a guild context
+	LastDirectInteraction        time.Time            // Last time the user interacted in DM context
+	PrimaryInteractionContext    string               `gorm:"default:''"` // The context where the user interacts most frequently
 }
 
 type Ban struct {
@@ -127,10 +134,40 @@ func (u *UserSettings) EnsureMapsInitialized() {
 
 func (u *UserSettings) BeforeCreate(tx *gorm.DB) error {
 	u.EnsureMapsInitialized()
+
+	if u.InstallationTime.IsZero() {
+		u.InstallationTime = time.Now()
+	}
+
 	return nil
 }
 
 func (u *UserSettings) AfterFind(tx *gorm.DB) error {
 	u.EnsureMapsInitialized()
 	return nil
+}
+
+func (u *UserSettings) UpdateInteractionContext(guildID string) {
+	now := time.Now()
+
+	if u.InstallationType == "" {
+		if guildID != "" {
+			u.InstallationType = "server"
+			u.InstallationGuildID = guildID
+		} else {
+			u.InstallationType = "direct"
+		}
+	}
+
+	if guildID != "" {
+		u.LastGuildInteraction = now
+	} else {
+		u.LastDirectInteraction = now
+	}
+
+	if u.LastGuildInteraction.After(u.LastDirectInteraction) {
+		u.PrimaryInteractionContext = "server"
+	} else {
+		u.PrimaryInteractionContext = "direct"
+	}
 }

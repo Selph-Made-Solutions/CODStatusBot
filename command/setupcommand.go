@@ -20,6 +20,7 @@ import (
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
+	"github.com/bradselph/CODStatusBot/services"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -30,9 +31,10 @@ func RegisterCommands(s *discordgo.Session) error {
 
 	commands := []*discordgo.ApplicationCommand{
 		{
-			Name:         "globalannouncement",
-			Description:  "Send a global announcement to all users (Admin only)",
-			DMPermission: BoolPtr(true),
+			Name:                     "globalannouncement",
+			Description:              "Send a global announcement to all users (Admin only)",
+			DMPermission:             BoolPtr(true),
+			DefaultMemberPermissions: Int64Ptr(int64(discordgo.PermissionAdministrator)),
 		},
 		{
 			Name:         "setcaptchaservice",
@@ -62,7 +64,7 @@ func RegisterCommands(s *discordgo.Session) error {
 		{
 			Name:         "helpapi",
 			DMPermission: BoolPtr(true),
-			Description:  " Get help on using the bot and setting up your API key",
+			Description:  "Get help on using the bot and setting up your API key",
 		},
 		{
 			Name:         "helpcookie",
@@ -185,6 +187,10 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
+	if err := services.TrackUserInteraction(s, i); err != nil {
+		logger.Log.WithError(err).Error("Failed to track user interaction context")
+	}
+
 	var userSettings models.UserSettings
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings)
 	if result.Error != nil {
@@ -211,4 +217,8 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 func BoolPtr(b bool) *bool {
 	return &b
+}
+
+func Int64Ptr(i int64) *int64 {
+	return &i
 }

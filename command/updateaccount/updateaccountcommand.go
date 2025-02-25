@@ -182,7 +182,18 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	accountID, err := strconv.Atoi(accountIDStr)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error parsing account ID")
-		respondToInteractionWithEmbed(s, i, "Error processing your update. Please try again.", nil)
+		respondToInteractionWithMessage(s, i, "Error processing your update. Please try again.")
+		return
+	}
+
+	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Flags: discordgo.MessageFlagsEphemeral,
+		},
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Error sending deferred response")
 		return
 	}
 
@@ -198,19 +209,19 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	if newSSOCookie == "" {
-		respondToInteractionWithEmbed(s, i, "Error: New SSO cookie must be provided.", nil)
+		sendFollowupMessage(s, i, "Error: New SSO cookie must be provided.")
 		return
 	}
 
 	validationResult, err := services.ValidateAndGetAccountInfo(newSSOCookie)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error validating new SSO cookie")
-		respondToInteractionWithEmbed(s, i, fmt.Sprintf("Error validating cookie: %v", err), nil)
+		sendFollowupMessage(s, i, fmt.Sprintf("Error validating cookie: %v", err))
 		return
 	}
 
 	if !validationResult.IsValid {
-		respondToInteractionWithEmbed(s, i, "Error: The provided SSO cookie is invalid.", nil)
+		sendFollowupMessage(s, i, "Error: The provided SSO cookie is invalid.")
 		return
 	}
 
@@ -218,7 +229,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
-		respondToInteractionWithEmbed(s, i, "Error: Account not found or you don't have permission to update it.", nil)
+		sendFollowupMessage(s, i, "Error: Account not found or you don't have permission to update it.")
 		return
 	}
 
@@ -230,14 +241,14 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	if account.UserID != userID {
-		respondToInteractionWithEmbed(s, i, "Error: You don't have permission to update this account.", nil)
+		sendFollowupMessage(s, i, "Error: You don't have permission to update this account.")
 		return
 	}
 
 	userSettings, err := services.GetUserSettings(userID)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error fetching user settings")
-		respondToInteractionWithEmbed(s, i, "Error fetching user settings. Please try again.", nil)
+		sendFollowupMessage(s, i, "Error fetching user settings. Please try again.")
 		return
 	}
 
@@ -248,7 +259,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		} else if services.IsServiceEnabled("2captcha") {
 			msg += "Please switch to 2Captcha using /setcaptchaservice."
 		}
-		respondToInteractionWithEmbed(s, i, msg, nil)
+		sendFollowupMessage(s, i, msg)
 		return
 	}
 
@@ -268,7 +279,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	wg.Wait()
 	if !statusCheck {
 		logger.Log.WithError(statusErr).Error("SSO cookie validation failed")
-		respondToInteractionWithEmbed(s, i, "Error: SSO cookie validation failed. Please try again.", nil)
+		sendFollowupMessage(s, i, "Error: SSO cookie validation failed. Please try again.")
 		return
 	}
 
@@ -289,7 +300,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if err := database.DB.Save(&account).Error; err != nil {
 		services.DBMutex.Unlock()
 		logger.Log.WithError(err).Error("Failed to update account")
-		respondToInteractionWithEmbed(s, i, "Error updating account. Please try again.", nil)
+		sendFollowupMessage(s, i, "Error updating account. Please try again.")
 		return
 	}
 	services.DBMutex.Unlock()
@@ -320,11 +331,9 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	embed := createSuccessEmbed(&account, wasDisabled, vipStatusChange, validationResult.ExpiresAt, account.IsVIP)
-	respondToInteractionWithEmbed(s, i, "", embed)
+	sendFollowupMessageWithEmbed(s, i, "", embed)
 
-	statusCheckDone := make(chan bool)
 	go func() {
-		defer close(statusCheckDone)
 		time.Sleep(1 * time.Second)
 		status, err := services.CheckAccount(newSSOCookie, userID, "")
 		if err != nil {
@@ -334,12 +343,6 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 		services.HandleStatusChange(s, account, status, userSettings)
 	}()
-
-	select {
-	case <-statusCheckDone:
-	case <-time.After(10 * time.Second):
-		logger.Log.Warn("Status check timed out but account update completed")
-	}
 }
 
 func createSuccessEmbed(account *models.Account, wasDisabled bool, vipStatusChange string, expirationTimestamp int64, isVIP bool) *discordgo.MessageEmbed {
@@ -398,48 +401,54 @@ func getVIPStatusText(isVIP bool) string {
 	return "Regular Account"
 }
 
-func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
-	var err error
-	if i.Type == discordgo.InteractionMessageComponent {
-		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseUpdateMessage,
-			Data: &discordgo.InteractionResponseData{
-				Content:    message,
-				Components: []discordgo.MessageComponent{},
-				Flags:      discordgo.MessageFlagsEphemeral,
-			},
-		})
-	} else {
-		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: message,
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
+func sendFollowupMessage(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
+	_, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+		Content: message,
+		Flags:   discordgo.MessageFlagsEphemeral,
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Error sending followup message")
 	}
+}
+
+func sendFollowupMessageWithEmbed(s *discordgo.Session, i *discordgo.InteractionCreate, message string, embed *discordgo.MessageEmbed) {
+	params := &discordgo.WebhookParams{
+		Embeds: []*discordgo.MessageEmbed{embed},
+		Flags:  discordgo.MessageFlagsEphemeral,
+	}
+
+	if message != "" {
+		params.Content = message
+	}
+
+	_, err := s.FollowupMessageCreate(i.Interaction, true, params)
+	if err != nil {
+		logger.Log.WithError(err).Error("Error sending followup message with embed")
+	}
+}
+
+func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: message,
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
+	})
 	if err != nil {
 		logger.Log.WithError(err).Error("Error responding to interaction")
 	}
 }
 
-func respondToInteractionWithEmbed(s *discordgo.Session, i *discordgo.InteractionCreate, message string, embed *discordgo.MessageEmbed) {
-	responseData := &discordgo.InteractionResponseData{
-		Flags: discordgo.MessageFlagsEphemeral,
-	}
-
-	if message != "" {
-		responseData.Content = message
-	}
-	if embed != nil {
-		responseData.Embeds = []*discordgo.MessageEmbed{embed}
-	}
-
+func respondToInteractionWithMessage(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: responseData,
+		Data: &discordgo.InteractionResponseData{
+			Content: message,
+			Flags:   discordgo.MessageFlagsEphemeral,
+		},
 	})
 	if err != nil {
-		logger.Log.WithError(err).Error("Error responding to interaction with embed")
+		logger.Log.WithError(err).Error("Error responding to interaction with message")
 	}
 }

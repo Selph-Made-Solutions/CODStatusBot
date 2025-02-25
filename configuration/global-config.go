@@ -29,6 +29,8 @@ type Config struct {
 	Discord struct {
 		Token       string
 		DeveloperID string
+		ClientID    string
+		PublicKey   string
 	}
 
 	// Captcha Service Settings
@@ -137,6 +139,9 @@ func Load() error {
 
 	AppConfig.Discord.Token = os.Getenv("DISCORD_TOKEN")
 	AppConfig.Discord.DeveloperID = os.Getenv("DEVELOPER_ID")
+	AppConfig.Discord.ClientID = os.Getenv("DISCORD_CLIENT_ID")
+	AppConfig.Discord.PublicKey = os.Getenv("DISCORD_PUBLIC_KEY")
+
 	loadCaptchaConfig()
 	loadAPIEndpoints()
 
@@ -240,6 +245,10 @@ func validate() error {
 		return fmt.Errorf("missing required environment variables: %v", missingVars)
 	}
 
+	if AppConfig.Discord.ClientID == "" {
+		logger.Log.Warn("DISCORD_CLIENT_ID not set")
+	}
+
 	if AppConfig.CaptchaService.Capsolver.Enabled && AppConfig.CaptchaService.Capsolver.ClientKey == "" {
 		return fmt.Errorf("Capsolver is enabled but no client key provided")
 	}
@@ -288,6 +297,10 @@ func logConfigurationValues() {
 		logger.Log.Infof("Enabled captcha services: %s", strings.Join(enabledServices, ", "))
 	} else {
 		logger.Log.Warn("No captcha services are enabled")
+	}
+
+	if AppConfig.Discord.ClientID != "" {
+		logger.Log.Info("OAuth2 configuration loaded successfully")
 	}
 }
 
