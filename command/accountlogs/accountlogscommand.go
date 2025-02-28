@@ -111,6 +111,11 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		return
 	}
 
+	if !account.IsExpiredCookie && !services.VerifySSOCookie(account.SSOCookie) {
+		account.IsExpiredCookie = true
+		database.DB.Save(&account)
+	}
+
 	embed := createAccountLogEmbed(account)
 
 	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -148,6 +153,11 @@ func handleAllAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate) 
 
 	var embeds []*discordgo.MessageEmbed
 	for _, account := range accounts {
+		if !account.IsExpiredCookie && !services.VerifySSOCookie(account.SSOCookie) {
+			account.IsExpiredCookie = true
+			database.DB.Save(&account)
+		}
+
 		embed := createAccountLogEmbed(account)
 		embeds = append(embeds, embed)
 	}
@@ -185,17 +195,34 @@ func createAccountLogEmbed(account models.Account) *discordgo.MessageEmbed {
 	var logs []models.Ban
 	database.DB.Where("account_id = ?", account.ID).Order("timestamp desc").Limit(15).Find(&logs)
 
+	var validLogs []models.Ban
+	for _, log := range logs {
+		if !log.Timestamp.IsZero() && log.Timestamp.Year() > 1970 {
+			validLogs = append(validLogs, log)
+		}
+	}
+
 	embed := &discordgo.MessageEmbed{
 		Title:       fmt.Sprintf("%s - Account History", account.Title),
-		Description: fmt.Sprintf("Recent account history (showing last %d entries)", len(logs)),
+		Description: fmt.Sprintf("Recent account history (showing last %d entries)", len(validLogs)),
 		Color:       services.GetColorForStatus(account.LastStatus, account.IsExpiredCookie, account.IsCheckDisabled),
 		Fields:      make([]*discordgo.MessageEmbedField, 0),
 		Timestamp:   time.Now().Format(time.RFC3339),
 	}
 
-	if len(logs) == 0 {
-		embed.Description = "No history found for this account."
+	if len(validLogs) == 0 {
+		embed.Description = "No valid history found for this account."
 		return embed
+	}
+
+	createdTime := "Unknown"
+	if account.Created > 0 {
+		createdTime = time.Unix(account.Created, 0).Format("Jan 02, 2006 15:04:05 MST")
+	}
+
+	lastCheckTime := "Never checked"
+	if account.LastCheck > 0 {
+		lastCheckTime = time.Unix(account.LastCheck, 0).Format("Jan 02, 2006 15:04:05 MST")
 	}
 
 	embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
@@ -203,13 +230,17 @@ func createAccountLogEmbed(account models.Account) *discordgo.MessageEmbed {
 		Value: fmt.Sprintf("Current Status: %s\nChecks: %s\nCreated: %s\nLast Checked: %s",
 			account.LastStatus,
 			services.GetCheckStatus(account.IsCheckDisabled),
-			time.Unix(account.Created, 0).Format("Jan 02, 2006 15:04:05 MST"),
-			time.Unix(account.LastCheck, 0).Format("Jan 02, 2006 15:04:05 MST")),
+			createdTime,
+			lastCheckTime),
 		Inline: false,
 	})
 
 	for _, log := range logs {
 		var fieldValue strings.Builder
+
+		if log.Timestamp.IsZero() {
+			continue
+		}
 
 		switch log.LogType {
 		case "account_added":
@@ -241,6 +272,13 @@ func createAccountLogEmbed(account models.Account) *discordgo.MessageEmbed {
 	}
 
 	return embed
+}
+
+func formatTimeField(timestamp int64) string {
+	if timestamp <= 0 {
+		return "Not available"
+	}
+	return time.Unix(timestamp, 0).Format("Jan 02, 2006 15:04:05 MST")
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, content string) {

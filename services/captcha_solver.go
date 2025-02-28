@@ -72,6 +72,17 @@ func ReportCapsolverTaskResult(token string, isValid bool, errorMessage string) 
 	}
 
 	cfg := configuration.Get()
+
+	successStatus := "failure"
+	if isValid {
+		successStatus = "success"
+	}
+
+	logger.Log.Infof("Reporting captcha %s to Capsolver for task %s (error: %s)",
+		successStatus,
+		taskID,
+		errorMessage)
+
 	reportErr := reportCapsolverTaskResult(cfg.CaptchaService.Capsolver.ClientKey, cfg.CaptchaService.Capsolver.AppID, taskID, isValid, 0, errorMessage)
 	if reportErr != nil {
 		logger.Log.WithError(reportErr).Warn("Failed to report Capsolver task result")
