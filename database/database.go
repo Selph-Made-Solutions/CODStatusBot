@@ -55,6 +55,9 @@ func Databaselogin() error {
 		logger.Log.WithError(err).WithField("Bot Startup ", "Database Models Problem ").Error()
 		return err
 	}
+
+	CleanupInvalidTimestamps()
+
 	return nil
 }
 

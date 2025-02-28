@@ -83,7 +83,7 @@ type Ban struct {
 	PreviousStatus  Status    // Store the previous status for better tracking
 	TempBanDuration string    // Duration of the temporary ban (if applicable)
 	AffectedGames   string    // Comma-separated list of affected games
-	Timestamp       time.Time // When this log entry was created
+	Timestamp       time.Time `gorm:"default:CURRENT_TIMESTAMP"` // When this log entry was created
 	Initiator       string    // "auto_check" or "manual_check" or "system"
 	ErrorDetails    string    // For storing error information when relevant
 }
@@ -170,4 +170,45 @@ func (u *UserSettings) UpdateInteractionContext(guildID string) {
 	} else {
 		u.PrimaryInteractionContext = "direct"
 	}
+}
+
+func (b *Ban) BeforeCreate(tx *gorm.DB) error {
+	if b.Timestamp.IsZero() || b.Timestamp.Year() < 1970 {
+		b.Timestamp = time.Now()
+	}
+	return nil
+}
+
+func (a *Account) BeforeCreate(tx *gorm.DB) error {
+	now := time.Now()
+
+	if a.Created <= 0 {
+		a.Created = now.Unix()
+	}
+	if a.LastCheck <= 0 {
+		a.LastCheck = now.Unix()
+	}
+	if a.LastStatusChange <= 0 {
+		a.LastStatusChange = now.Unix()
+	}
+
+	return nil
+}
+
+func (a *Account) BeforeSave(tx *gorm.DB) error {
+	now := time.Now()
+
+	if a.Created <= 0 {
+		a.Created = now.Unix()
+	}
+
+	if a.Created > now.Unix()+86400 {
+		a.Created = now.Unix()
+	}
+
+	if a.LastCheck > now.Unix()+86400 {
+		a.LastCheck = now.Unix()
+	}
+
+	return nil
 }
