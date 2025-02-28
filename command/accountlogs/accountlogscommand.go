@@ -111,6 +111,11 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		return
 	}
 
+	if !account.IsExpiredCookie && !services.VerifySSOCookie(account.SSOCookie) {
+		account.IsExpiredCookie = true
+		database.DB.Save(&account)
+	}
+
 	embed := createAccountLogEmbed(account)
 
 	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
@@ -148,6 +153,11 @@ func handleAllAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate) 
 
 	var embeds []*discordgo.MessageEmbed
 	for _, account := range accounts {
+		if !account.IsExpiredCookie && !services.VerifySSOCookie(account.SSOCookie) {
+			account.IsExpiredCookie = true
+			database.DB.Save(&account)
+		}
+
 		embed := createAccountLogEmbed(account)
 		embeds = append(embeds, embed)
 	}

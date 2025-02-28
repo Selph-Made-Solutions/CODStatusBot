@@ -382,7 +382,12 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 				Color:       services.GetColorForStatus(account.LastStatus, account.IsExpiredCookie, true),
 				Timestamp:   time.Now().Format(time.RFC3339),
 			}
-		} else if account.IsExpiredCookie {
+		} else if account.IsExpiredCookie || !services.VerifySSOCookie(account.SSOCookie) {
+			if !account.IsExpiredCookie {
+				account.IsExpiredCookie = true
+				database.DB.Save(&account)
+			}
+
 			embed = &discordgo.MessageEmbed{
 				Title:       fmt.Sprintf("%s - Expired Cookie", account.Title),
 				Description: "The SSO cookie for this account has expired. Please update it using the /updateaccount command.",
@@ -390,7 +395,7 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 				Timestamp:   time.Now().Format(time.RFC3339),
 			}
 		} else {
-			status, err := services.CheckAccount(account.SSOCookie, account.UserID, "")
+			result, err := services.CheckAccount(account.SSOCookie, userID, "")
 			if err != nil {
 				logger.Log.WithError(err).Errorf("Error checking account %s", account.Title)
 				description := "An error occurred while checking this account. "
@@ -409,12 +414,12 @@ func checkAccounts(s *discordgo.Session, i *discordgo.InteractionCreate, account
 					Timestamp:   time.Now().Format(time.RFC3339),
 				}
 			} else {
-				services.HandleStatusChange(s, account, status, userSettings)
+				services.HandleStatusChange(s, account, result, userSettings)
 
 				embed = &discordgo.MessageEmbed{
 					Title:       fmt.Sprintf("%s - Status Check", account.Title),
-					Description: fmt.Sprintf("Current status: %s", status),
-					Color:       services.GetColorForStatus(status, account.IsExpiredCookie, account.IsCheckDisabled),
+					Description: fmt.Sprintf("Current status: %s", result),
+					Color:       services.GetColorForStatus(result, account.IsExpiredCookie, account.IsCheckDisabled),
 					Fields: []*discordgo.MessageEmbedField{
 						{
 							Name:   "Last Checked",

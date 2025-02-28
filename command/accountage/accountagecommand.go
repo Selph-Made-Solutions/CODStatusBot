@@ -90,10 +90,10 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		return
 	}
 
-	if !services.VerifySSOCookie(account.SSOCookie) {
+	if account.IsExpiredCookie || !services.VerifySSOCookie(account.SSOCookie) {
 		account.IsExpiredCookie = true
 		database.DB.Save(&account)
-		respondToInteraction(s, i, "Invalid SSOCookie. Account's cookie status updated.")
+		respondToInteraction(s, i, fmt.Sprintf("Error: The SSO Cookie for account '%s' has expired. Please update the cookie using /updateaccount.", account.Title))
 		return
 	}
 

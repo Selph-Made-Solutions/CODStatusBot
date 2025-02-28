@@ -101,6 +101,14 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 
 	if account.IsCheckDisabled {
+		if !services.VerifySSOCookie(account.SSOCookie) {
+			account.IsExpiredCookie = true
+			if err = database.DB.Save(&account).Error; err != nil {
+				logger.Log.WithError(err).Error("Error saving account after cookie validation")
+			}
+			respondToInteraction(s, i, fmt.Sprintf("Cannot enable checks for account '%s' as the SSO cookie has expired. Please update the cookie using /updateaccount first.", account.Title))
+			return
+		}
 		showConfirmationButtons(s, i, accountID, fmt.Sprintf("Are you sure you want to re-enable checks for account '%s'?", account.Title))
 	} else {
 		account.IsCheckDisabled = true
@@ -182,6 +190,15 @@ func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 	if account.UserID != userID {
 		respondToInteraction(s, i, "You don't have permission to modify this account.")
+		return
+	}
+
+	if !services.VerifySSOCookie(account.SSOCookie) {
+		account.IsExpiredCookie = true
+		if err = database.DB.Save(&account).Error; err != nil {
+			logger.Log.WithError(err).Error("Error saving account after cookie validation")
+		}
+		respondToInteraction(s, i, fmt.Sprintf("Cannot re-enable checks for account '%s' as the SSO cookie has expired. Please update the cookie using /updateaccount first.", account.Title))
 		return
 	}
 
