@@ -90,10 +90,18 @@ func LogNotification(userID string, accountID uint, notificationType string, suc
 }
 
 func updateBotStatistics(eventType string, success bool, responseTimeMs int64) {
+	tableExists := database.DB.Migrator().HasTable(&models.BotStatistics{})
+	if !tableExists {
+		logger.Log.Warn("Bot statistics table doesn't exist yet - skipping update")
+		return
+	}
+
 	today := time.Now().Format("2006-01-02")
 	todayTime, _ := time.Parse("2006-01-02", today)
 
 	var stats models.BotStatistics
+	stats.Date = todayTime
+
 	result := database.DB.Where("date = ?", todayTime).FirstOrCreate(&stats)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Failed to get/create bot statistics")
@@ -135,10 +143,19 @@ func updateBotStatistics(eventType string, success bool, responseTimeMs int64) {
 }
 
 func updateCommandStatistics(commandName string, success bool, responseTimeMs int64) {
+	tableExists := database.DB.Migrator().HasTable(&models.CommandStatistics{})
+	if !tableExists {
+		logger.Log.Warn("Command statistics table doesn't exist yet - skipping update")
+		return
+	}
+
 	today := time.Now().Format("2006-01-02")
 	todayTime, _ := time.Parse("2006-01-02", today)
 
 	var stats models.CommandStatistics
+	stats.CommandName = commandName
+	stats.Date = todayTime
+
 	result := database.DB.Where("date = ? AND command_name = ?", todayTime, commandName).FirstOrCreate(&stats)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Failed to get/create command statistics")
