@@ -11,6 +11,14 @@ import (
 )
 
 type Config struct {
+	// Admin API Endpoints
+	Admin struct {
+		Port     int
+		APIKey   string
+		Enabled  bool
+		BasePath string
+	}
+
 	// Environment
 	Environment string
 	LogDir      string
@@ -141,6 +149,11 @@ func Load() error {
 	AppConfig.Discord.DeveloperID = os.Getenv("DEVELOPER_ID")
 	AppConfig.Discord.ClientID = os.Getenv("DISCORD_CLIENT_ID")
 	AppConfig.Discord.PublicKey = os.Getenv("DISCORD_PUBLIC_KEY")
+
+	AppConfig.Admin.Enabled = getEnvAsBool("ADMIN_API_ENABLED", true)
+	AppConfig.Admin.Port = getEnvAsInt("ADMIN_PORT", 8080)
+	AppConfig.Admin.APIKey = os.Getenv("ADMIN_API_KEY")
+	AppConfig.Admin.BasePath = getEnvWithDefault("ADMIN_API_BASE_PATH", "/api")
 
 	loadCaptchaConfig()
 	loadAPIEndpoints()
@@ -329,6 +342,13 @@ func getEnvAsFloat(key string, defaultValue float64) float64 {
 		}
 		logger.Log.WithField("key", key).WithField("default", defaultValue).
 			Error("Failed to parse float from environment variable")
+	}
+	return defaultValue
+}
+
+func getEnvAsBool(key string, defaultValue bool) bool {
+	if value := os.Getenv(key); value != "" {
+		return strings.ToLower(value) == "true" || value == "1"
 	}
 	return defaultValue
 }

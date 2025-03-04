@@ -109,8 +109,19 @@ func VerifySSOCookie(ssoCookie string) bool {
 }
 
 func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models.Status, error) {
+	startTime := time.Now()
 	cfg := configuration.Get()
 	logger.Log.Info("Starting CheckAccount function")
+
+	var accountID uint = 0
+	var captchaProvider string = ""
+	var captchaCost float64 = 0.0
+
+	// Find accountID based on SSO cookie
+	var account models.Account
+	if result := database.DB.Where("sso_cookie = ?", ssoCookie).First(&account); result.Error == nil {
+		accountID = account.ID
+	}
 
 	userSettings, err := GetUserSettings(userID)
 	if err != nil {
@@ -309,6 +320,9 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 			return models.StatusTempban, nil
 		}
 	}
+
+	LogAccountCheck(accountID, userID, "", err == nil,
+		captchaProvider, captchaCost, time.Since(startTime).Milliseconds())
 
 	logger.Log.Info("Unknown account status")
 	return models.StatusUnknown, nil

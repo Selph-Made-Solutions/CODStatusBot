@@ -129,6 +129,9 @@ func run() error {
 	}
 	logger.Log.Info("Database connection established successfully")
 
+	services.StartAdminAPI()
+	logger.Log.Info("Admin API started successfully")
+
 	var err error
 	discord, err = bot.StartBot()
 	if err != nil {
@@ -265,6 +268,23 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 					logger.Log.WithError(err).Error("Failed to refresh presence status")
 				}
 				time.Sleep(60 * time.Minute)
+			}
+		}
+	}()
+
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				retentionDays := 90
+				if err := services.CleanupOldAnalyticsData(retentionDays); err != nil {
+					logger.Log.WithError(err).Error("Failed to clean up old analytics data")
+				}
 			}
 		}
 	}()

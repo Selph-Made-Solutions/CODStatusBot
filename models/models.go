@@ -94,7 +94,23 @@ type SuppressedNotification struct {
 	Content          string    `gorm:"type:text"` // The content of the suppressed notification.
 	Timestamp        time.Time `gorm:"index"`     // The timestamp of the suppressed notification.
 }
-
+type Analytics struct {
+	gorm.Model
+	Type            string `gorm:"index"`
+	UserID          string `gorm:"index"`
+	GuildID         string `gorm:"index"`
+	CommandName     string `gorm:"index"`
+	AccountID       uint   `gorm:"index"`
+	Status          string `gorm:"index"`
+	PreviousStatus  string
+	Success         bool
+	ResponseTimeMs  int64
+	CaptchaProvider string
+	CaptchaCost     float64
+	ErrorDetails    string
+	Timestamp       time.Time `gorm:"index"`
+	Day             string    `gorm:"index"` // YYYY-MM-DD format for easy querying
+}
 type Status string
 
 const (

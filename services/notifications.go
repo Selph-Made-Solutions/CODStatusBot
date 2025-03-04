@@ -493,6 +493,10 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 		Embed:   embed,
 		Content: content,
 	})
+
+	success := err == nil
+	LogNotification(account.UserID, account.ID, notificationType, success)
+
 	if err != nil {
 		return fmt.Errorf("failed to send message: %w", err)
 	}

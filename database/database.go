@@ -50,7 +50,15 @@ func Databaselogin() error {
 	sqlDB.SetMaxIdleConns(10)
 	sqlDB.SetMaxOpenConns(100)
 
-	err = DB.AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{}, &models.SuppressedNotification{})
+	err = DB.AutoMigrate(
+		&models.Account{},
+		&models.Ban{},
+		&models.UserSettings{},
+		&models.SuppressedNotification{},
+		&models.Analytics{},
+		&models.BotStatistics{},
+		&models.CommandStatistics{},
+	)
 	if err != nil {
 		logger.Log.WithError(err).WithField("Bot Startup ", "Database Models Problem ").Error()
 		return err
