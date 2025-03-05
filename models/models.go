@@ -6,7 +6,7 @@ import (
 	"gorm.io/gorm"
 )
 
-type Account struct {
+type Account struct { // The accounts table
 	gorm.Model
 	UserID                 string    `gorm:"index"`      // The ID of the user.
 	GuildID                string    `gorm:"default:''"` // The guild ID if the account was added in a server context
@@ -37,7 +37,7 @@ type Account struct {
 	LastAddAccountTime     time.Time // For add account rate limiting
 }
 
-type UserSettings struct {
+type UserSettings struct { // User settings for the bot
 	gorm.Model
 	UserID                       string               `gorm:"type:varchar(255);uniqueIndex"` // The ID of the user.
 	CapSolverAPIKey              string               // User's own Capsolver API key, if provided
@@ -71,9 +71,12 @@ type UserSettings struct {
 	LastGuildInteraction         time.Time            // Last time the user interacted in a guild context
 	LastDirectInteraction        time.Time            // Last time the user interacted in DM context
 	PrimaryInteractionContext    string               `gorm:"default:''"` // The context where the user interacts most frequently
+	MessageFailures              int                  `gorm:"default:0"`  // Number of failed messages
+	LastMessageFailure           time.Time            // Timestamp of the last failed message
+	IsUnreachable                bool                 `gorm:"default:false"` // Flag to indicate if the account is unreachable
+	UnreachableSince             time.Time            // Timestamp when the account became unreachable
 }
-
-type Ban struct {
+type Ban struct { // Define the Ban struct
 	gorm.Model
 	Account         Account   // The account that has a status history.
 	AccountID       uint      // The ID of the account.
@@ -87,31 +90,31 @@ type Ban struct {
 	Initiator       string    // "auto_check" or "manual_check" or "system"
 	ErrorDetails    string    // For storing error information when relevant
 }
-type SuppressedNotification struct {
+type SuppressedNotification struct { // The suppressed notifications table
 	gorm.Model
 	UserID           string    `gorm:"index"` // The ID of the user.
 	NotificationType string    // The type of notification suppressed.
 	Content          string    `gorm:"type:text"` // The content of the suppressed notification.
 	Timestamp        time.Time `gorm:"index"`     // The timestamp of the suppressed notification.
 }
-type Analytics struct {
+type Analytics struct { // The analytics table
 	gorm.Model
-	Type            string `gorm:"index"`
-	UserID          string `gorm:"index"`
-	GuildID         string `gorm:"index"`
-	CommandName     string `gorm:"index"`
-	AccountID       uint   `gorm:"index"`
-	Status          string `gorm:"index"`
-	PreviousStatus  string
-	Success         bool
-	ResponseTimeMs  int64
-	CaptchaProvider string
-	CaptchaCost     float64
-	ErrorDetails    string
-	Timestamp       time.Time `gorm:"index"`
+	Type            string    `gorm:"index"` // The type of analytics entry.
+	UserID          string    `gorm:"index"` // The ID of the user.
+	GuildID         string    `gorm:"index"` // The ID of the guild.
+	CommandName     string    `gorm:"index"` // The name of the command.
+	AccountID       uint      `gorm:"index"` // The ID of the account.
+	Status          string    `gorm:"index"` // The status of the account.
+	PreviousStatus  string    `gorm:"index"` // The previous status of the account.
+	Success         bool      // Whether the action was successful.
+	ResponseTimeMs  int64     // Response time in milliseconds.
+	CaptchaProvider string    // The name of the captcha provider used.
+	CaptchaCost     float64   // Cost of the captcha
+	ErrorDetails    string    // For storing error information when relevant
+	Timestamp       time.Time `gorm:"index"` // When this log entry was created
 	Day             string    `gorm:"index"` // YYYY-MM-DD format for easy querying
 }
-type Status string
+type Status string // The status of the account.
 
 const (
 	StatusGood          Status = "Good"           // The account status returned as good standing.
@@ -122,12 +125,12 @@ const (
 	StatusTempban       Status = "Temporary"      // The account status returned as temporarily banned.
 )
 
-type CaptchaProvider string
+type CaptchaProvider string // The type of captcha provider used.
 
 const (
-	Capsolver  CaptchaProvider = "capsolver"
-	EZCaptcha  CaptchaProvider = "ezcaptcha"
-	TwoCaptcha CaptchaProvider = "2captcha"
+	Capsolver  CaptchaProvider = "capsolver" // The captcha provider is CapSolver.
+	EZCaptcha  CaptchaProvider = "ezcaptcha" // The captcha provider is EZCaptcha.
+	TwoCaptcha CaptchaProvider = "2captcha"  // The captcha provider is 2Captcha.
 )
 
 func (u *UserSettings) EnsureMapsInitialized() {

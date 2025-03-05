@@ -13,10 +13,18 @@ import (
 type Config struct {
 	// Admin API Endpoints
 	Admin struct {
-		Port     int
-		APIKey   string
-		Enabled  bool
-		BasePath string
+		Port           int
+		APIKey         string
+		Enabled        bool
+		BasePath       string
+		StatsRateLimit float64
+		RetentionDays  int
+	}
+
+	// Database Performance
+	Performance struct {
+		DbMaxIdleConns int `json:"db_max_idle_conns"`
+		DbMaxOpenConns int `json:"db_max_open_conns"`
 	}
 
 	// Environment
@@ -114,6 +122,24 @@ type Config struct {
 		TempBanUpdate      float64
 	}
 
+	// User Management Settings
+	Users struct {
+		MaxMessageFailures     int
+		InactiveUserPeriod     time.Duration
+		UnreachableResetPeriod time.Duration
+	}
+
+	// Notification Settings
+	Notifications struct {
+		DefaultCooldown      time.Duration
+		MaxPerHour           int
+		MaxPerDay            int
+		MinInterval          time.Duration
+		BackoffBaseInterval  time.Duration
+		BackoffMaxMultiplier float64
+		BackoffHistoryWindow time.Duration
+	}
+
 	// Emoji Settings
 	Emojis struct {
 		CheckCircle    string
@@ -150,17 +176,15 @@ func Load() error {
 	AppConfig.Discord.ClientID = os.Getenv("DISCORD_CLIENT_ID")
 	AppConfig.Discord.PublicKey = os.Getenv("DISCORD_PUBLIC_KEY")
 
-	AppConfig.Admin.Enabled = getEnvAsBool("ADMIN_API_ENABLED", true)
-	AppConfig.Admin.Port = getEnvAsInt("ADMIN_PORT", 8080)
-	AppConfig.Admin.APIKey = os.Getenv("ADMIN_API_KEY")
-	AppConfig.Admin.BasePath = getEnvWithDefault("ADMIN_API_BASE_PATH", "/api")
-
+	loadAdminConfig()
 	loadCaptchaConfig()
 	loadAPIEndpoints()
-
+	loadUserSettings()
+	loadNotificationSettings()
 	loadRateLimits()
 	loadIntervals()
 	loadEmojiConfig()
+	loadPerformanceConfig()
 
 	if err := validate(); err != nil {
 		return fmt.Errorf("configuration validation failed: %w", err)
@@ -169,6 +193,37 @@ func Load() error {
 	logConfigurationValues()
 
 	return nil
+}
+
+func loadAdminConfig() {
+	AppConfig.Admin.Enabled = getEnvAsBool("ADMIN_API_ENABLED", true)
+	AppConfig.Admin.Port = getEnvAsInt("ADMIN_PORT", 8080)
+	AppConfig.Admin.APIKey = os.Getenv("ADMIN_API_KEY")
+	AppConfig.Admin.BasePath = getEnvWithDefault("ADMIN_API_BASE_PATH", "/api")
+	AppConfig.Admin.StatsRateLimit = getEnvAsFloat("ADMIN_STATS_RATE_LIMIT", 25.0)
+	AppConfig.Admin.RetentionDays = getEnvAsInt("ANALYTICS_RETENTION_DAYS", 90)
+}
+
+func loadUserSettings() {
+	AppConfig.Users.MaxMessageFailures = getEnvAsInt("MAX_MESSAGE_FAILURES", 25)
+	inactiveDays := getEnvAsInt("INACTIVE_USER_DAYS", 90)
+	AppConfig.Users.InactiveUserPeriod = time.Duration(inactiveDays) * 24 * time.Hour
+	unreachableDays := getEnvAsInt("UNREACHABLE_RESET_DAYS", 30)
+	AppConfig.Users.UnreachableResetPeriod = time.Duration(unreachableDays) * 24 * time.Hour
+}
+
+func loadNotificationSettings() {
+	cooldownMinutes := getEnvAsInt("NOTIFICATION_DEFAULT_COOLDOWN_MINUTES", 60)
+	AppConfig.Notifications.DefaultCooldown = time.Duration(cooldownMinutes) * time.Minute
+	AppConfig.Notifications.MaxPerHour = getEnvAsInt("NOTIFICATION_MAX_PER_HOUR", 4)
+	AppConfig.Notifications.MaxPerDay = getEnvAsInt("NOTIFICATION_MAX_PER_DAY", 10)
+	minIntervalMinutes := getEnvAsInt("NOTIFICATION_MIN_INTERVAL_MINUTES", 5)
+	AppConfig.Notifications.MinInterval = time.Duration(minIntervalMinutes) * time.Minute
+	baseIntervalMinutes := getEnvAsInt("NOTIFICATION_BACKOFF_BASE_MINUTES", 5)
+	AppConfig.Notifications.BackoffBaseInterval = time.Duration(baseIntervalMinutes) * time.Minute
+	AppConfig.Notifications.BackoffMaxMultiplier = getEnvAsFloat("NOTIFICATION_BACKOFF_MAX_MULTIPLIER", 6.0)
+	historyHours := getEnvAsInt("NOTIFICATION_HISTORY_WINDOW_HOURS", 24)
+	AppConfig.Notifications.BackoffHistoryWindow = time.Duration(historyHours) * time.Hour
 }
 
 func loadCaptchaConfig() {
@@ -229,6 +284,11 @@ func loadEmojiConfig() {
 	AppConfig.Emojis.InfoCircle = os.Getenv("INFOCIRCLE")
 	AppConfig.Emojis.StopWatch = os.Getenv("STOPWATCH")
 	AppConfig.Emojis.QuestionCircle = os.Getenv("QUESTIONCIRCLE")
+}
+
+func loadPerformanceConfig() {
+	AppConfig.Performance.DbMaxIdleConns = getEnvAsInt("DB_MAX_IDLE_CONNS", 10)
+	AppConfig.Performance.DbMaxOpenConns = getEnvAsInt("DB_MAX_OPEN_CONNS", 100)
 }
 
 func validate() error {
@@ -293,6 +353,29 @@ func logConfigurationValues() {
 		AppConfig.Intervals.TempBanUpdate,
 		AppConfig.RateLimits.CheckNow,
 		AppConfig.RateLimits.Default)
+
+	// Log user management settings
+	logger.Log.Infof("Loaded user management settings: MAX_MESSAGE_FAILURES=%d, INACTIVE_USER_DAYS=%.2f, "+
+		"UNREACHABLE_RESET_DAYS=%.2f",
+		AppConfig.Users.MaxMessageFailures,
+		AppConfig.Users.InactiveUserPeriod.Hours()/24,
+		AppConfig.Users.UnreachableResetPeriod.Hours()/24)
+
+	// Log notification settings
+	logger.Log.Infof("Loaded notification settings: DEFAULT_COOLDOWN=%v, MAX_PER_HOUR=%d, "+
+		"MAX_PER_DAY=%d, MIN_INTERVAL=%v",
+		AppConfig.Notifications.DefaultCooldown,
+		AppConfig.Notifications.MaxPerHour,
+		AppConfig.Notifications.MaxPerDay,
+		AppConfig.Notifications.MinInterval)
+
+	// Log admin API settings
+	logger.Log.Infof("Loaded admin API settings: ENABLED=%v, PORT=%d, STATS_RATE_LIMIT=%.2f, "+
+		"RETENTION_DAYS=%d",
+		AppConfig.Admin.Enabled,
+		AppConfig.Admin.Port,
+		AppConfig.Admin.StatsRateLimit,
+		AppConfig.Admin.RetentionDays)
 
 	// Log enabled captcha services
 	var enabledServices []string

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bwmarrin/discordgo"
 )
@@ -46,17 +47,18 @@ var notificationQueue = &NotificationQueue{
 
 var adaptiveRateLimits = &AdaptiveRateLimits{
 	UserBackoffs:  make(map[string]*UserBackoff),
-	BaseLimit:     5,
-	HistoryWindow: time.Hour * 24,
+	BaseLimit:     configuration.Get().Notifications.MaxPerHour,
+	HistoryWindow: configuration.Get().Notifications.BackoffHistoryWindow,
 }
 
 func (a *AdaptiveRateLimits) GetBackoffDuration(userID string) time.Duration {
+	cfg := configuration.Get()
 	backoff, exists := a.UserBackoffs[userID]
 	if !exists {
 		return 0
 	}
 
-	baseBackoff := time.Minute * 5
+	baseBackoff := cfg.Notifications.BackoffBaseInterval
 	if backoff.BackoffMultiplier <= 1.0 {
 		return baseBackoff
 	}

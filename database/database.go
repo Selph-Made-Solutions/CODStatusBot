@@ -47,8 +47,9 @@ func Databaselogin() error {
 		logger.Log.WithError(err).Error("Failed to get database instance")
 		return err
 	}
-	sqlDB.SetMaxIdleConns(10)
-	sqlDB.SetMaxOpenConns(100)
+
+	sqlDB.SetMaxIdleConns(cfg.Performance.DbMaxIdleConns)
+	sqlDB.SetMaxOpenConns(cfg.Performance.DbMaxOpenConns)
 
 	err = DB.AutoMigrate(
 		&models.Account{},

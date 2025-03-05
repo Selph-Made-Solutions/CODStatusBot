@@ -169,7 +169,6 @@ func run() error {
 
 func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 	cfg := configuration.Get()
-
 	go func() {
 		for {
 			select {
@@ -181,7 +180,6 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 			}
 		}
 	}()
-
 	go func() {
 		for {
 			select {
@@ -259,6 +257,22 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 	}()
 
 	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				services.CleanupInactiveUsers()
+				logger.Log.Info("Ran inactive users cleanup")
+				services.LogInstallationStats(s)
+			}
+		}
+	}()
+
+	go func() {
 		for {
 			select {
 			case <-ctx.Done():
@@ -281,8 +295,8 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				retentionDays := 90
-				if err := services.CleanupOldAnalyticsData(retentionDays); err != nil {
+				cfg := configuration.Get()
+				if err := services.CleanupOldAnalyticsData(cfg.Admin.RetentionDays); err != nil {
 					logger.Log.WithError(err).Error("Failed to clean up old analytics data")
 				}
 			}

@@ -3,6 +3,7 @@ package services
 import (
 	"time"
 
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
@@ -25,6 +26,8 @@ func TrackUserInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		return result.Error
 	}
 
+	isNewInstallation := userSettings.InstallationTime.IsZero()
+
 	var guildID string
 	if context == ServerContext {
 		guildID = i.GuildID
@@ -45,7 +48,57 @@ func TrackUserInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		return err
 	}
 
+	if isNewInstallation && s != nil {
+		NotifyNewInstallation(s, string(context))
+	}
+
 	return nil
+}
+
+func NotifyNewInstallation(s *discordgo.Session, context string) {
+	cfg := configuration.Get()
+	developerID := cfg.Discord.DeveloperID
+	if developerID == "" {
+		logger.Log.Error("Developer ID not configured")
+		return
+	}
+
+	channel, err := s.UserChannelCreate(developerID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to create DM channel with developer")
+		return
+	}
+
+	installType := "Direct Installation"
+	if context == "server" {
+		installType = "Server Installation"
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title:       "New Bot Installation",
+		Description: "A new user has started using the bot!",
+		Color:       0x00FF00,
+		Fields: []*discordgo.MessageEmbedField{
+			{
+				Name:   "Installation Type",
+				Value:  installType,
+				Inline: true,
+			},
+			{
+				Name:   "Timestamp",
+				Value:  time.Now().Format(time.RFC3339),
+				Inline: true,
+			},
+		},
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+
+	_, err = s.ChannelMessageSendEmbed(channel.ID, embed)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to send new installation notification to developer")
+	} else {
+		logger.Log.Info("New installation notification")
+	}
 }
 
 func GetUserInstallationStats() (serverCount int64, directCount int64, err error) {

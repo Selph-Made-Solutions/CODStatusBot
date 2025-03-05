@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
@@ -341,8 +342,10 @@ func GetUserStats(userID string, days int) (map[string]interface{}, error) {
 }
 
 func CleanupOldAnalyticsData(retentionDays int) error {
+	cfg := configuration.Get()
+
 	if retentionDays <= 0 {
-		retentionDays = 90
+		retentionDays = cfg.Admin.RetentionDays
 	}
 
 	cutoffDate := time.Now().AddDate(0, 0, -retentionDays)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/bradselph/CODStatusBot/configuration"
@@ -69,8 +70,48 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
+		cfg := configuration.Get()
+		if !checkAPIRateLimit(r.RemoteAddr, cfg.Admin.StatsRateLimit) {
+			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+			return
+		}
+
 		next(w, r)
 	}
+}
+
+var apiRateLimiter = struct {
+	sync.RWMutex
+	requests map[string][]time.Time
+}{
+	requests: make(map[string][]time.Time),
+}
+
+func checkAPIRateLimit(ipAddress string, rateLimit float64) bool {
+	apiRateLimiter.Lock()
+	defer apiRateLimiter.Unlock()
+
+	now := time.Now()
+	minuteWindow := now.Add(-time.Minute)
+
+	if _, exists := apiRateLimiter.requests[ipAddress]; !exists {
+		apiRateLimiter.requests[ipAddress] = []time.Time{now}
+		return true
+	}
+
+	var recentRequests []time.Time
+	for _, t := range apiRateLimiter.requests[ipAddress] {
+		if t.After(minuteWindow) {
+			recentRequests = append(recentRequests, t)
+		}
+	}
+
+	if float64(len(recentRequests)) >= rateLimit {
+		return false
+	}
+
+	apiRateLimiter.requests[ipAddress] = append(recentRequests, now)
+	return true
 }
 
 func parseTimeRange(r *http.Request) (startTime, endTime time.Time) {
