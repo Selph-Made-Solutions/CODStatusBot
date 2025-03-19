@@ -129,6 +129,15 @@ type Config struct {
 		UnreachableResetPeriod time.Duration
 	}
 
+	// Verdansk Stats Settings
+	Verdansk struct {
+		PreferencesEndpoint string
+		StatsEndpoint       string
+		APIKey              string
+		TempDir             string
+		CleanupTime         time.Duration
+	}
+
 	// Notification Settings
 	Notifications struct {
 		DefaultCooldown      time.Duration
@@ -185,6 +194,7 @@ func Load() error {
 	loadIntervals()
 	loadEmojiConfig()
 	loadPerformanceConfig()
+	loadVerdanskConfig()
 
 	if err := validate(); err != nil {
 		return fmt.Errorf("configuration validation failed: %w", err)
@@ -457,4 +467,12 @@ func GetDefaultSettings() struct {
 		CooldownDuration:     AppConfig.Intervals.Cooldown,
 		StatusChangeCooldown: AppConfig.Intervals.StatusChange,
 	}
+}
+
+func loadVerdanskConfig() {
+	AppConfig.Verdansk.PreferencesEndpoint = getEnvWithDefault("VERDANSK_PREFERENCES", "https://pd.callofduty.com/api/x/v1/campaign/warzonewrapped/preferences/gamer/{encodedGamerTag}")
+	AppConfig.Verdansk.StatsEndpoint = getEnvWithDefault("VERDANSK_STATS", "https://pd.callofduty.com/api/x/v1/campaign/warzonewrapped/stats/gamer/{encodedGamerTag}")
+	AppConfig.Verdansk.APIKey = getEnvWithDefault("X_API_KEY", "a855a770-cf8a-4ae8-9f30-b787d676e608")
+	AppConfig.Verdansk.TempDir = getEnvWithDefault("VERDANSK_TEMP_DIR", "verdansk_temp")
+	AppConfig.Verdansk.CleanupTime = time.Duration(getEnvAsInt("VERDANSK_CLEANUP_MINUTES", 30)) * time.Minute
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/bradselph/CODStatusBot/bot"
+	"github.com/bradselph/CODStatusBot/command/verdansk"
 	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
@@ -144,6 +145,8 @@ func run() error {
 
 	periodicTasksCtx, cancelPeriodicTasks := context.WithCancel(context.Background())
 	go startPeriodicTasks(periodicTasksCtx, discord)
+
+	verdansk.InitCleanupRoutine()
 
 	logger.Log.Info("COD Status Bot startup complete")
 

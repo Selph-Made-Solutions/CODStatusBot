@@ -19,6 +19,7 @@ import (
 	"github.com/bradselph/CODStatusBot/command/setnotifications"
 	"github.com/bradselph/CODStatusBot/command/togglecheck"
 	"github.com/bradselph/CODStatusBot/command/updateaccount"
+	"github.com/bradselph/CODStatusBot/command/verdansk"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
@@ -121,6 +122,11 @@ func RegisterCommands(s *discordgo.Session) error {
 			Description:  "Toggle checks on/off for a monitored account",
 			DMPermission: BoolPtr(true),
 		},
+		{
+			Name:         "verdansk",
+			Description:  "Get Verdansk Replay stats for Warzone",
+			DMPermission: BoolPtr(true),
+		},
 	}
 
 	Handlers["set_captcha_service_modal_capsolver"] = setcaptchaservice.HandleModalSubmit
@@ -167,6 +173,11 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["confirm_remove"] = removeaccount.HandleConfirmation
 	Handlers["confirm_reenable"] = togglecheck.HandleConfirmation
 	Handlers["cancel_reenable"] = togglecheck.HandleConfirmation
+
+	Handlers["verdansk"] = verdansk.CommandVerdansk
+	Handlers["verdansk_provide_id"] = verdansk.HandleMethodSelection
+	Handlers["verdansk_select_account"] = verdansk.HandleMethodSelection
+	Handlers["verdansk_activision_id_modal"] = verdansk.HandleActivisionIDModal
 
 	_, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, "", commands)
 	if err != nil {
