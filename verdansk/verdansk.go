@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/http/cookiejar"
+	"net/http/httputil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,6 +50,7 @@ func main() {
 		concurrency  = flag.Int("concurrency", 3, "Number of concurrent downloads")
 		timeout      = flag.Int("timeout", 30, "HTTP request timeout in seconds")
 		verbose      = flag.Bool("verbose", false, "Show verbose output")
+		debug        = flag.Bool("debug", false, "Show debug output for requests and responses")
 	)
 
 	flag.Parse()
@@ -73,11 +76,14 @@ func main() {
 	client := &http.Client{
 		Jar:     jar,
 		Timeout: time.Duration(*timeout) * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 
 	encodedID := strings.Replace(activisionID, "#", "%23", -1)
 
-	err = doPreflightRequest(client, fmt.Sprintf(VerdanskPreferencesEndpoint, encodedID), *verbose)
+	err = doPreflightRequest(client, fmt.Sprintf(VerdanskPreferencesEndpoint, encodedID), *verbose, *debug)
 	if err != nil {
 		fmt.Printf("Error with preflight request: %v\n", err)
 		os.Exit(1)
@@ -85,7 +91,7 @@ func main() {
 
 	time.Sleep(time.Duration(500+rand.Intn(500)) * time.Millisecond)
 
-	preferences, err := fetchPlayerPreferences(client, encodedID, *verbose)
+	preferences, err := fetchPlayerPreferences(client, encodedID, *verbose, *debug)
 	if err != nil {
 		fmt.Printf("Error fetching player preferences: %v\n", err)
 		os.Exit(1)
@@ -100,7 +106,7 @@ func main() {
 
 	time.Sleep(time.Duration(300+rand.Intn(300)) * time.Millisecond)
 
-	err = doPreflightRequest(client, fmt.Sprintf(VerdanskStatsEndpoint, encodedID), *verbose)
+	err = doPreflightRequest(client, fmt.Sprintf(VerdanskStatsEndpoint, encodedID), *verbose, *debug)
 	if err != nil {
 		fmt.Printf("Error with stats preflight request: %v\n", err)
 		os.Exit(1)
@@ -108,7 +114,7 @@ func main() {
 
 	time.Sleep(time.Duration(300+rand.Intn(500)) * time.Millisecond)
 
-	stats, err := fetchPlayerStats(client, encodedID, *verbose)
+	stats, err := fetchPlayerStats(client, encodedID, *verbose, *debug)
 	if err != nil {
 		fmt.Printf("Error fetching player stats: %v\n", err)
 		os.Exit(1)
@@ -134,29 +140,56 @@ func main() {
 	}
 }
 
-func doPreflightRequest(client *http.Client, targetURL string, verbose bool) error {
+func readResponseBody(resp *http.Response) ([]byte, error) {
+	var reader io.ReadCloser
+	var err error
+
+	switch resp.Header.Get("Content-Encoding") {
+	case "gzip":
+		reader, err = gzip.NewReader(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("error creating gzip reader: %w", err)
+		}
+		defer reader.Close()
+	default:
+		reader = resp.Body
+	}
+
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response body: %w", err)
+	}
+
+	return body, nil
+}
+
+func doPreflightRequest(client *http.Client, targetURL string, verbose, debug bool) error {
 	req, err := http.NewRequest("OPTIONS", targetURL, nil)
 	if err != nil {
 		return fmt.Errorf("error creating preflight request: %w", err)
 	}
 
-	req.Header.Add("accept", "*/*")
-	req.Header.Add("accept-encoding", "gzip, deflate, br, zstd")
-	req.Header.Add("accept-language", "en-US,en;q=0.9")
-	req.Header.Add("access-control-request-headers", "x-api-key")
-	req.Header.Add("access-control-request-method", "GET")
-	req.Header.Add("cache-control", "no-cache")
-	req.Header.Add("origin", "https://www.callofduty.com")
-	req.Header.Add("pragma", "no-cache")
-	req.Header.Add("priority", "u=1, i")
-	req.Header.Add("referer", "https://www.callofduty.com/")
-	req.Header.Add("sec-fetch-dest", "empty")
-	req.Header.Add("sec-fetch-mode", "cors")
-	req.Header.Add("sec-fetch-site", "same-site")
-	req.Header.Add("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
+	req.Header.Set("accept", "*/*")
+	req.Header.Set("accept-encoding", "gzip, deflate, br")
+	req.Header.Set("accept-language", "en-US,en;q=0.9")
+	req.Header.Set("access-control-request-headers", "x-api-key")
+	req.Header.Set("access-control-request-method", "GET")
+	req.Header.Set("cache-control", "no-cache")
+	req.Header.Set("origin", "https://www.callofduty.com")
+	req.Header.Set("pragma", "no-cache")
+	req.Header.Set("referer", "https://www.callofduty.com/")
+	req.Header.Set("sec-fetch-dest", "empty")
+	req.Header.Set("sec-fetch-mode", "cors")
+	req.Header.Set("sec-fetch-site", "same-site")
+	req.Header.Set("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
 
 	if verbose {
 		fmt.Printf("Sending preflight request to: %s\n", targetURL)
+	}
+
+	if debug {
+		reqDump, _ := httputil.DumpRequestOut(req, true)
+		fmt.Printf("DEBUG - Preflight Request:\n%s\n", reqDump)
 	}
 
 	resp, err := client.Do(req)
@@ -164,6 +197,11 @@ func doPreflightRequest(client *http.Client, targetURL string, verbose bool) err
 		return fmt.Errorf("error sending preflight request: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if debug {
+		respDump, _ := httputil.DumpResponse(resp, true)
+		fmt.Printf("DEBUG - Preflight Response:\n%s\n", respDump)
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -177,37 +215,37 @@ func doPreflightRequest(client *http.Client, targetURL string, verbose bool) err
 	return nil
 }
 
-func fetchPlayerPreferences(client *http.Client, encodedGamerTag string, verbose bool) (*PlayerPreferences, error) {
+func fetchPlayerPreferences(client *http.Client, encodedGamerTag string, verbose, debug bool) (*PlayerPreferences, error) {
 	url := fmt.Sprintf(VerdanskPreferencesEndpoint, encodedGamerTag)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
-
-	req.Header.Add(":authority", "pd.callofduty.com")
-	req.Header.Add(":method", "GET")
-	req.Header.Add(":scheme", "https")
-	req.Header.Add("accept", "*/*")
-	req.Header.Add("accept-encoding", "gzip, deflate, br, zstd")
-	req.Header.Add("accept-language", "en-US,en;q=0.9")
-	req.Header.Add("cache-control", "no-cache")
-	req.Header.Add("dnt", "1")
-	req.Header.Add("origin", "https://www.callofduty.com")
-	req.Header.Add("pragma", "no-cache")
-	req.Header.Add("priority", "u=1, i")
-	req.Header.Add("referer", "https://www.callofduty.com/")
-	req.Header.Add("sec-ch-ua", "\"Chromium\";v=\"134\", \"Not:A-Brand\";v=\"24\", \"Google Chrome\";v=\"134\"")
-	req.Header.Add("sec-ch-ua-mobile", "?0")
-	req.Header.Add("sec-ch-ua-platform", "\"Windows\"")
-	req.Header.Add("sec-fetch-dest", "empty")
-	req.Header.Add("sec-fetch-mode", "cors")
-	req.Header.Add("sec-fetch-site", "same-site")
-	req.Header.Add("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
-	req.Header.Add("x-api-key", X_APIKey)
+	req.Header.Set("accept", "*/*")
+	req.Header.Set("accept-encoding", "gzip, deflate, br")
+	req.Header.Set("accept-language", "en-US,en;q=0.9")
+	req.Header.Set("cache-control", "no-cache")
+	req.Header.Set("dnt", "1")
+	req.Header.Set("origin", "https://www.callofduty.com")
+	req.Header.Set("pragma", "no-cache")
+	req.Header.Set("referer", "https://www.callofduty.com/")
+	req.Header.Set("sec-ch-ua", "\"Chromium\";v=\"134\", \"Not:A-Brand\";v=\"24\", \"Google Chrome\";v=\"134\"")
+	req.Header.Set("sec-ch-ua-mobile", "?0")
+	req.Header.Set("sec-ch-ua-platform", "\"Windows\"")
+	req.Header.Set("sec-fetch-dest", "empty")
+	req.Header.Set("sec-fetch-mode", "cors")
+	req.Header.Set("sec-fetch-site", "same-site")
+	req.Header.Set("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
+	req.Header.Set("x-api-key", X_APIKey)
 
 	if verbose {
 		fmt.Printf("Fetching player preferences from: %s\n", url)
+	}
+
+	if debug {
+		reqDump, _ := httputil.DumpRequestOut(req, true)
+		fmt.Printf("DEBUG - Preferences Request:\n%s\n", reqDump)
 	}
 
 	resp, err := client.Do(req)
@@ -215,6 +253,11 @@ func fetchPlayerPreferences(client *http.Client, encodedGamerTag string, verbose
 		return nil, fmt.Errorf("error sending request: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if debug {
+		respDump, _ := httputil.DumpResponse(resp, true)
+		fmt.Printf("DEBUG - Preferences Response:\n%s\n", respDump)
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -228,15 +271,24 @@ func fetchPlayerPreferences(client *http.Client, encodedGamerTag string, verbose
 		}
 	}
 
+	body, err := readResponseBody(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	if debug {
+		fmt.Printf("DEBUG - Decoded body: %s\n", string(body))
+	}
+
 	var result PlayerPreferences
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("error decoding response: %w", err)
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("error decoding response: %w, body: %s", err, string(body))
 	}
 
 	return &result, nil
 }
 
-func fetchPlayerStats(client *http.Client, encodedGamerTag string, verbose bool) (map[string]StatValue, error) {
+func fetchPlayerStats(client *http.Client, encodedGamerTag string, verbose, debug bool) (map[string]StatValue, error) {
 	url := fmt.Sprintf(VerdanskStatsEndpoint, encodedGamerTag)
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -244,29 +296,30 @@ func fetchPlayerStats(client *http.Client, encodedGamerTag string, verbose bool)
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
 
-	req.Header.Add(":authority", "pd.callofduty.com")
-	req.Header.Add(":method", "GET")
-	req.Header.Add(":scheme", "https")
-	req.Header.Add("accept", "*/*")
-	req.Header.Add("accept-encoding", "gzip, deflate, br, zstd")
-	req.Header.Add("accept-language", "en-US,en;q=0.9")
-	req.Header.Add("cache-control", "no-cache")
-	req.Header.Add("dnt", "1")
-	req.Header.Add("origin", "https://www.callofduty.com")
-	req.Header.Add("pragma", "no-cache")
-	req.Header.Add("priority", "u=1, i")
-	req.Header.Add("referer", "https://www.callofduty.com/")
-	req.Header.Add("sec-ch-ua", "\"Chromium\";v=\"134\", \"Not:A-Brand\";v=\"24\", \"Google Chrome\";v=\"134\"")
-	req.Header.Add("sec-ch-ua-mobile", "?0")
-	req.Header.Add("sec-ch-ua-platform", "\"Windows\"")
-	req.Header.Add("sec-fetch-dest", "empty")
-	req.Header.Add("sec-fetch-mode", "cors")
-	req.Header.Add("sec-fetch-site", "same-site")
-	req.Header.Add("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
-	req.Header.Add("x-api-key", X_APIKey)
+	req.Header.Set("accept", "*/*")
+	req.Header.Set("accept-encoding", "gzip, deflate, br")
+	req.Header.Set("accept-language", "en-US,en;q=0.9")
+	req.Header.Set("cache-control", "no-cache")
+	req.Header.Set("dnt", "1")
+	req.Header.Set("origin", "https://www.callofduty.com")
+	req.Header.Set("pragma", "no-cache")
+	req.Header.Set("referer", "https://www.callofduty.com/")
+	req.Header.Set("sec-ch-ua", "\"Chromium\";v=\"134\", \"Not:A-Brand\";v=\"24\", \"Google Chrome\";v=\"134\"")
+	req.Header.Set("sec-ch-ua-mobile", "?0")
+	req.Header.Set("sec-ch-ua-platform", "\"Windows\"")
+	req.Header.Set("sec-fetch-dest", "empty")
+	req.Header.Set("sec-fetch-mode", "cors")
+	req.Header.Set("sec-fetch-site", "same-site")
+	req.Header.Set("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
+	req.Header.Set("x-api-key", X_APIKey)
 
 	if verbose {
 		fmt.Printf("Fetching player stats from: %s\n", url)
+	}
+
+	if debug {
+		reqDump, _ := httputil.DumpRequestOut(req, true)
+		fmt.Printf("DEBUG - Stats Request:\n%s\n", reqDump)
 	}
 
 	resp, err := client.Do(req)
@@ -275,17 +328,38 @@ func fetchPlayerStats(client *http.Client, encodedGamerTag string, verbose bool)
 	}
 	defer resp.Body.Close()
 
+	if debug {
+		respDump, _ := httputil.DumpResponse(resp, true)
+		fmt.Printf("DEBUG - Stats Response:\n%s\n", respDump)
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("API returned status code %d: %s", resp.StatusCode, string(body))
 	}
 
+	body, err := readResponseBody(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	if debug {
+		fmt.Printf("DEBUG - Response body (first 200 bytes): %s\n", string(body[:min(200, len(body))]))
+	}
+
 	var stats map[string]StatValue
-	if err := json.NewDecoder(resp.Body).Decode(&stats); err != nil {
-		return nil, fmt.Errorf("error decoding response: %w", err)
+	if err := json.Unmarshal(body, &stats); err != nil {
+		return nil, fmt.Errorf("error decoding response: %w, body starts with: %s", err, string(body[:min(100, len(body))]))
 	}
 
 	return stats, nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func displayStats(stats map[string]StatValue) {
@@ -389,10 +463,11 @@ func downloadImages(client *http.Client, stats map[string]StatValue, outputDir s
 				return
 			}
 
-			req.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
-			req.Header.Add("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
-			req.Header.Add("Referer", "https://www.callofduty.com/")
-			req.Header.Add("Origin", "https://www.callofduty.com")
+			req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
+			req.Header.Set("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+			req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+			req.Header.Set("Referer", "https://www.callofduty.com/")
+			req.Header.Set("Origin", "https://www.callofduty.com")
 
 			resp, err := client.Do(req)
 			if err != nil {
@@ -479,5 +554,5 @@ func createZip(images []ImageDownload, zipName string) error {
 }
 
 func init() {
-	rand.NewSource(time.Now().UnixNano())
+	rand.Seed(time.Now().UnixNano())
 }
