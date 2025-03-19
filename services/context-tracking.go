@@ -19,14 +19,18 @@ func TrackUserInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) 
 
 	context := GetInstallContext(i)
 
+	var existingUser models.UserSettings
+	userExists := true
+	if err := database.DB.Where("user_id = ?", userID).First(&existingUser).Error; err != nil {
+		userExists = false
+	}
+
 	var userSettings models.UserSettings
 	result := database.DB.Where("user_id = ?", userID).FirstOrCreate(&userSettings)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error getting/creating user settings for context tracking")
 		return result.Error
 	}
-
-	isNewInstallation := userSettings.InstallationTime.IsZero()
 
 	var guildID string
 	if context == ServerContext {
@@ -48,7 +52,8 @@ func TrackUserInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		return err
 	}
 
-	if isNewInstallation && s != nil {
+	if !userExists && s != nil {
+		logger.Log.Infof("Sending notification for new user")
 		NotifyNewInstallation(s, string(context))
 	}
 
@@ -97,11 +102,11 @@ func NotifyNewInstallation(s *discordgo.Session, context string) {
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to send new installation notification to developer")
 	} else {
-		logger.Log.Info("New installation notification")
+		logger.Log.Info("New installation notification sent to developer")
 	}
 }
 
-func GetUserInstallationStats() (serverCount int64, directCount int64, err error) {
+func GetInstallationStats() (serverCount int64, directCount int64, err error) {
 	if err = database.DB.Model(&models.UserSettings{}).
 		Where("installation_type = ?", "server").
 		Count(&serverCount).Error; err != nil {
@@ -122,7 +127,7 @@ func GetUserInstallationStats() (serverCount int64, directCount int64, err error
 func LogInstallationStats(s *discordgo.Session) {
 	guildCount := len(s.State.Guilds)
 
-	serverUsers, directUsers, err := GetUserInstallationStats()
+	serverUsers, directUsers, err := GetInstallationStats()
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to get installation statistics")
 		return

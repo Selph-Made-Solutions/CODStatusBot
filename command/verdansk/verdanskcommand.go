@@ -24,6 +24,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+var X_APIKey string
+
 type PlayerPreferences struct {
 	Visible bool `json:"visible"`
 }
@@ -50,6 +52,9 @@ var (
 )
 
 func CommandVerdansk(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	cfg := configuration.Get()
+	X_APIKey = cfg.Verdansk.APIKey
+
 	log := logger.Log.WithFields(logrus.Fields{
 		"command": "verdansk",
 		"action":  "start",
@@ -690,14 +695,9 @@ func fetchPlayerStats(client *http.Client, encodedGamerTag string) (map[string]S
 
 	cfg := configuration.Get()
 	statsEndpoint := cfg.Verdansk.StatsEndpoint
-	apiKey := cfg.Verdansk.X_APIKey
 
 	if statsEndpoint == "" {
 		statsEndpoint = "https://pd.callofduty.com/api/x/v1/campaign/warzonewrapped/stats/gamer/%s"
-	}
-
-	if apiKey == "" {
-		apiKey = "a855a770-cf8a-4ae8-9f30-b787d676e608"
 	}
 
 	url := fmt.Sprintf(statsEndpoint, encodedGamerTag)
