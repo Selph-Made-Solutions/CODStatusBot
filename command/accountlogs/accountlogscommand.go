@@ -151,6 +151,17 @@ func handleAllAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		return
 	}
 
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Flags: discordgo.MessageFlagsEphemeral,
+		},
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Error responding with deferred message")
+		return
+	}
+
 	var embeds []*discordgo.MessageEmbed
 	for _, account := range accounts {
 		if !account.IsExpiredCookie && !services.VerifySSOCookie(account.SSOCookie) {
@@ -162,31 +173,32 @@ func handleAllAccountLogs(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		embeds = append(embeds, embed)
 	}
 
-	for j := 0; j < len(embeds); j += 10 {
-		end := j + 10
+	for j := 0; j < len(embeds); j += 4 {
+		end := j + 4
 		if end > len(embeds) {
 			end = len(embeds)
 		}
 
-		var err error
 		if j == 0 {
-			err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseUpdateMessage,
-				Data: &discordgo.InteractionResponseData{
-					Content:    "",
-					Embeds:     embeds[j:end],
-					Components: []discordgo.MessageComponent{},
-				},
+			_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+				Content: fmt.Sprintf("Account Logs (1/%d):", (len(embeds)+3)/4),
+				Embeds:  embeds[j:end],
+				Flags:   discordgo.MessageFlagsEphemeral,
 			})
 		} else {
 			_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
-				Embeds: embeds[j:end],
-				Flags:  discordgo.MessageFlagsEphemeral,
+				Content: fmt.Sprintf("Account Logs (%d/%d):", (j/4)+1, (len(embeds)+3)/4),
+				Embeds:  embeds[j:end],
+				Flags:   discordgo.MessageFlagsEphemeral,
 			})
 		}
 
 		if err != nil {
-			logger.Log.WithError(err).Error("Error sending account logs")
+			logger.Log.WithError(err).Error("Error sending account logs batch")
+		}
+
+		if j+4 < len(embeds) {
+			time.Sleep(500 * time.Millisecond)
 		}
 	}
 }

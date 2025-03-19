@@ -1,6 +1,7 @@
 package command
 
 import (
+	"strings"
 	"time"
 
 	"github.com/bradselph/CODStatusBot/command/accountage"
@@ -241,7 +242,18 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		}
 	}
 
-	if h, ok := Handlers[i.ApplicationCommandData().Name]; ok {
+	if i.Type == discordgo.InteractionMessageComponent {
+		customID := i.MessageComponentData().CustomID
+		if strings.HasPrefix(customID, "verdansk_account_") {
+			verdansk.HandleAccountSelection(s, i)
+		} else if h, ok := Handlers[customID]; ok {
+			h(s, i)
+		} else {
+			logger.Log.Warnf("Unhandled message component interaction: %s", customID)
+			errorDetails = "Unhandled message component interaction"
+			success = false
+		}
+	} else if h, ok := Handlers[i.ApplicationCommandData().Name]; ok {
 		h(s, i)
 	} else if h, ok := Handlers[i.MessageComponentData().CustomID]; ok {
 		h(s, i)

@@ -213,6 +213,10 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
+	go processAccountUpdate(s, i, accountID, newSSOCookie)
+}
+
+func processAccountUpdate(s *discordgo.Session, i *discordgo.InteractionCreate, accountID int, newSSOCookie string) {
 	validationResult, err := services.ValidateAndGetAccountInfo(newSSOCookie)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error validating new SSO cookie")
