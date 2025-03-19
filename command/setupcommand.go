@@ -245,26 +245,21 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if i.Type == discordgo.InteractionMessageComponent {
 		customID := i.MessageComponentData().CustomID
 		if strings.HasPrefix(customID, "verdansk_account_") {
+			logger.Log.Infof("Routing verdansk account selection: %s", customID)
 			verdansk.HandleAccountSelection(s, i)
+			return
 		} else if h, ok := Handlers[customID]; ok {
 			h(s, i)
 		} else {
 			logger.Log.Warnf("Unhandled message component interaction: %s", customID)
-			errorDetails = "Unhandled message component interaction"
+			errorDetails = "Unhandled message component"
 			success = false
 		}
-	} else if h, ok := Handlers[i.ApplicationCommandData().Name]; ok {
-		h(s, i)
-	} else if h, ok := Handlers[i.MessageComponentData().CustomID]; ok {
-		h(s, i)
-	} else {
-		logger.Log.Warnf("Unhandled interaction: %s", i.Type)
-		errorDetails = "Unhandled interaction type"
-		success = false
-	}
 
-	services.LogCommandExecution(commandName, userID, i.GuildID, success,
-		time.Since(startTime).Milliseconds(), errorDetails)
+		services.LogCommandExecution(commandName, userID, i.GuildID, success,
+			time.Since(startTime).Milliseconds(), errorDetails)
+
+	}
 }
 func BoolPtr(b bool) *bool {
 	return &b

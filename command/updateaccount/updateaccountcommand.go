@@ -182,18 +182,13 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	accountID, err := strconv.Atoi(accountIDStr)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error parsing account ID")
-		respondToInteractionWithMessage(s, i, "Error processing your update. Please try again.")
-		return
-	}
-
-	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Flags: discordgo.MessageFlagsEphemeral,
-		},
-	})
-	if err != nil {
-		logger.Log.WithError(err).Error("Error sending deferred response")
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Flags: discordgo.MessageFlagsEphemeral,
+			},
+		})
+		sendFollowupMessage(s, i, "Error processing your update. Please try again.")
 		return
 	}
 
@@ -208,9 +203,23 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		}
 	}
 
-	if newSSOCookie == "" {
-		sendFollowupMessage(s, i, "Error: New SSO cookie must be provided.")
+	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Flags: discordgo.MessageFlagsEphemeral,
+		},
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Error sending deferred response")
 		return
+	}
+
+	_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+		Content: "Processing your account update... This may take a few moments.",
+		Flags:   discordgo.MessageFlagsEphemeral,
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Error sending processing message")
 	}
 
 	go processAccountUpdate(s, i, accountID, newSSOCookie)

@@ -120,7 +120,6 @@ func CommandVerdansk(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 func HandleMethodSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	customID := i.MessageComponentData().CustomID
-
 	userID, _ := services.GetUserID(i)
 	log := logger.Log.WithFields(logrus.Fields{
 		"command":  "verdansk",
