@@ -241,7 +241,6 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			}
 		}
 	}
-
 	if i.Type == discordgo.InteractionMessageComponent {
 		customID := i.MessageComponentData().CustomID
 		if strings.HasPrefix(customID, "verdansk_account_") {
