@@ -143,7 +143,10 @@ func run() error {
 	services.StartNotificationProcessor(discord)
 	logger.Log.Info("Notification processor started successfully")
 
-	periodicTasksCtx, cancelPeriodicTasks := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	periodicTasksCtx, cancelPeriodicTasks := context.WithCancel(ctx)
 	go startPeriodicTasks(periodicTasksCtx, discord)
 
 	verdansk.InitCleanupRoutine()
@@ -157,6 +160,22 @@ func run() error {
 	logger.Log.Info("Shutting down COD Status Bot...")
 
 	cancelPeriodicTasks()
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer shutdownCancel()
+	done := make(chan struct{})
+	go func() {
+		//TODO: add WaitGroup to track goroutines
+		// wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		logger.Log.Info("All goroutines terminated gracefully")
+	case <-shutdownCtx.Done():
+		logger.Log.Warn("Shutdown timed out, forcing exit")
+	}
 
 	if err := discord.Close(); err != nil {
 		logger.Log.WithError(err).Error("Error closing Discord session")

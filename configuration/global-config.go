@@ -332,21 +332,23 @@ func validate() error {
 		logger.Log.Warn("DISCORD_CLIENT_ID not set")
 	}
 
+	if !AppConfig.CaptchaService.Capsolver.Enabled &&
+		!AppConfig.CaptchaService.EZCaptcha.Enabled &&
+		!AppConfig.CaptchaService.TwoCaptcha.Enabled {
+		logger.Log.Warn("No captcha services are enabled - functionality will be limited")
+	}
+
 	if AppConfig.CaptchaService.Capsolver.Enabled && AppConfig.CaptchaService.Capsolver.ClientKey == "" {
 		return fmt.Errorf("Capsolver is enabled but no client key provided")
 	}
-
 	if AppConfig.CaptchaService.EZCaptcha.Enabled && AppConfig.CaptchaService.EZCaptcha.ClientKey == "" {
 		return fmt.Errorf("EZCaptcha is enabled but no client key provided")
 	}
-
 	if AppConfig.CaptchaService.TwoCaptcha.Enabled && AppConfig.CaptchaService.TwoCaptcha.ClientKey == "" {
 		return fmt.Errorf("2Captcha is enabled but no client key provided")
 	}
-
 	return nil
 }
-
 func logConfigurationValues() {
 	logger.Log.Infof("Loaded rate limits and intervals: CHECK_INTERVAL=%d, NOTIFICATION_INTERVAL=%.2f, "+
 		"COOLDOWN_DURATION=%.2f, SLEEP_DURATION=%d, COOKIE_CHECK_INTERVAL_PERMABAN=%.2f, "+

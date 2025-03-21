@@ -47,19 +47,59 @@ type TwoCaptchaSolver struct {
 }
 
 var capsolverTasksMutex sync.RWMutex
-var capsolverTasks = make(map[string]string)
+var capsolverTasks = make(map[string]captchaTaskInfo)
+
+type captchaTaskInfo struct {
+	token     string
+	timestamp time.Time
+}
+
+func init() {
+	go cleanupStaleTasks()
+}
+
+func cleanupStaleTasks() {
+	for {
+		time.Sleep(10 * time.Minute)
+
+		capsolverTasksMutex.Lock()
+		now := time.Now()
+
+		staleThreshold := now.Add(-15 * time.Minute)
+
+		var staleTasks []string
+		for taskID, info := range capsolverTasks {
+			if info.timestamp.Before(staleThreshold) {
+				staleTasks = append(staleTasks, taskID)
+			}
+		}
+
+		for _, taskID := range staleTasks {
+			delete(capsolverTasks, taskID)
+		}
+
+		if len(staleTasks) > 0 {
+			logger.Log.Infof("Cleaned up %d stale Capsolver tasks", len(staleTasks))
+		}
+
+		capsolverTasksMutex.Unlock()
+	}
+}
 
 func StoreCapsolverTaskInfo(taskID, token string) {
 	capsolverTasksMutex.Lock()
 	defer capsolverTasksMutex.Unlock()
-	capsolverTasks[taskID] = token
+	capsolverTasks[taskID] = captchaTaskInfo{
+		token:     token,
+		timestamp: time.Now(),
+	}
 }
 
 func ReportCapsolverTaskResult(token string, isValid bool, errorMessage string) {
 	capsolverTasksMutex.RLock()
 	var taskID string
-	for id, storedToken := range capsolverTasks {
-		if storedToken == token {
+	for id, info := range capsolverTasks {
+		if info.token == token {
 			taskID = id
 			break
 		}

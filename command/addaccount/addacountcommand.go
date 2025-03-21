@@ -53,11 +53,6 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	if !hasCustomKey && !checkRateLimit(userID) {
-		respondToInteraction(s, i, fmt.Sprintf("Please wait %v before adding another account.", rateLimit))
-		return
-	}
-
 	if !services.IsServiceEnabled(userSettings.PreferredCaptchaProvider) {
 		msg := fmt.Sprintf("Your preferred captcha service (%s) is currently disabled. ", userSettings.PreferredCaptchaProvider)
 		if services.IsServiceEnabled("ezcaptcha") {

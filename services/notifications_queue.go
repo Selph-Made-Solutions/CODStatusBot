@@ -110,74 +110,97 @@ func (q *NotificationQueue) processNextNotification(discord *discordgo.Session) 
 	q.items = q.items[:len(q.items)-1]
 	q.mutex.Unlock()
 
-	if IsUserRateLimited(item.UserID) {
-		if item.RetryCount < 3 {
-			item.RetryCount++
-			item.Priority--
-			q.AddNotification(item)
-		} else {
-			logger.Log.Warnf("Dropping notification for user %s after max retries", item.UserID)
-		}
-		return
-	}
-
-	ch := make(chan *discordgo.Channel, 1)
-	errCh := make(chan error, 1)
+	processDone := make(chan bool, 1)
 
 	go func() {
-		defer close(ch)
-		defer close(errCh)
-		channel, err := discord.UserChannelCreate(item.UserID)
-		if err != nil {
-			errCh <- err
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Log.Errorf("Panic recovered in notification processing: %v", r)
+				processDone <- false
+				return
+			}
+			processDone <- true
+		}()
+
+		if IsUserRateLimited(item.UserID) {
+			if item.RetryCount < 3 {
+				item.RetryCount++
+				item.Priority--
+				q.AddNotification(item)
+			} else {
+				logger.Log.Warnf("Dropping notification for user %s after max retries", item.UserID)
+			}
 			return
 		}
-		ch <- channel
-	}()
 
-	select {
-	case channel := <-ch:
-		if err := sendMessageWithRetry(discord, channel.ID, item.Content); err != nil {
-			logger.Log.WithError(err).Errorf("Failed to send notification to user %s", item.UserID)
+		ch := make(chan *discordgo.Channel, 1)
+		errCh := make(chan error, 1)
+
+		go func() {
+			defer close(ch)
+			defer close(errCh)
+			channel, err := discord.UserChannelCreate(item.UserID)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			ch <- channel
+		}()
+
+		select {
+		case channel := <-ch:
+			if err := sendMessageWithRetry(discord, channel.ID, item.Content); err != nil {
+				logger.Log.WithError(err).Errorf("Failed to send notification to user %s", item.UserID)
+				if item.RetryCount < 3 {
+					item.RetryCount++
+					item.Priority--
+					q.AddNotification(item)
+				}
+			}
+		case err := <-errCh:
+			logger.Log.WithError(err).Errorf("Error creating DM channel for user %s", item.UserID)
+		case <-time.After(5 * time.Second):
+			logger.Log.Warnf("Timeout creating DM channel for user %s", item.UserID)
 			if item.RetryCount < 3 {
 				item.RetryCount++
 				item.Priority--
 				q.AddNotification(item)
 			}
 		}
-	case err := <-errCh:
-		logger.Log.WithError(err).Errorf("Error creating DM channel for user %s", item.UserID)
-	case <-time.After(5 * time.Second):
-		logger.Log.Warnf("Timeout creating DM channel for user %s", item.UserID)
+
+		adaptiveRateLimits.Lock()
+		backoff, exists := adaptiveRateLimits.UserBackoffs[item.UserID]
+		if !exists {
+			backoff = &UserBackoff{
+				BackoffMultiplier: 1.0,
+			}
+			adaptiveRateLimits.UserBackoffs[item.UserID] = backoff
+		}
+		backoff.LastSent = time.Now()
+
+		now := time.Now()
+		history := make([]time.Time, 0)
+		for _, t := range backoff.NotificationHistory {
+			if now.Sub(t) < adaptiveRateLimits.HistoryWindow {
+				history = append(history, t)
+			}
+		}
+		history = append(history, now)
+		backoff.NotificationHistory = history
+		adaptiveRateLimits.Unlock()
+	}()
+
+	select {
+	case <-processDone:
+	case <-time.After(30 * time.Second):
+		logger.Log.Warnf("Notification processing timed out for user %s", item.UserID)
 		if item.RetryCount < 3 {
 			item.RetryCount++
 			item.Priority--
 			q.AddNotification(item)
 		}
 	}
-
-	adaptiveRateLimits.Lock()
-	backoff, exists := adaptiveRateLimits.UserBackoffs[item.UserID]
-	if !exists {
-		backoff = &UserBackoff{
-			BackoffMultiplier: 1.0,
-		}
-		adaptiveRateLimits.UserBackoffs[item.UserID] = backoff
-	}
-	backoff.LastSent = time.Now()
-
-	now := time.Now()
-	history := make([]time.Time, 0)
-	for _, t := range backoff.NotificationHistory {
-		if now.Sub(t) < adaptiveRateLimits.HistoryWindow {
-			history = append(history, t)
-		}
-	}
-	history = append(history, now)
-	backoff.NotificationHistory = history
-	adaptiveRateLimits.Unlock()
 }
-
 func sendMessageWithRetry(s *discordgo.Session, channelID, content string) error {
 	var lastErr error
 	for retries := 0; retries < 3; retries++ {
