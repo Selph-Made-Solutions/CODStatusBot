@@ -9,6 +9,7 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -458,7 +459,7 @@ func processVerdanskStats(s *discordgo.Session, i *discordgo.InteractionCreate, 
 		return
 	}
 
-	encodedID := strings.Replace(activisionID, "#", "%23", -1)
+	encodedID := url.QueryEscape(activisionID)
 	log.WithField("encodedID", encodedID).Debug("Encoded Activision ID")
 
 	client := services.GetDefaultHTTPClient()
@@ -615,7 +616,7 @@ func fetchPlayerPreferences(client *http.Client, encodedGamerTag string) (*Playe
 		apiKey = "a855a770-cf8a-4ae8-9f30-b787d676e608"
 	}
 
-	url := fmt.Sprintf(preferencesEndpoint, encodedGamerTag)
+	url := strings.Replace(preferencesEndpoint, "{encodedGamerTag}", encodedGamerTag, 1)
 	log.WithField("url", url).Debug("Preferences URL")
 
 	log.Info("Sending preflight request")
@@ -699,7 +700,7 @@ func fetchPlayerStats(client *http.Client, encodedGamerTag string) (map[string]S
 		statsEndpoint = "https://pd.callofduty.com/api/x/v1/campaign/warzonewrapped/stats/gamer/%s"
 	}
 
-	url := fmt.Sprintf(statsEndpoint, encodedGamerTag)
+	url := strings.Replace(statsEndpoint, "{encodedGamerTag}", encodedGamerTag, 1)
 	log.WithField("url", url).Debug("Stats URL")
 
 	log.Info("Sending preflight request")
