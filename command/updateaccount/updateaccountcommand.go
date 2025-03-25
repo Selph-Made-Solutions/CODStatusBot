@@ -344,7 +344,25 @@ func processAccountUpdate(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	}
 
 	embed := createSuccessEmbed(&account, wasDisabled, vipStatusChange, validationResult.ExpiresAt, account.IsVIP)
-	sendFollowupMessageWithEmbed(s, i, "", embed)
+	_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+		Content: "Account updated successfully!",
+		Embeds:  []*discordgo.MessageEmbed{embed},
+		Flags:   discordgo.MessageFlagsEphemeral,
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Error sending followup message with embed")
+		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "Account updated successfully!",
+				Embeds:  []*discordgo.MessageEmbed{embed},
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+		if err != nil {
+			logger.Log.WithError(err).Error("Failed with alternative response method")
+		}
+	}
 
 	go func() {
 		time.Sleep(1 * time.Second)

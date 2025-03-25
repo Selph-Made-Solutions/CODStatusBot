@@ -222,7 +222,29 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 			Components: []discordgo.MessageComponent{},
 		},
 	})
+
 	if err != nil {
-		logger.Log.WithError(err).Error("Error responding to interaction")
+		logger.Log.WithError(err).Error("Error updating message, trying to send new message")
+
+		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: message,
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+
+		if err != nil {
+			logger.Log.WithError(err).Error("Error sending new message, trying followup")
+
+			_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+				Content: message,
+				Flags:   discordgo.MessageFlagsEphemeral,
+			})
+
+			if err != nil {
+				logger.Log.WithError(err).Error("All response methods failed")
+			}
+		}
 	}
 }

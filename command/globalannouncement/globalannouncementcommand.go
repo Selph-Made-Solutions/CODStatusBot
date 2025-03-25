@@ -148,7 +148,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	if resetFlags == "yes" {
-		if err := database.DB.Model(&models.UserSettings{}).Update("has_seen_announcement", false).Error; err != nil {
+		if err := database.DB.Model(&models.UserSettings{}).UpdateColumn("has_seen_announcement", false).Error; err != nil {
 			logger.Log.WithError(err).Error("Failed to reset announcement flags")
 			respondToInteraction(s, i, "Error resetting announcement flags. Please try again.")
 			return
