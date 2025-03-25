@@ -1,7 +1,6 @@
 package command
 
 import (
-	"strings"
 	"time"
 
 	"github.com/bradselph/CODStatusBot/command/accountage"
@@ -125,7 +124,7 @@ func RegisterCommands(s *discordgo.Session) error {
 		},
 		{
 			Name:         "verdansk",
-			Description:  "Get Verdansk Replay stats for Warzone",
+			Description:  "Get your Verdansk Replay stats and images",
 			DMPermission: BoolPtr(true),
 		},
 	}
@@ -155,12 +154,14 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["updateaccount"] = updateaccount.CommandUpdateAccount
 	Handlers["togglecheck"] = togglecheck.CommandToggleCheck
 	Handlers["setnotifications"] = setnotifications.CommandSetNotifications
+	Handlers["verdansk"] = verdansk.CommandVerdansk
 
 	Handlers["set_notifications_modal"] = setnotifications.HandleModalSubmit
 	Handlers["setcaptchaservice_modal"] = setcaptchaservice.HandleModalSubmit
 	Handlers["addaccount_modal"] = addaccount.HandleModalSubmit
 	Handlers["update_account_modal"] = updateaccount.HandleModalSubmit
 	Handlers["set_check_interval_modal"] = setcheckinterval.HandleModalSubmit
+	Handlers["verdansk_activision_id_modal"] = verdansk.HandleActivisionIDModal
 
 	Handlers["account_age"] = accountage.HandleAccountSelection
 	Handlers["account_logs"] = accountlogs.HandleAccountSelection
@@ -170,15 +171,13 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["feedback_anonymous"] = feedback.HandleFeedbackChoice
 	Handlers["feedback_with_id"] = feedback.HandleFeedbackChoice
 	Handlers["show_interval_modal"] = setcheckinterval.HandleButton
+	Handlers["verdansk_provide_id"] = verdansk.HandleMethodSelection
+	Handlers["verdansk_select_account"] = verdansk.HandleMethodSelection
+	Handlers["verdansk_account"] = verdansk.HandleAccountSelection
 
 	Handlers["confirm_remove"] = removeaccount.HandleConfirmation
 	Handlers["confirm_reenable"] = togglecheck.HandleConfirmation
 	Handlers["cancel_reenable"] = togglecheck.HandleConfirmation
-
-	Handlers["verdansk"] = verdansk.CommandVerdansk
-	Handlers["verdansk_provide_id"] = verdansk.HandleMethodSelection
-	Handlers["verdansk_select_account"] = verdansk.HandleMethodSelection
-	Handlers["verdansk_activision_id_modal"] = verdansk.HandleActivisionIDModal
 
 	_, err := s.ApplicationCommandBulkOverwrite(s.State.User.ID, "", commands)
 	if err != nil {
@@ -241,24 +240,19 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			}
 		}
 	}
-	if i.Type == discordgo.InteractionMessageComponent {
-		customID := i.MessageComponentData().CustomID
-		if strings.HasPrefix(customID, "verdansk_account_") {
-			logger.Log.Infof("Routing verdansk account selection: %s", customID)
-			verdansk.HandleAccountSelection(s, i)
-			return
-		} else if h, ok := Handlers[customID]; ok {
-			h(s, i)
-		} else {
-			logger.Log.Warnf("Unhandled message component interaction: %s", customID)
-			errorDetails = "Unhandled message component"
-			success = false
-		}
 
-		services.LogCommandExecution(commandName, userID, i.GuildID, success,
-			time.Since(startTime).Milliseconds(), errorDetails)
-
+	if h, ok := Handlers[i.ApplicationCommandData().Name]; ok {
+		h(s, i)
+	} else if h, ok := Handlers[i.MessageComponentData().CustomID]; ok {
+		h(s, i)
+	} else {
+		logger.Log.Warnf("Unhandled interaction: %s", i.Type)
+		errorDetails = "Unhandled interaction type"
+		success = false
 	}
+
+	services.LogCommandExecution(commandName, userID, i.GuildID, success,
+		time.Since(startTime).Milliseconds(), errorDetails)
 }
 func BoolPtr(b bool) *bool {
 	return &b
