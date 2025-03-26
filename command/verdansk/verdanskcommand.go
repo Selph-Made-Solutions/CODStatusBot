@@ -6,12 +6,16 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"image/jpeg"
 	"io"
+	"math"
 	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -24,8 +28,6 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/sirupsen/logrus"
 )
-
-var X_APIKey string
 
 type PlayerPreferences struct {
 	Visible bool `json:"visible"`
@@ -43,6 +45,8 @@ type ImageDownload struct {
 	Err  error
 }
 
+type VerdanskStats map[string]StatValue
+
 var (
 	tempZipFiles = struct {
 		sync.RWMutex
@@ -50,6 +54,12 @@ var (
 	}{
 		files: make(map[string]time.Time),
 	}
+	X_APIKey string
+)
+
+const (
+	userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+	originURL       = "https://www.callofduty.com"
 )
 
 func CommandVerdansk(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -370,15 +380,18 @@ func getActivisionIDFromAccount(account models.Account) (string, error) {
 
 	log.Info("Retrieving Activision ID from account")
 
-	cfg := configuration.Get()
+	if account.ActivisionID != "" {
+		log.WithField("activisionID", account.ActivisionID).Info("Using stored Activision ID")
+		return account.ActivisionID, nil
+	}
 
+	cfg := configuration.Get()
 	if !services.VerifySSOCookie(account.SSOCookie) {
 		log.Error("Invalid SSO cookie")
 		return "", fmt.Errorf("invalid SSO cookie")
 	}
 
 	client := services.GetDefaultHTTPClient()
-
 	req, err := http.NewRequest("GET", cfg.API.ProfileEndpoint, nil)
 	if err != nil {
 		log.WithError(err).Error("Error creating request")
@@ -419,13 +432,15 @@ func getActivisionIDFromAccount(account models.Account) (string, error) {
 	for _, acc := range profileData.Accounts {
 		if acc.Provider == "uno" {
 			log.WithField("activisionID", acc.Username).Info("Found Activision ID (UNO provider)")
+
+			account.ActivisionID = acc.Username
+			if err := database.DB.Save(&account).Error; err != nil {
+				log.WithError(err).Warn("Failed to save Activision ID to account")
+			} else {
+				log.Info("Activision ID saved to account")
+			}
 			return acc.Username, nil
 		}
-	}
-
-	if profileData.Username != "" {
-		log.WithField("username", profileData.Username).Info("Using main username as Activision ID")
-		return profileData.Username, nil
 	}
 
 	log.Error("No Activision ID found in profile")
@@ -478,13 +493,11 @@ func processVerdanskStats(s *discordgo.Session, i *discordgo.InteractionCreate, 
 		return
 	}
 
-	if account != nil {
-		if !account.IsOGVerdansk {
-			log.Info("Setting OGVerdansk flag for account")
-			account.IsOGVerdansk = true
-			if err := database.DB.Save(account).Error; err != nil {
-				log.WithError(err).Error("Failed to update OGVerdansk flag")
-			}
+	if account != nil && !account.IsOGVerdansk {
+		log.Info("Setting OGVerdansk flag for account")
+		account.IsOGVerdansk = true
+		if err := database.DB.Save(account).Error; err != nil {
+			log.WithError(err).Error("Failed to update OGVerdansk flag")
 		}
 	}
 
@@ -522,6 +535,8 @@ func processVerdanskStats(s *discordgo.Session, i *discordgo.InteractionCreate, 
 
 	log.WithField("imageCount", len(images)).Info("Downloaded images successfully")
 
+	images = enrichVerdanskFilenames(images)
+
 	log.Info("Creating zip file")
 	if err := createZip(images, zipFilename); err != nil {
 		log.WithError(err).Error("Error creating zip file")
@@ -533,60 +548,88 @@ func processVerdanskStats(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	tempZipFiles.files[zipFilename] = time.Now().Add(cleanupTime)
 	tempZipFiles.Unlock()
 
+	maxImages := 9
 	log.Info("Preparing embeds and files for Discord")
 	var embeds []*discordgo.MessageEmbed
-	for i, img := range images {
-		if i >= 10 {
+	var files []*discordgo.File
+
+	zipFile, err := os.Open(zipFilename)
+	if err != nil {
+		log.WithError(err).Error("Error opening zip file")
+		sendFollowupMessage(s, i, fmt.Sprintf("Error: Failed to prepare zip file for %s.", activisionID))
+		return
+	}
+	defer zipFile.Close()
+	files = append(files, &discordgo.File{
+		Name:   fmt.Sprintf("%s_verdansk_stats.zip", activisionID),
+		Reader: zipFile,
+	})
+
+	log.WithField("imageCount", len(images)).Info("Downloaded images successfully")
+	images = enrichVerdanskFilenames(images)
+	summaryEmbed := generateVerdanskStatsEmbed(activisionID, stats)
+	embeds = append(embeds, summaryEmbed)
+
+	var displayedImages int
+	for _, img := range images {
+		if displayedImages >= maxImages {
 			break
 		}
 
 		formattedName := formatStatName(img.Name)
 		embed := &discordgo.MessageEmbed{
 			Title:       formattedName,
-			Description: fmt.Sprintf("Verdansk Replay Stat %d/%d", i+1, len(images)),
+			Description: fmt.Sprintf("Verdansk Replay Stat %d/%d", displayedImages+1, len(images)),
 			Image: &discordgo.MessageEmbedImage{
 				URL: fmt.Sprintf("attachment://%s.jpg", img.Name),
 			},
 			Color: 0x00BFFF,
 		}
 		embeds = append(embeds, embed)
-	}
-
-	var files []*discordgo.File
-	for i, img := range images {
-		if i >= 10 {
-			break
-		}
 		files = append(files, &discordgo.File{
 			Name:   fmt.Sprintf("%s.jpg", img.Name),
 			Reader: bytes.NewReader(img.Data),
 		})
+		displayedImages++
 	}
 
-	zipFile, err := os.Open(zipFilename)
-	if err != nil {
-		log.WithError(err).Error("Error opening zip file")
+	contentMsg := fmt.Sprintf("Verdansk Replay Stats for %s", activisionID)
+	if len(images) > maxImages {
+		contentMsg += fmt.Sprintf(" (Showing %d/%d images)\n\nDownload the zip file for all %d images. The data will expire after 30 minutes.",
+			maxImages, len(images), len(images))
 	} else {
-		defer zipFile.Close()
-		files = append(files, &discordgo.File{
-			Name:   fmt.Sprintf("%s_verdansk_stats.zip", activisionID),
-			Reader: zipFile,
-		})
+		contentMsg += "\n\nThe images will expire after 30 minutes. Download the zip file for permanent access."
+	}
+
+	if account != nil {
+		contentMsg += "\n\nThese stats have been associated with your account and marked with the Verdansk flag."
+	}
+
+	if account != nil {
+		if err := storeVerdanskStatsWithAccount(account, stats); err != nil {
+			log.WithError(err).Warn("Failed to store Verdansk stats with account")
+		} else {
+			contentMsg += "\n\nYour Verdansk stats have been saved to your account for future reference."
+		}
 	}
 
 	log.Info("Sending stats to Discord")
 	_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
-		Content: fmt.Sprintf("Verdansk Replay Stats for %s\n\nThe images will expire after 30 minutes. Download the zip file for permanent access.", activisionID),
+		Content: contentMsg,
 		Embeds:  embeds,
 		Files:   files,
 		Flags:   discordgo.MessageFlagsEphemeral,
 	})
+
 	if err != nil {
 		log.WithError(err).Error("Error sending stat images")
-		sendFollowupMessage(s, i, fmt.Sprintf("Error: Failed to send stat images for %s. %v", activisionID, err))
+		if strings.Contains(err.Error(), "Maximum number of allowed attachments") {
+			sendFollowupMessage(s, i, fmt.Sprintf("Error: Discord's attachment limit prevents showing all images. Please download the zip file for the complete set of %d images.", len(images)))
+		} else {
+			sendFollowupMessage(s, i, fmt.Sprintf("Error: Failed to send stat images for %s. Please try again later.", activisionID))
+		}
 		return
 	}
-
 	log.Info("Successfully sent Verdansk stats to user")
 
 	go func() {
@@ -628,28 +671,11 @@ func fetchPlayerPreferences(client *http.Client, encodedGamerTag string) (*Playe
 	time.Sleep(time.Duration(300+rand.Intn(500)) * time.Millisecond)
 
 	log.Info("Creating preferences request")
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := createVerdanskAPIRequest("GET", url)
 	if err != nil {
 		log.WithError(err).Error("Error creating request")
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
-
-	req.Header.Set("accept", "*/*")
-	req.Header.Set("accept-encoding", "gzip, deflate, br")
-	req.Header.Set("accept-language", "en-US,en;q=0.9")
-	req.Header.Set("cache-control", "no-cache")
-	req.Header.Set("dnt", "1")
-	req.Header.Set("origin", "https://www.callofduty.com")
-	req.Header.Set("pragma", "no-cache")
-	req.Header.Set("referer", "https://www.callofduty.com/")
-	req.Header.Set("sec-ch-ua", "\"Chromium\";v=\"134\", \"Not:A-Brand\";v=\"24\", \"Google Chrome\";v=\"134\"")
-	req.Header.Set("sec-ch-ua-mobile", "?0")
-	req.Header.Set("sec-ch-ua-platform", "\"Windows\"")
-	req.Header.Set("sec-fetch-dest", "empty")
-	req.Header.Set("sec-fetch-mode", "cors")
-	req.Header.Set("sec-fetch-site", "same-site")
-	req.Header.Set("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
-	req.Header.Set("x-api-key", X_APIKey)
 
 	log.Debug("Sending preferences API request")
 	resp, err := client.Do(req)
@@ -712,28 +738,11 @@ func fetchPlayerStats(client *http.Client, encodedGamerTag string) (map[string]S
 	time.Sleep(time.Duration(300+rand.Intn(500)) * time.Millisecond)
 
 	log.Info("Creating stats request")
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := createVerdanskAPIRequest("GET", url)
 	if err != nil {
 		log.WithError(err).Error("Error creating request")
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
-
-	req.Header.Set("accept", "*/*")
-	req.Header.Set("accept-encoding", "gzip, deflate, br")
-	req.Header.Set("accept-language", "en-US,en;q=0.9")
-	req.Header.Set("cache-control", "no-cache")
-	req.Header.Set("dnt", "1")
-	req.Header.Set("origin", "https://www.callofduty.com")
-	req.Header.Set("pragma", "no-cache")
-	req.Header.Set("referer", "https://www.callofduty.com/")
-	req.Header.Set("sec-ch-ua", "\"Chromium\";v=\"134\", \"Not:A-Brand\";v=\"24\", \"Google Chrome\";v=\"134\"")
-	req.Header.Set("sec-ch-ua-mobile", "?0")
-	req.Header.Set("sec-ch-ua-platform", "\"Windows\"")
-	req.Header.Set("sec-fetch-dest", "empty")
-	req.Header.Set("sec-fetch-mode", "cors")
-	req.Header.Set("sec-fetch-site", "same-site")
-	req.Header.Set("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
-	req.Header.Set("x-api-key", X_APIKey)
 
 	log.Debug("Sending stats API request")
 	resp, err := client.Do(req)
@@ -766,6 +775,8 @@ func fetchPlayerStats(client *http.Client, encodedGamerTag string) (map[string]S
 		log.WithError(err).Error("Error decoding response")
 		return nil, fmt.Errorf("error decoding response: %w", err)
 	}
+
+	stats = enrichStatData(stats)
 
 	log.WithField("statCount", len(stats)).Info("Successfully fetched player stats")
 	return stats, nil
@@ -831,11 +842,11 @@ func downloadImages(client *http.Client, stats map[string]StatValue, outputDir s
 				return
 			}
 
-			req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
+			req.Header.Set("User-Agent", userAgentString)
 			req.Header.Set("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
 			req.Header.Set("Accept-Encoding", "gzip, deflate, br")
-			req.Header.Set("Referer", "https://www.callofduty.com/")
-			req.Header.Set("Origin", "https://www.callofduty.com")
+			req.Header.Set("Referer", originURL)
+			req.Header.Set("Origin", originURL)
 
 			dlLog.Debug("Sending image request")
 			resp, err := client.Do(req)
@@ -865,6 +876,14 @@ func downloadImages(client *http.Client, stats map[string]StatValue, outputDir s
 
 			filePath := filepath.Join(outputDir, dl.Name+".jpg")
 			dlLog.WithField("filePath", filePath).Debug("Saving image to file")
+
+			if len(data) > 100000 {
+				optimized, err := optimizeJPEG(data, 85)
+				if err == nil && len(optimized) < len(data) {
+					data = optimized
+					dlLog.Info("Successfully optimized image")
+				}
+			}
 
 			if err := os.WriteFile(filePath, data, 0644); err != nil {
 				dlLog.WithError(err).Error("Error saving file")
@@ -903,6 +922,8 @@ func downloadImages(client *http.Client, stats map[string]StatValue, outputDir s
 		"successCount": len(downloadedImages),
 		"failedCount":  failedCount,
 	}).Info("Download results")
+
+	downloadedImages = sortStatImages(downloadedImages, stats)
 
 	return downloadedImages, nil
 }
@@ -1052,13 +1073,13 @@ func doPreflightRequest(client *http.Client, targetURL string) error {
 	req.Header.Set("access-control-request-headers", "x-api-key")
 	req.Header.Set("access-control-request-method", "GET")
 	req.Header.Set("cache-control", "no-cache")
-	req.Header.Set("origin", "https://www.callofduty.com")
+	req.Header.Set("origin", originURL)
 	req.Header.Set("pragma", "no-cache")
-	req.Header.Set("referer", "https://www.callofduty.com/")
+	req.Header.Set("referer", originURL+"/")
 	req.Header.Set("sec-fetch-dest", "empty")
 	req.Header.Set("sec-fetch-mode", "cors")
 	req.Header.Set("sec-fetch-site", "same-site")
-	req.Header.Set("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
+	req.Header.Set("user-agent", userAgentString)
 
 	log.Debug("Sending preflight request")
 	resp, err := client.Do(req)
@@ -1149,4 +1170,1019 @@ func sendFollowupMessage(s *discordgo.Session, i *discordgo.InteractionCreate, m
 	if err != nil {
 		logger.Log.WithError(err).Error("Error sending followup message")
 	}
+}
+
+func storeVerdanskStatsWithAccount(account *models.Account, stats map[string]StatValue) error {
+	if account == nil {
+		return fmt.Errorf("no account provided")
+	}
+
+	log := logger.Log.WithFields(logrus.Fields{
+		"function":  "storeVerdanskStatsWithAccount",
+		"accountID": account.ID,
+	})
+
+	account.IsOGVerdansk = true
+	if err := database.DB.Save(account).Error; err != nil {
+		log.WithError(err).Error("Failed to update account with Verdansk flag")
+		return err
+	}
+
+	log.Info("Successfully stored Verdansk stats with account")
+	return nil
+}
+
+func createVerdanskAPIRequest(method, url string) (*http.Request, error) {
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("accept", "*/*")
+	req.Header.Set("accept-encoding", "gzip, deflate, br")
+	req.Header.Set("accept-language", "en-US,en;q=0.9")
+	req.Header.Set("cache-control", "no-cache")
+	req.Header.Set("dnt", "1")
+	req.Header.Set("origin", originURL)
+	req.Header.Set("pragma", "no-cache")
+	req.Header.Set("referer", originURL+"/")
+	req.Header.Set("sec-ch-ua", "\"Chromium\";v=\"134\", \"Not:A-Brand\";v=\"24\", \"Google Chrome\";v=\"134\"")
+	req.Header.Set("sec-ch-ua-mobile", "?0")
+	req.Header.Set("sec-ch-ua-platform", "\"Windows\"")
+	req.Header.Set("sec-fetch-dest", "empty")
+	req.Header.Set("sec-fetch-mode", "cors")
+	req.Header.Set("sec-fetch-site", "same-site")
+	req.Header.Set("user-agent", userAgentString)
+
+	if method != "OPTIONS" {
+		req.Header.Set("x-api-key", X_APIKey)
+	}
+
+	return req, nil
+}
+
+func validateVerdanskAPIResponse(body []byte, expectedType string) error {
+	switch expectedType {
+	case "preferences":
+		var prefs PlayerPreferences
+		if err := json.Unmarshal(body, &prefs); err != nil {
+			return fmt.Errorf("invalid preferences data: %w", err)
+		}
+		return nil
+	case "stats":
+		var stats map[string]StatValue
+		if err := json.Unmarshal(body, &stats); err != nil {
+			return fmt.Errorf("invalid stats data: %w", err)
+		}
+		if len(stats) == 0 {
+			return fmt.Errorf("empty stats data received")
+		}
+		return nil
+	default:
+		return fmt.Errorf("unknown validation type: %s", expectedType)
+	}
+}
+
+func sortStatImages(images []ImageDownload, stats map[string]StatValue) []ImageDownload {
+	sortedImages := make([]ImageDownload, len(images))
+	copy(sortedImages, images)
+
+	sort.SliceStable(sortedImages, func(i, j int) bool {
+		nameI := sortedImages[i].Name
+		nameJ := sortedImages[j].Name
+
+		if stats[nameI].OrderValue != nil && stats[nameJ].OrderValue != nil {
+			return *stats[nameI].OrderValue < *stats[nameJ].OrderValue
+		}
+
+		if stats[nameI].OrderValue != nil {
+			return true
+		}
+		if stats[nameJ].OrderValue != nil {
+			return false
+		}
+
+		return nameI < nameJ
+	})
+
+	return sortedImages
+}
+
+func getImageCategory(statName string) string {
+	lowerName := strings.ToLower(statName)
+
+	if strings.Contains(lowerName, "kill") ||
+		strings.Contains(lowerName, "death") ||
+		strings.Contains(lowerName, "kd") {
+		return "Combat"
+	}
+
+	if strings.Contains(lowerName, "win") ||
+		strings.Contains(lowerName, "placement") ||
+		strings.Contains(lowerName, "medal") {
+		return "Performance"
+	}
+
+	if strings.Contains(lowerName, "time") ||
+		strings.Contains(lowerName, "session") ||
+		strings.Contains(lowerName, "played") {
+		return "Engagement"
+	}
+
+	if strings.Contains(lowerName, "weapon") ||
+		strings.Contains(lowerName, "loadout") ||
+		strings.Contains(lowerName, "equipment") {
+		return "Loadout"
+	}
+
+	if strings.Contains(lowerName, "friend") ||
+		strings.Contains(lowerName, "team") ||
+		strings.Contains(lowerName, "squad") {
+		return "Social"
+	}
+
+	return "Miscellaneous"
+}
+
+func organizeImagesForDisplay(images []ImageDownload, stats map[string]StatValue, maxImages int) []ImageDownload {
+	if len(images) <= maxImages {
+		return sortStatImages(images, stats)
+	}
+
+	categorizedImages := make(map[string][]ImageDownload)
+
+	for _, img := range images {
+		category := getImageCategory(img.Name)
+		categorizedImages[category] = append(categorizedImages[category], img)
+	}
+
+	categoryPriority := []string{
+		"Performance", "Combat", "Loadout", "Engagement", "Social", "Miscellaneous",
+	}
+
+	var selectedImages []ImageDownload
+	remainingSlots := maxImages
+
+	for _, category := range categoryPriority {
+		if catImages, exists := categorizedImages[category]; exists && len(catImages) > 0 {
+			sortedCatImages := sortStatImages(catImages, stats)
+			selectedImages = append(selectedImages, sortedCatImages[0])
+			categorizedImages[category] = sortedCatImages[1:]
+			remainingSlots--
+
+			if remainingSlots <= 0 {
+				break
+			}
+		}
+	}
+
+	if remainingSlots > 0 {
+		for remainingSlots > 0 {
+			for _, category := range categoryPriority {
+				if catImages, exists := categorizedImages[category]; exists && len(catImages) > 0 {
+					selectedImages = append(selectedImages, catImages[0])
+					categorizedImages[category] = catImages[1:]
+					remainingSlots--
+
+					if remainingSlots <= 0 {
+						break
+					}
+				}
+			}
+
+			allEmpty := true
+			for _, catImages := range categorizedImages {
+				if len(catImages) > 0 {
+					allEmpty = false
+					break
+				}
+			}
+
+			if allEmpty {
+				break
+			}
+		}
+	}
+
+	return selectedImages
+}
+
+func generateVerdanskStatsEmbed(activisionID string, stats map[string]StatValue) *discordgo.MessageEmbed {
+	var fields []*discordgo.MessageEmbedField
+
+	keyStats := map[string]string{
+		"total_kills":            "Total Kills",
+		"total_deaths":           "Total Deaths",
+		"kd_ratio":               "K/D Ratio",
+		"matches_played":         "Matches Played",
+		"total_wins":             "Total Wins",
+		"win_percentage":         "Win Percentage",
+		"hours_played":           "Hours Played",
+		"favorite_weapon":        "Favorite Weapon",
+		"favorite_drop_location": "Favorite Drop Location",
+	}
+
+	for statKey, displayName := range keyStats {
+		possibleKeys := []string{
+			statKey,
+			strings.ReplaceAll(statKey, "_", ""),
+			"verdansk_" + statKey,
+			"warzone_" + statKey,
+		}
+
+		for _, key := range possibleKeys {
+			if stat, exists := stats[key]; exists && stat.StringValue != "" {
+				fields = append(fields, &discordgo.MessageEmbedField{
+					Name:   displayName,
+					Value:  stat.StringValue,
+					Inline: true,
+				})
+				break
+			}
+		}
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title:       fmt.Sprintf("Verdansk Replay Stats Summary for %s", activisionID),
+		Description: "Here's a summary of your Verdansk career stats. Download the images or zip file to see detailed visualizations.",
+		Color:       0x00BFFF,
+		Fields:      fields,
+		Footer: &discordgo.MessageEmbedFooter{
+			Text: "Data provided by Call of Duty Verdansk Replay",
+		},
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+
+	return embed
+}
+
+func retryVerdanskRequest(client *http.Client, method, url string, maxRetries int) (*http.Response, error) {
+	log := logger.Log.WithFields(logrus.Fields{
+		"function": "retryVerdanskRequest",
+		"method":   method,
+		"url":      url,
+	})
+
+	var resp *http.Response
+	var err error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		req, err := createVerdanskAPIRequest(method, url)
+		if err != nil {
+			return nil, err
+		}
+
+		log.Infof("Sending request (attempt %d/%d)", attempt, maxRetries)
+		resp, err = client.Do(req)
+
+		if err != nil {
+			if strings.Contains(err.Error(), "timeout") ||
+				strings.Contains(err.Error(), "connection reset") ||
+				strings.Contains(err.Error(), "connection refused") {
+
+				log.WithError(err).Warnf("Temporary error on attempt %d, retrying", attempt)
+				backoffDuration := time.Duration(100*attempt*attempt) * time.Millisecond
+				time.Sleep(backoffDuration)
+				continue
+			}
+
+			return nil, err
+		}
+
+		if resp.StatusCode >= 500 && resp.StatusCode < 600 {
+			log.Warnf("Server error %d on attempt %d, retrying", resp.StatusCode, attempt)
+			resp.Body.Close()
+
+			backoffDuration := time.Duration(100*attempt*attempt) * time.Millisecond
+			time.Sleep(backoffDuration)
+			continue
+		}
+
+		return resp, nil
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed after %d attempts: %w", maxRetries, err)
+	}
+
+	return resp, nil
+}
+
+var monitorActiveDownloads = struct {
+	sync.RWMutex
+	active     map[string]int
+	maxPerUser int
+}{
+	active:     make(map[string]int),
+	maxPerUser: 2,
+}
+
+func canStartNewDownload(userID string) bool {
+	monitorActiveDownloads.RLock()
+	defer monitorActiveDownloads.RUnlock()
+
+	count := monitorActiveDownloads.active[userID]
+	return count < monitorActiveDownloads.maxPerUser
+}
+
+func incrementActiveDownloads(userID string) {
+	monitorActiveDownloads.Lock()
+	defer monitorActiveDownloads.Unlock()
+
+	monitorActiveDownloads.active[userID]++
+}
+
+func decrementActiveDownloads(userID string) {
+	monitorActiveDownloads.Lock()
+	defer monitorActiveDownloads.Unlock()
+
+	monitorActiveDownloads.active[userID]--
+	if monitorActiveDownloads.active[userID] < 0 {
+		monitorActiveDownloads.active[userID] = 0
+	}
+}
+
+func markAccountWithVerdanskStats(userID, activisionID string) {
+	log := logger.Log.WithFields(logrus.Fields{
+		"function":     "markAccountWithVerdanskStats",
+		"userID":       userID,
+		"activisionID": activisionID,
+	})
+
+	var accounts []models.Account
+	result := database.DB.Where("user_id = ? AND activision_id = ?", userID, activisionID).Find(&accounts)
+
+	if result.Error != nil {
+		log.WithError(result.Error).Error("Error fetching accounts")
+		return
+	}
+
+	if len(accounts) == 0 {
+		log.Info("No accounts found with matching Activision ID")
+		return
+	}
+
+	for _, account := range accounts {
+		if !account.IsOGVerdansk {
+			account.IsOGVerdansk = true
+			if err := database.DB.Save(&account).Error; err != nil {
+				log.WithError(err).Errorf("Failed to update OGVerdansk flag for account %d", account.ID)
+			} else {
+				log.Infof("Successfully marked account %d as having Verdansk stats", account.ID)
+			}
+		}
+	}
+}
+
+func loadVerdanskConfiguration() {
+	cfg := configuration.Get()
+
+	if cfg.Verdansk.APIKey != "" {
+		X_APIKey = cfg.Verdansk.APIKey
+	} else {
+		X_APIKey = "a855a770-cf8a-4ae8-9f30-b787d676e608"
+		logger.Log.Warn("Using default X-API-Key for Verdansk. Consider setting a custom key.")
+	}
+
+	tempDir := cfg.Verdansk.TempDir
+	if tempDir == "" {
+		tempDir = "verdansk_temp"
+	}
+
+	if err := os.MkdirAll(tempDir, 0755); err != nil {
+		logger.Log.WithError(err).Error("Failed to create Verdansk temp directory")
+	}
+
+	cleanupTime := cfg.Verdansk.CleanupTime
+	if cleanupTime == 0 {
+		cleanupTime = 30 * time.Minute
+		logger.Log.Info("Using default cleanup time of 30 minutes for Verdansk files")
+	}
+
+	logger.Log.WithFields(logrus.Fields{
+		"apiKey":      X_APIKey[:8] + "...",
+		"tempDir":     tempDir,
+		"cleanupTime": cleanupTime,
+	}).Info("Verdansk configuration loaded")
+}
+
+func StartVerdanskCleanupRoutine() {
+	loadVerdanskConfiguration()
+
+	InitCleanupRoutine()
+
+	go func() {
+		cfg := configuration.Get()
+		tempDir := cfg.Verdansk.TempDir
+		if tempDir == "" {
+			tempDir = "verdansk_temp"
+		}
+
+		logger.Log.Info("Performing initial cleanup of Verdansk temp files")
+
+		files, err := os.ReadDir(tempDir)
+		if err != nil {
+			logger.Log.WithError(err).Error("Error reading Verdansk temp directory")
+			return
+		}
+
+		cleanedFiles := 0
+		for _, file := range files {
+			filePath := filepath.Join(tempDir, file.Name())
+
+			if file.Name() == ".gitkeep" || file.Name() == ".git" {
+				continue
+			}
+
+			if err := os.RemoveAll(filePath); err != nil {
+				logger.Log.WithError(err).Errorf("Failed to remove %s", filePath)
+			} else {
+				cleanedFiles++
+			}
+		}
+
+		logger.Log.Infof("Initial cleanup complete, removed %d files/directories", cleanedFiles)
+	}()
+}
+
+type VerdanskSession struct {
+	UserID           string
+	ActivisionID     string
+	AccountID        uint
+	StartTime        time.Time
+	DownloadedStats  bool
+	ImagesDownloaded int
+	TempDir          string
+	ZipFile          string
+	State            string
+	ErrorMessage     string
+	ConcurrentJobs   int
+}
+
+var sessionManager = struct {
+	sync.RWMutex
+	sessions map[string]*VerdanskSession
+}{
+	sessions: make(map[string]*VerdanskSession),
+}
+
+func createVerdanskSession(userID, activisionID string, accountID uint) *VerdanskSession {
+	sessionManager.Lock()
+	defer sessionManager.Unlock()
+
+	session := &VerdanskSession{
+		UserID:         userID,
+		ActivisionID:   activisionID,
+		AccountID:      accountID,
+		StartTime:      time.Now(),
+		State:          "starting",
+		ConcurrentJobs: 3,
+	}
+
+	sessionManager.sessions[userID] = session
+	return session
+}
+
+func updateSessionState(userID, newState string, errorMsg string) {
+	sessionManager.Lock()
+	defer sessionManager.Unlock()
+
+	session, exists := sessionManager.sessions[userID]
+	if !exists {
+		return
+	}
+
+	oldState := session.State
+	session.State = newState
+
+	if errorMsg != "" {
+		session.ErrorMessage = errorMsg
+	}
+
+	logger.Log.WithFields(logrus.Fields{
+		"userID":       userID,
+		"activisionID": session.ActivisionID,
+		"transition":   fmt.Sprintf("%s -> %s", oldState, newState),
+		"error":        errorMsg,
+		"duration":     time.Since(session.StartTime).String(),
+	}).Info("Verdansk session state updated")
+}
+
+func logVerdanskJobCompletion(userID, operationType string, success bool, duration time.Duration, details string) {
+	services.LogCommandExecution(
+		fmt.Sprintf("verdansk_%s", operationType),
+		userID,
+		"",
+		success,
+		duration.Milliseconds(),
+		details,
+	)
+
+	logger.Log.WithFields(logrus.Fields{
+		"userID":        userID,
+		"operationType": operationType,
+		"success":       success,
+		"duration":      duration.String(),
+		"details":       details,
+	}).Info("Verdansk operation completed")
+}
+
+func cleanupSession(userID string) {
+	sessionManager.Lock()
+	defer sessionManager.Unlock()
+
+	session, exists := sessionManager.sessions[userID]
+	if !exists {
+		return
+	}
+
+	if session.TempDir != "" && session.ZipFile != "" {
+		tempDir := session.TempDir
+		zipFile := session.ZipFile
+
+		go func() {
+			time.Sleep(30 * time.Minute)
+
+			if err := os.RemoveAll(tempDir); err != nil {
+				logger.Log.WithError(err).Errorf("Failed to remove Verdansk temp directory %s", tempDir)
+			}
+
+			if err := os.Remove(zipFile); err != nil {
+				logger.Log.WithError(err).Errorf("Failed to remove Verdansk zip file %s", zipFile)
+			}
+
+			logger.Log.Infof("Cleaned up Verdansk session files for user %s", userID)
+		}()
+	}
+
+	delete(sessionManager.sessions, userID)
+}
+
+func optimizeJPEG(imageData []byte, quality int) ([]byte, error) {
+	if len(imageData) == 0 {
+		return nil, fmt.Errorf("empty image data")
+	}
+
+	img, err := jpeg.Decode(bytes.NewReader(imageData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode JPEG: %w", err)
+	}
+
+	var buf bytes.Buffer
+	err = jpeg.Encode(&buf, img, &jpeg.Options{Quality: quality})
+	if err != nil {
+		return nil, fmt.Errorf("failed to re-encode JPEG: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+func processImageBatch(images []ImageDownload) ([]ImageDownload, error) {
+	var processed []ImageDownload
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	errChan := make(chan error, len(images))
+
+	for _, img := range images {
+		wg.Add(1)
+		go func(image ImageDownload) {
+			defer wg.Done()
+
+			if image.Err != nil || len(image.Data) == 0 {
+				mu.Lock()
+				processed = append(processed, image)
+				mu.Unlock()
+				return
+			}
+
+			optimized, err := optimizeJPEG(image.Data, 80)
+			if err != nil {
+				image.Err = err
+				errChan <- fmt.Errorf("failed to optimize image %s: %w", image.Name, err)
+				mu.Lock()
+				processed = append(processed, image)
+				mu.Unlock()
+				return
+			}
+
+			if len(optimized) < len(image.Data) {
+				image.Data = optimized
+			}
+
+			mu.Lock()
+			processed = append(processed, image)
+			mu.Unlock()
+		}(img)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	var errors []string
+	for err := range errChan {
+		errors = append(errors, err.Error())
+	}
+
+	if len(errors) > 0 {
+		return processed, fmt.Errorf("errors processing images: %s", strings.Join(errors, "; "))
+	}
+
+	return processed, nil
+}
+
+func sendProgressUpdate(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
+	if i.Interaction.Token == "" {
+		return
+	}
+
+	_, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+		Content: fmt.Sprintf("⏳ **Processing Update**: %s", message),
+		Flags:   discordgo.MessageFlagsEphemeral,
+	})
+
+	if err != nil {
+		logger.Log.WithError(err).Warn("Failed to send progress update")
+	}
+}
+
+func createVerdanskProgressBar(current, total int, barLength int) string {
+	if total <= 0 {
+		return "[--------------------] (Unknown)"
+	}
+
+	percent := float64(current) / float64(total)
+	filledLength := int(math.Round(float64(barLength) * percent))
+
+	bar := "["
+	for i := 0; i < barLength; i++ {
+		if i < filledLength {
+			bar += "="
+		} else if i == filledLength {
+			bar += ">"
+		} else {
+			bar += "-"
+		}
+	}
+	bar += fmt.Sprintf("] (%d/%d, %.0f%%)", current, total, percent*100)
+
+	return bar
+}
+
+func generateVerdanskSummary(stats map[string]StatValue) string {
+	summary := "**Verdansk Career Summary**\n\n"
+
+	statGroups := []struct {
+		Title string
+		Keys  []string
+	}{
+		{
+			Title: "Combat Performance",
+			Keys:  []string{"kills", "deaths", "kd_ratio", "headshots", "accuracy"},
+		},
+		{
+			Title: "Match Statistics",
+			Keys:  []string{"games_played", "wins", "win_percentage", "avg_placement"},
+		},
+		{
+			Title: "Gameplay",
+			Keys:  []string{"time_played", "favorite_drop", "favorite_weapon", "most_kills"},
+		},
+	}
+
+	for _, group := range statGroups {
+		groupContent := ""
+
+		for _, key := range group.Keys {
+			for statKey, value := range stats {
+				normalizedKey := strings.ToLower(strings.ReplaceAll(statKey, "_", ""))
+				if strings.Contains(normalizedKey, key) && value.StringValue != "" {
+					displayName := formatStatName(statKey)
+					groupContent += fmt.Sprintf("• **%s**: %s\n", displayName, value.StringValue)
+					break
+				}
+			}
+		}
+
+		if groupContent != "" {
+			summary += fmt.Sprintf("**%s**\n%s\n", group.Title, groupContent)
+		}
+	}
+
+	return summary
+}
+
+func verifyVerdanskAvailability(activisionID string) (bool, error) {
+	client := services.GetDefaultHTTPClient()
+	encodedID := url.QueryEscape(activisionID)
+
+	preferences, err := fetchPlayerPreferences(client, encodedID)
+	if err != nil {
+		return false, err
+	}
+
+	return preferences.Visible, nil
+}
+
+func getActivisionAccountInfo(client *http.Client, activisionID string) (map[string]interface{}, error) {
+	return map[string]interface{}{
+		"activisionID": activisionID,
+		"platform":     "unknown",
+	}, nil
+}
+
+func sendVerdanskErrorEmbed(s *discordgo.Session, i *discordgo.InteractionCreate, title, description, errorDetail string) {
+	embed := &discordgo.MessageEmbed{
+		Title:       title,
+		Description: description,
+		Color:       0xFF0000,
+		Fields: []*discordgo.MessageEmbedField{
+			{
+				Name:  "Error Details",
+				Value: errorDetail,
+			},
+			{
+				Name: "Next Steps",
+				Value: "You can try the following:\n" +
+					"• Make sure your profile is set to visible in Activision settings\n" +
+					"• Try again with a different account\n" +
+					"• Ensure your Activision ID is correct",
+			},
+		},
+		Footer: &discordgo.MessageEmbedFooter{
+			Text: "COD Status Bot - Verdansk Replay",
+		},
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+
+	_, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+		Embeds: []*discordgo.MessageEmbed{embed},
+		Flags:  discordgo.MessageFlagsEphemeral,
+	})
+
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to send error embed")
+	}
+}
+
+func isVerdanskAPIAvailable() bool {
+	client := services.GetDefaultHTTPClient()
+
+	req, err := createVerdanskAPIRequest("OPTIONS", "https://pd.callofduty.com/api/x/v1/campaign/warzonewrapped/preferences/gamer/test")
+	if err != nil {
+		return false
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	return resp.StatusCode < 500
+}
+
+type VerdanskConfig struct {
+	EnabledInGuilds  bool
+	MaxConcurrentDLs int
+	MaxImageQuality  int
+	EnableOptimize   bool
+	APIRateLimit     time.Duration
+}
+
+var verdanskConfig = VerdanskConfig{
+	EnabledInGuilds:  true,
+	MaxConcurrentDLs: 3,
+	MaxImageQuality:  85,
+	EnableOptimize:   true,
+	APIRateLimit:     500 * time.Millisecond,
+}
+
+var verdanskRateLimiter = struct {
+	sync.Mutex
+	lastRequest time.Time
+}{
+	lastRequest: time.Now().Add(-24 * time.Hour),
+}
+
+func waitForRateLimit() {
+	verdanskRateLimiter.Mutex.Lock()
+	defer verdanskRateLimiter.Mutex.Unlock()
+
+	elapsed := time.Since(verdanskRateLimiter.lastRequest)
+	if elapsed < verdanskConfig.APIRateLimit {
+		time.Sleep(verdanskConfig.APIRateLimit - elapsed)
+	}
+
+	verdanskRateLimiter.lastRequest = time.Now()
+}
+
+func enrichStatData(stats map[string]StatValue) map[string]StatValue {
+	enriched := make(map[string]StatValue, len(stats))
+	for k, v := range stats {
+		enriched[k] = v
+	}
+
+	if kdStr, exists := getStatStringValue(stats, "kd_ratio"); exists {
+		if kdVal, err := strconv.ParseFloat(kdStr, 64); err == nil {
+			enriched["kd_ratio"] = StatValue{
+				OrderValue:  stats["kd_ratio"].OrderValue,
+				StringValue: fmt.Sprintf("%.2f", kdVal),
+			}
+		}
+	}
+
+	wins := getStatIntValue(stats, "wins")
+	matches := getStatIntValue(stats, "matches_played")
+	if wins > 0 && matches > 0 {
+		winPct := float64(wins) / float64(matches) * 100
+		enriched["calculated_win_percentage"] = StatValue{
+			OrderValue:  new(int),
+			StringValue: fmt.Sprintf("%.1f%%", winPct),
+		}
+	}
+
+	return enriched
+}
+
+func getStatStringValue(stats map[string]StatValue, keys ...string) (string, bool) {
+	for _, key := range keys {
+		if stat, exists := stats[key]; exists && stat.StringValue != "" {
+			return stat.StringValue, true
+		}
+
+		if stat, exists := stats["verdansk_"+key]; exists && stat.StringValue != "" {
+			return stat.StringValue, true
+		}
+	}
+	return "", false
+}
+
+func getStatIntValue(stats map[string]StatValue, keys ...string) int {
+	for _, key := range keys {
+		if strVal, exists := getStatStringValue(stats, key); exists {
+			if val, err := strconv.Atoi(strVal); err == nil {
+				return val
+			}
+		}
+	}
+	return 0
+}
+
+func HandleVerdanskCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	if !isVerdanskAPIAvailable() {
+		respondToInteraction(s, i, "⚠️ The Verdansk Replay API is currently unavailable. Please try again later.")
+		return
+	}
+
+	CommandVerdansk(s, i)
+}
+
+func notifyUnsupportedMessage(s *discordgo.Session, i *discordgo.InteractionCreate, activisionID string) {
+	embed := &discordgo.MessageEmbed{
+		Title:       "Verdansk Stats Not Available",
+		Description: fmt.Sprintf("Unfortunately, Verdansk Replay stats are not available for **%s**.", activisionID),
+		Color:       0xFF9900,
+		Fields: []*discordgo.MessageEmbedField{
+			{
+				Name: "Possible Reasons",
+				Value: "• Not enough Verdansk gameplay (at least 5 matches required)\n" +
+					"• Your Game Data settings are set to private\n" +
+					"• The account was created after Verdansk ended",
+			},
+			{
+				Name: "How to Fix",
+				Value: "1. Go to [callofduty.com/profile](https://profile.callofduty.com/cod/login)\n" +
+					"2. Log in with your Activision account\n" +
+					"3. Go to Privacy & Security settings\n" +
+					"4. Make sure Game Data is set to visible\n" +
+					"5. Try again in 24 hours as changes may take time to apply",
+			},
+		},
+		Footer: &discordgo.MessageEmbedFooter{
+			Text: "COD Status Bot - Verdansk Replay",
+		},
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+
+	s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+		Embeds: []*discordgo.MessageEmbed{embed},
+		Flags:  discordgo.MessageFlagsEphemeral,
+	})
+}
+
+func getVerdanskFeatureEmbed() *discordgo.MessageEmbed {
+	return &discordgo.MessageEmbed{
+		Title:       "Verdansk Replay Stats Feature",
+		Description: "The Verdansk Replay feature allows you to view your Warzone statistics from the original Verdansk map (March 2020 - December 2021).",
+		Color:       0x00BFFF,
+		Fields: []*discordgo.MessageEmbedField{
+			{
+				Name: "Requirements",
+				Value: "• An Activision account that played Warzone during the Verdansk era\n" +
+					"• At least 5 matches played in Verdansk\n" +
+					"• Game Data visibility enabled in your Activision profile",
+				Inline: false,
+			},
+			{
+				Name: "How to Use",
+				Value: "1. Use the `/verdansk` command\n" +
+					"2. Choose to either select one of your monitored accounts or enter your Activision ID\n" +
+					"3. Wait while the bot retrieves and processes your Verdansk stats\n" +
+					"4. View the results and download the ZIP file for permanent access",
+				Inline: false,
+			},
+			{
+				Name:   "Data Privacy",
+				Value:  "This command only retrieves publicly available data from Call of Duty's official APIs. Your data is temporarily stored for processing and automatically deleted after 30 minutes.",
+				Inline: false,
+			},
+		},
+		Footer: &discordgo.MessageEmbedFooter{
+			Text: "Note: Verdansk stats are provided by Call of Duty and may not be available for all accounts.",
+		},
+	}
+}
+
+func enrichVerdanskFilenames(images []ImageDownload) []ImageDownload {
+	nameMap := map[string]string{
+		"total_kills":            "01_Total_Kills",
+		"kd_ratio":               "02_KD_Ratio",
+		"favorite_weapon":        "03_Favorite_Weapon",
+		"favorite_drop_location": "04_Favorite_Drop",
+		"total_wins":             "05_Total_Wins",
+		"matches_played":         "06_Matches_Played",
+		"hours_played":           "07_Hours_Played",
+		"best_game":              "08_Best_Game",
+		"verdansk_map":           "09_Verdansk_Map",
+	}
+
+	result := make([]ImageDownload, len(images))
+	for i, img := range images {
+		newName := img.Name
+
+		if betterName, exists := nameMap[img.Name]; exists {
+			newName = betterName
+		} else {
+			formattedName := strings.ReplaceAll(img.Name, "_", " ")
+			words := strings.Split(formattedName, " ")
+			for i, word := range words {
+				if len(word) > 0 {
+					words[i] = strings.ToUpper(word[0:1]) + strings.ToLower(word[1:])
+				}
+			}
+			newName = strings.Join(words, "_")
+		}
+
+		result[i] = ImageDownload{
+			Name: newName,
+			URL:  img.URL,
+			Data: img.Data,
+			Err:  img.Err,
+		}
+	}
+
+	return result
+}
+
+func groupImagesByCategory(images []ImageDownload) map[string][]ImageDownload {
+	categories := map[string][]ImageDownload{
+		"Combat":        {},
+		"Performance":   {},
+		"Gameplay":      {},
+		"Weapons":       {},
+		"Locations":     {},
+		"Miscellaneous": {},
+	}
+
+	categoryKeywords := map[string][]string{
+		"Combat":      {"kill", "death", "kd", "headshot", "accuracy"},
+		"Performance": {"win", "score", "placement", "match", "game"},
+		"Gameplay":    {"time", "hour", "day", "played", "session"},
+		"Weapons":     {"weapon", "gun", "loadout", "equipment", "favorite_weapon"},
+		"Locations":   {"location", "drop", "zone", "map", "area"},
+	}
+
+	for _, img := range images {
+		lowerName := strings.ToLower(img.Name)
+		assigned := false
+
+		for category, keywords := range categoryKeywords {
+			for _, keyword := range keywords {
+				if strings.Contains(lowerName, keyword) {
+					categories[category] = append(categories[category], img)
+					assigned = true
+					break
+				}
+			}
+			if assigned {
+				break
+			}
+		}
+
+		if !assigned {
+			categories["Miscellaneous"] = append(categories["Miscellaneous"], img)
+		}
+	}
+
+	return categories
 }
