@@ -80,6 +80,11 @@ func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			vipStatus = "Yes ✓"
 		}
 
+		ogVerdan := "No"
+		if account.IsOGVerdansk {
+			ogVerdan = "OG Verdansk"
+		}
+
 		fieldValue := fmt.Sprintf("Status: %s\n", account.LastStatus)
 
 		if account.IsPermabanned {
@@ -98,9 +103,9 @@ func CommandListAccounts(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			fieldValue += fmt.Sprintf("⚠ Check Errors: %d\n", account.ConsecutiveErrors)
 		}
 
-		fieldValue += fmt.Sprintf("VIP Status: %s\nChecks: %s\nNotification Type: %s\n"+
+		fieldValue += fmt.Sprintf("VIP Status: %s\nOG Verdansk: %s\nChecks: %s\nNotification Type: %s\n"+
 			"Cookie Expires: %s\nCreated: %s\nLast Checked: %s",
-			vipStatus, checkStatus, account.NotificationType,
+			vipStatus, ogVerdan, checkStatus, account.NotificationType,
 			cookieExpiration, creationDate, lastCheckTime)
 
 		if account.IsCheckDisabled {

@@ -29,6 +29,146 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+var verdanskRateLimits = struct {
+	sync.RWMutex
+	userLimits     map[string]userRateLimit
+	globalSettings verdanskLimitSettings
+}{
+	userLimits: make(map[string]userRateLimit),
+	globalSettings: verdanskLimitSettings{
+		CommandCooldown:    time.Hour * 1,    // 1 hour between commands per user
+		MaxRequestsPerDay:  3,                // Max 3 requests per day per user
+		CleanupTime:        time.Minute * 30, // 30 minutes before cleanup
+		MaxDownloadsPerDay: 10,               // Maximum stats downloads per day across all users
+		MaxConcurrentJobs:  3,                // Max concurrent jobs for a single user
+	},
+}
+
+type userRateLimit struct {
+	lastRequest     time.Time
+	todayRequests   int
+	todayDownloads  int
+	resetTime       time.Time
+	downloadHistory []time.Time
+}
+
+type verdanskLimitSettings struct {
+	CommandCooldown    time.Duration
+	MaxRequestsPerDay  int
+	CleanupTime        time.Duration
+	MaxDownloadsPerDay int
+	MaxConcurrentJobs  int
+}
+
+func canUserRunVerdanskCommand(userID string) (bool, string) {
+	verdanskRateLimits.RLock()
+	defer verdanskRateLimits.RUnlock()
+
+	now := time.Now()
+	settings := verdanskRateLimits.globalSettings
+	limit, exists := verdanskRateLimits.userLimits[userID]
+
+	if !exists {
+		return true, ""
+	}
+
+	if now.Sub(limit.lastRequest) < settings.CommandCooldown {
+		remaining := limit.lastRequest.Add(settings.CommandCooldown).Sub(now).Round(time.Second)
+		return false, fmt.Sprintf("Command cooldown in effect. Please try again in %s", remaining)
+	}
+
+	if now.Day() == limit.lastRequest.Day() &&
+		now.Month() == limit.lastRequest.Month() &&
+		now.Year() == limit.lastRequest.Year() {
+		if limit.todayRequests >= settings.MaxRequestsPerDay {
+			nextDay := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+			return false, fmt.Sprintf("Daily limit reached (%d). Reset at midnight (%s remaining)",
+				settings.MaxRequestsPerDay, time.Until(nextDay).Round(time.Minute))
+		}
+	}
+
+	return true, ""
+}
+
+func updateUserRateLimit(userID string) {
+	verdanskRateLimits.Lock()
+	defer verdanskRateLimits.Unlock()
+
+	now := time.Now()
+	limit, exists := verdanskRateLimits.userLimits[userID]
+
+	if !exists {
+		verdanskRateLimits.userLimits[userID] = userRateLimit{
+			lastRequest:   now,
+			todayRequests: 1,
+			resetTime:     time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location()),
+		}
+		return
+	}
+
+	// Reset counters if it's a new day
+	if now.Day() != limit.lastRequest.Day() ||
+		now.Month() != limit.lastRequest.Month() ||
+		now.Year() != limit.lastRequest.Year() {
+		limit.todayRequests = 0
+		limit.todayDownloads = 0
+		limit.resetTime = time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+	}
+
+	limit.lastRequest = now
+	limit.todayRequests++
+
+	verdanskRateLimits.userLimits[userID] = limit
+}
+
+func trackVerdanskDownload(userID string) {
+	verdanskRateLimits.Lock()
+	defer verdanskRateLimits.Unlock()
+
+	now := time.Now()
+	limit, exists := verdanskRateLimits.userLimits[userID]
+
+	if !exists {
+		verdanskRateLimits.userLimits[userID] = userRateLimit{
+			lastRequest:     now,
+			todayRequests:   1,
+			todayDownloads:  1,
+			downloadHistory: []time.Time{now},
+		}
+		return
+	}
+
+	var recentDownloads []time.Time
+	for _, t := range limit.downloadHistory {
+		if now.Sub(t) < 24*time.Hour {
+			recentDownloads = append(recentDownloads, t)
+		}
+	}
+
+	limit.todayDownloads++
+	limit.downloadHistory = append(recentDownloads, now)
+
+	verdanskRateLimits.userLimits[userID] = limit
+}
+
+func getTotalDownloadsToday() int {
+	verdanskRateLimits.RLock()
+	defer verdanskRateLimits.RUnlock()
+
+	total := 0
+	now := time.Now()
+
+	for _, limit := range verdanskRateLimits.userLimits {
+		if now.Day() == limit.lastRequest.Day() &&
+			now.Month() == limit.lastRequest.Month() &&
+			now.Year() == limit.lastRequest.Year() {
+			total += limit.todayDownloads
+		}
+	}
+
+	return total
+}
+
 type PlayerPreferences struct {
 	Visible bool `json:"visible"`
 }
@@ -81,6 +221,21 @@ func CommandVerdansk(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	log = log.WithField("userID", userID)
+
+	canRun, message := canUserRunVerdanskCommand(userID)
+	if !canRun {
+		log.Infof("Rate limit applied: %s", message)
+		respondToInteraction(s, i, fmt.Sprintf("⏳ **Rate Limited**: %s", message))
+		return
+	}
+
+	if getTotalDownloadsToday() >= verdanskRateLimits.globalSettings.MaxDownloadsPerDay {
+		log.Warn("Global download limit reached")
+		respondToInteraction(s, i, "🛑 **Service Unavailable**: Verdansk stats service has reached its daily limit. Please try again tomorrow.")
+		return
+	}
+
+	updateUserRateLimit(userID)
 
 	var accounts []models.Account
 	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
@@ -456,6 +611,7 @@ func processVerdanskStats(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	})
 
 	log.Info("Processing Verdansk stats")
+	trackVerdanskDownload(userID)
 
 	cfg := configuration.Get()
 	tempDir := cfg.Verdansk.TempDir
@@ -465,7 +621,7 @@ func processVerdanskStats(s *discordgo.Session, i *discordgo.InteractionCreate, 
 
 	cleanupTime := cfg.Verdansk.CleanupTime
 	if cleanupTime == 0 {
-		cleanupTime = 30 * time.Minute
+		cleanupTime = verdanskRateLimits.globalSettings.CleanupTime
 	}
 
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
@@ -483,13 +639,90 @@ func processVerdanskStats(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	preferences, err := fetchPlayerPreferences(client, encodedID)
 	if err != nil {
 		log.WithError(err).Error("Error fetching player preferences")
-		sendFollowupMessage(s, i, fmt.Sprintf("Error: Failed to fetch preferences for %s. %v", activisionID, err))
+
+		errorReason := "An unknown error occurred."
+		remedyMessage := "Please try again later."
+
+		if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "not found") {
+			errorReason = "Account not found in Verdansk records."
+			remedyMessage = "This account either did not play during the Verdansk era or was created after Verdansk ended."
+		} else if strings.Contains(err.Error(), "403") || strings.Contains(err.Error(), "forbidden") {
+			errorReason = "Access to this account's Verdansk data is restricted."
+			remedyMessage = "Check your privacy settings at https://profile.callofduty.com/cod/login and ensure game data is set to 'visible'."
+		} else if strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "too many requests") {
+			errorReason = "Rate limit reached for Activision's API."
+			remedyMessage = "The service is experiencing high traffic. Please try again in 15-30 minutes."
+		} else if strings.Contains(err.Error(), "500") || strings.Contains(err.Error(), "503") {
+			errorReason = "Activision's API is currently experiencing issues."
+			remedyMessage = "The Verdansk Replay service may be temporarily unavailable. Please try again later."
+		}
+
+		errorEmbed := &discordgo.MessageEmbed{
+			Title:       "Verdansk Stats Unavailable",
+			Description: fmt.Sprintf("Unable to retrieve Verdansk Replay stats for **%s**", activisionID),
+			Color:       0xFF0000,
+			Fields: []*discordgo.MessageEmbedField{
+				{
+					Name:  "Error Reason",
+					Value: errorReason,
+				},
+				{
+					Name:  "What You Can Do",
+					Value: remedyMessage,
+				},
+			},
+			Footer: &discordgo.MessageEmbedFooter{
+				Text: "COD Status Bot - Verdansk Replay",
+			},
+		}
+
+		_, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+			Embeds: []*discordgo.MessageEmbed{errorEmbed},
+			Flags:  discordgo.MessageFlagsEphemeral,
+		})
+
+		if err != nil {
+			sendFollowupMessage(s, i, fmt.Sprintf("Error: Failed to fetch preferences for %s. %v", activisionID, err))
+		}
 		return
 	}
 
 	if !preferences.Visible {
 		log.Info("Verdansk stats not available for this account")
-		sendFollowupMessage(s, i, fmt.Sprintf("Verdansk stats for %s are not available. This could be because:\n- You haven't played enough in Verdansk (at least 5 deployments required)\n- Your Game Player Data settings need to be updated at https://profile.callofduty.com/cod/login", activisionID))
+
+		unavailableEmbed := &discordgo.MessageEmbed{
+			Title:       "Verdansk Stats Not Available",
+			Description: fmt.Sprintf("Unfortunately, Verdansk Replay stats are not available for **%s**.", activisionID),
+			Color:       0xFF9900,
+			Fields: []*discordgo.MessageEmbedField{
+				{
+					Name: "Possible Reasons",
+					Value: "• Not enough Verdansk gameplay (at least 5 matches required)\n" +
+						"• Your Game Data settings are set to private\n" +
+						"• The account was created after Verdansk ended",
+				},
+				{
+					Name: "How to Fix",
+					Value: "1. Go to [callofduty.com/profile](https://profile.callofduty.com/cod/login)\n" +
+						"2. Log in with your Activision account\n" +
+						"3. Go to Privacy & Security settings\n" +
+						"4. Make sure Game Data is set to visible\n" +
+						"5. Try again in 24 hours as changes may take time to apply",
+				},
+			},
+			Footer: &discordgo.MessageEmbedFooter{
+				Text: "COD Status Bot - Verdansk Replay",
+			},
+		}
+
+		_, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+			Embeds: []*discordgo.MessageEmbed{unavailableEmbed},
+			Flags:  discordgo.MessageFlagsEphemeral,
+		})
+
+		if err != nil {
+			sendFollowupMessage(s, i, fmt.Sprintf("Verdansk stats for %s are not available. This could be because:\n- You haven't played enough in Verdansk (at least 5 deployments required)\n- Your Game Player Data settings need to be updated at https://profile.callofduty.com/cod/login", activisionID))
+		}
 		return
 	}
 
@@ -1005,12 +1238,54 @@ func InitCleanupRoutine() {
 	log := logger.Log.WithField("function", "InitCleanupRoutine")
 	log.Info("Starting cleanup routine for Verdansk temporary files")
 
+	cleanupAllTempFiles()
+
 	go func() {
 		for {
 			time.Sleep(10 * time.Minute)
 			cleanupOldZipFiles()
 		}
 	}()
+}
+
+func cleanupAllTempFiles() {
+	log := logger.Log.WithField("function", "cleanupAllTempFiles")
+	log.Info("Performing full cleanup of Verdansk temp files")
+
+	cfg := configuration.Get()
+	tempDir := cfg.Verdansk.TempDir
+	if tempDir == "" {
+		tempDir = "verdansk_temp"
+	}
+
+	if _, err := os.Stat(tempDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(tempDir, 0755); err != nil {
+			log.WithError(err).Error("Failed to create Verdansk temp directory")
+			return
+		}
+	}
+
+	files, err := os.ReadDir(tempDir)
+	if err != nil {
+		log.WithError(err).Error("Error reading Verdansk temp directory")
+		return
+	}
+
+	cleanedCount := 0
+	for _, file := range files {
+		if file.Name() == ".gitkeep" || file.Name() == ".git" {
+			continue
+		}
+
+		filePath := filepath.Join(tempDir, file.Name())
+		if err := os.RemoveAll(filePath); err != nil {
+			log.WithError(err).Errorf("Failed to remove %s", filePath)
+		} else {
+			cleanedCount++
+		}
+	}
+
+	log.Infof("Full cleanup complete, removed %d files/directories", cleanedCount)
 }
 
 func cleanupOldZipFiles() {
@@ -1028,6 +1303,7 @@ func cleanupOldZipFiles() {
 
 	now := time.Now()
 	deletedCount := 0
+	errorCount := 0
 
 	for zipFile, expireTime := range tempZipFiles.files {
 		if now.After(expireTime) {
@@ -1037,22 +1313,61 @@ func cleanupOldZipFiles() {
 			outputDir := filepath.Join(tempDir, uniqueID)
 			if err := os.RemoveAll(outputDir); err != nil {
 				log.WithError(err).Errorf("Failed to remove temp directory %s", outputDir)
+				errorCount++
 			}
 
 			if err := os.Remove(zipFile); err != nil {
 				log.WithError(err).Errorf("Failed to remove temp zip file %s", zipFile)
+				errorCount++
+			} else {
+				deletedCount++
 			}
 
 			delete(tempZipFiles.files, zipFile)
-			deletedCount++
 		}
 	}
 
-	if deletedCount > 0 {
-		log.WithField("deletedCount", deletedCount).Info("Cleaned up expired zip files")
+	if deletedCount > 0 || errorCount > 0 {
+		log.WithFields(logrus.Fields{
+			"deletedCount": deletedCount,
+			"errorCount":   errorCount,
+		}).Info("Cleaned up expired zip files")
+	}
+
+	files, err := os.ReadDir(tempDir)
+	if err != nil {
+		log.WithError(err).Error("Error reading Verdansk temp directory")
+		return
+	}
+
+	oldFileThreshold := now.Add(-24 * time.Hour)
+	oldFilesRemoved := 0
+
+	for _, file := range files {
+		if file.Name() == ".gitkeep" || file.Name() == ".git" {
+			continue
+		}
+
+		filePath := filepath.Join(tempDir, file.Name())
+		info, err := os.Stat(filePath)
+		if err != nil {
+			log.WithError(err).Errorf("Error getting file info for %s", filePath)
+			continue
+		}
+
+		if info.ModTime().Before(oldFileThreshold) {
+			if err := os.RemoveAll(filePath); err != nil {
+				log.WithError(err).Errorf("Failed to remove old file %s", filePath)
+			} else {
+				oldFilesRemoved++
+			}
+		}
+	}
+
+	if oldFilesRemoved > 0 {
+		log.Infof("Removed %d untracked old files during cleanup", oldFilesRemoved)
 	}
 }
-
 func doPreflightRequest(client *http.Client, targetURL string) error {
 	log := logger.Log.WithFields(logrus.Fields{
 		"function":  "doPreflightRequest",
@@ -2030,9 +2345,17 @@ func getStatIntValue(stats map[string]StatValue, keys ...string) int {
 
 func HandleVerdanskCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if !isVerdanskAPIAvailable() {
-		respondToInteraction(s, i, "⚠️ The Verdansk Replay API is currently unavailable. Please try again later.")
+		respondToInteraction(s, i, "The Verdansk Replay API is currently unavailable. Please try again later.")
 		return
 	}
+
+	cfg := configuration.Get()
+
+	verdanskRateLimits.Lock()
+	verdanskRateLimits.globalSettings.CommandCooldown = cfg.Verdansk.CommandCooldown
+	verdanskRateLimits.globalSettings.MaxRequestsPerDay = cfg.Verdansk.MaxRequestsPerDay
+	verdanskRateLimits.globalSettings.CleanupTime = cfg.Verdansk.CleanupTime
+	verdanskRateLimits.Unlock()
 
 	CommandVerdansk(s, i)
 }

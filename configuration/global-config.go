@@ -136,6 +136,8 @@ type Config struct {
 		APIKey              string
 		TempDir             string
 		CleanupTime         time.Duration
+		CommandCooldown     time.Duration // Cooldown between commands per user
+		MaxRequestsPerDay   int           // Maximum requests per day per user
 	}
 
 	// Notification Settings
@@ -477,4 +479,6 @@ func loadVerdanskConfig() {
 	AppConfig.Verdansk.APIKey = getEnvWithDefault("X_API_KEY", "a855a770-cf8a-4ae8-9f30-b787d676e608")
 	AppConfig.Verdansk.TempDir = getEnvWithDefault("VERDANSK_TEMP_DIR", "verdansk_temp")
 	AppConfig.Verdansk.CleanupTime = time.Duration(getEnvAsInt("VERDANSK_CLEANUP_MINUTES", 30)) * time.Minute
+	AppConfig.Verdansk.CommandCooldown = time.Duration(getEnvAsInt("VERDANSK_COMMAND_COOLDOWN_MINUTES", 60)) * time.Minute
+	AppConfig.Verdansk.MaxRequestsPerDay = getEnvAsInt("VERDANSK_MAX_REQUESTS_PER_DAY", 3)
 }
