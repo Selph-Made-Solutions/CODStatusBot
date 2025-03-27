@@ -15,12 +15,25 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const (
-	defaultCooldown         = 1 * time.Hour
-	maxNotificationsPerHour = 4
-	maxNotificationsPerDay  = 10
-	minNotificationInterval = 5 * time.Minute
-)
+func getDefaultCooldown() time.Duration {
+	cfg := configuration.Get()
+	return cfg.Notifications.DefaultCooldown
+}
+
+func getMaxNotificationsPerHour() int {
+	cfg := configuration.Get()
+	return cfg.Notifications.MaxPerHour
+}
+
+func getMaxNotificationsPerDay() int {
+	cfg := configuration.Get()
+	return cfg.Notifications.MaxPerDay
+}
+
+func getMinNotificationInterval() time.Duration {
+	cfg := configuration.Get()
+	return cfg.Notifications.MinInterval
+}
 
 var (
 	userNotificationMutex      sync.Mutex
@@ -439,7 +452,7 @@ func (nl *NotificationLimiter) CanSendNotification(userID string, notificationTy
 		return false
 	}
 
-	if now.Sub(state.lastSent) < minNotificationInterval {
+	if now.Sub(state.lastSent) < getMinNotificationInterval() {
 		storeSuppressedNotification(userID, notificationType, nil, "")
 		return false
 	}
@@ -467,10 +480,22 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 		return fmt.Errorf("failed to get user settings: %w", err)
 	}
 
+	if userSettings.IsUnreachable {
+		cfg := configuration.Get()
+		if time.Since(userSettings.UnreachableSince) < cfg.Users.UnreachableResetPeriod {
+			logger.Log.Debugf("Skipping notification to unreachable user %s", account.UserID)
+			return nil
+		}
+		userSettings.IsUnreachable = false
+		userSettings.MessageFailures = 0
+		if err := database.DB.Save(&userSettings).Error; err != nil {
+			logger.Log.WithError(err).Error("Error resetting user reachability status")
+		}
+	}
+
 	now := time.Now()
 	lastNotification := userSettings.LastCommandTimes[notificationType]
-	cooldownDuration := GetCooldownDuration(userSettings, notificationType, defaultCooldown)
-
+	cooldownDuration := GetCooldownDuration(userSettings, notificationType, getDefaultCooldown())
 	if !lastNotification.IsZero() && now.Sub(lastNotification) < cooldownDuration {
 		logger.Log.Infof("Skipping %s notification for user %s (cooldown)", notificationType, account.UserID)
 		return nil
@@ -493,7 +518,12 @@ func SendNotification(s *discordgo.Session, account models.Account, embed *disco
 		Embed:   embed,
 		Content: content,
 	})
+
+	success := err == nil
+	LogNotification(account.UserID, account.ID, notificationType, success)
+
 	if err != nil {
+		TrackMessageFailure(account.UserID, err.Error())
 		return fmt.Errorf("failed to send message: %w", err)
 	}
 
@@ -575,6 +605,7 @@ func SendGlobalAnnouncement(s *discordgo.Session, userID string) error {
 
 		_, err = s.ChannelMessageSendEmbed(channelID, announcementEmbed)
 		if err != nil {
+			TrackMessageFailure(userID, err.Error())
 			logger.Log.WithError(err).Error("Error sending global announcement")
 			return err
 		}
@@ -616,6 +647,7 @@ func NotifyUserAboutDisabledAccount(s *discordgo.Session, account models.Account
 
 	err := SendNotification(s, account, embed, "", "account_disabled")
 	if err != nil {
+		TrackMessageFailure(account.UserID, err.Error())
 		logger.Log.WithError(err).Errorf("Failed to send account disabled notification to user %s", account.UserID)
 	}
 }
@@ -725,6 +757,7 @@ func SendConsolidatedDailyUpdate(s *discordgo.Session, userID string, userSettin
 	}
 
 	if err := SendNotification(s, accounts[0], embed, "", "daily_update"); err != nil {
+		TrackMessageFailure(userID, err.Error())
 		logger.Log.WithError(err).Errorf("Failed to send consolidated daily update for user %s", userID)
 		return
 	}
@@ -883,5 +916,27 @@ func notifyAccountErrors(s *discordgo.Session, errorAccounts []models.Account, u
 	userSettings.LastErrorNotification = time.Now()
 	if err = database.DB.Save(&userSettings).Error; err != nil {
 		logger.Log.WithError(err).Error("Failed to update LastErrorNotification timestamp")
+	}
+}
+
+func TrackMessageFailure(userID string, errorMessage string) {
+	cfg := configuration.Get()
+	var settings models.UserSettings
+	if err := database.DB.Where("user_id = ?", userID).First(&settings).Error; err != nil {
+		logger.Log.WithError(err).Error("Error fetching user settings for delivery tracking")
+		return
+	}
+
+	settings.MessageFailures++
+	settings.LastMessageFailure = time.Now()
+
+	if settings.MessageFailures >= cfg.Users.MaxMessageFailures {
+		settings.IsUnreachable = true
+		settings.UnreachableSince = time.Now()
+		logger.Log.Infof("User %s marked as unreachable after %d failures", userID, settings.MessageFailures)
+	}
+
+	if err := database.DB.Save(&settings).Error; err != nil {
+		logger.Log.WithError(err).Error("Error updating user message delivery status")
 	}
 }

@@ -1,6 +1,8 @@
 package command
 
 import (
+	"time"
+
 	"github.com/bradselph/CODStatusBot/command/accountage"
 	"github.com/bradselph/CODStatusBot/command/accountlogs"
 	"github.com/bradselph/CODStatusBot/command/addaccount"
@@ -17,6 +19,7 @@ import (
 	"github.com/bradselph/CODStatusBot/command/setnotifications"
 	"github.com/bradselph/CODStatusBot/command/togglecheck"
 	"github.com/bradselph/CODStatusBot/command/updateaccount"
+	"github.com/bradselph/CODStatusBot/command/verdansk"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
@@ -119,6 +122,11 @@ func RegisterCommands(s *discordgo.Session) error {
 			Description:  "Toggle checks on/off for a monitored account",
 			DMPermission: BoolPtr(true),
 		},
+		{
+			Name:         "verdansk",
+			Description:  "Get your Verdansk Replay stats and images",
+			DMPermission: BoolPtr(true),
+		},
 	}
 
 	Handlers["set_captcha_service_modal_capsolver"] = setcaptchaservice.HandleModalSubmit
@@ -146,12 +154,14 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["updateaccount"] = updateaccount.CommandUpdateAccount
 	Handlers["togglecheck"] = togglecheck.CommandToggleCheck
 	Handlers["setnotifications"] = setnotifications.CommandSetNotifications
+	Handlers["verdansk"] = verdansk.CommandVerdansk
 
 	Handlers["set_notifications_modal"] = setnotifications.HandleModalSubmit
 	Handlers["setcaptchaservice_modal"] = setcaptchaservice.HandleModalSubmit
 	Handlers["addaccount_modal"] = addaccount.HandleModalSubmit
 	Handlers["update_account_modal"] = updateaccount.HandleModalSubmit
 	Handlers["set_check_interval_modal"] = setcheckinterval.HandleModalSubmit
+	Handlers["verdansk_activision_id_modal"] = verdansk.HandleActivisionIDModal
 
 	Handlers["account_age"] = accountage.HandleAccountSelection
 	Handlers["account_logs"] = accountlogs.HandleAccountSelection
@@ -161,6 +171,9 @@ func RegisterCommands(s *discordgo.Session) error {
 	Handlers["feedback_anonymous"] = feedback.HandleFeedbackChoice
 	Handlers["feedback_with_id"] = feedback.HandleFeedbackChoice
 	Handlers["show_interval_modal"] = setcheckinterval.HandleButton
+	Handlers["verdansk_provide_id"] = verdansk.HandleMethodSelection
+	Handlers["verdansk_select_account"] = verdansk.HandleMethodSelection
+	Handlers["verdansk_account"] = verdansk.HandleAccountSelection
 
 	Handlers["confirm_remove"] = removeaccount.HandleConfirmation
 	Handlers["confirm_reenable"] = togglecheck.HandleConfirmation
@@ -177,13 +190,29 @@ func RegisterCommands(s *discordgo.Session) error {
 }
 
 func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	startTime := time.Now()
 	var userID string
+	var success bool = true
+	var errorDetails string
+	var commandName string
+
+	if i.ApplicationCommandData().Name != "" {
+		commandName = i.ApplicationCommandData().Name
+	} else if i.MessageComponentData().CustomID != "" {
+		commandName = i.MessageComponentData().CustomID
+	}
+
 	if i.Member != nil {
 		userID = i.Member.User.ID
 	} else if i.User != nil {
 		userID = i.User.ID
 	} else {
 		logger.Log.Error("Interaction doesn't have Member or User")
+		errorDetails = "Missing user information"
+		success = false
+
+		services.LogCommandExecution(commandName, "unknown", "", false,
+			time.Since(startTime).Milliseconds(), errorDetails)
 		return
 	}
 
@@ -195,13 +224,19 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	result := database.DB.Where(models.UserSettings{UserID: userID}).FirstOrCreate(&userSettings)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error getting user settings")
+		errorDetails = "Error getting user settings"
+		success = false
 	} else if !userSettings.HasSeenAnnouncement {
 		if err := globalannouncement.SendGlobalAnnouncement(s, userID); err != nil {
 			logger.Log.WithError(err).Error("Error sending announcement to user")
+			errorDetails = "Error sending announcement"
+			success = false
 		} else {
 			userSettings.HasSeenAnnouncement = true
 			if err := database.DB.Save(&userSettings).Error; err != nil {
 				logger.Log.WithError(err).Error("Error updating user settings after sending announcement")
+				errorDetails = "Error saving user settings"
+				success = false
 			}
 		}
 	}
@@ -212,9 +247,13 @@ func HandleCommand(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		h(s, i)
 	} else {
 		logger.Log.Warnf("Unhandled interaction: %s", i.Type)
+		errorDetails = "Unhandled interaction type"
+		success = false
 	}
-}
 
+	services.LogCommandExecution(commandName, userID, i.GuildID, success,
+		time.Since(startTime).Milliseconds(), errorDetails)
+}
 func BoolPtr(b bool) *bool {
 	return &b
 }

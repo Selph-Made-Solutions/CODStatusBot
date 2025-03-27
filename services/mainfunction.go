@@ -129,6 +129,8 @@ func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus 
 			logger.Log.Infof("Created ban record for account %s: %s -> %s", account.Title, previousStatus, newStatus)
 		}
 
+		LogStatusChange(account.ID, account.UserID, newStatus, previousStatus)
+
 		embed := &discordgo.MessageEmbed{
 			Title:       fmt.Sprintf("%s - %s", account.Title, EmbedTitleFromStatus(newStatus)),
 			Description: GetStatusDescription(newStatus, account.Title, ban),

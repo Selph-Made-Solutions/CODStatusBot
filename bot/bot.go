@@ -18,6 +18,7 @@ import (
 	"github.com/bradselph/CODStatusBot/command/setnotifications"
 	"github.com/bradselph/CODStatusBot/command/togglecheck"
 	"github.com/bradselph/CODStatusBot/command/updateaccount"
+	"github.com/bradselph/CODStatusBot/command/verdansk"
 	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bwmarrin/discordgo"
@@ -109,6 +110,8 @@ func handleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		setcheckinterval.HandleModalSubmit(s, i)
 	case customID == "global_announcement_modal":
 		globalannouncement.HandleModalSubmit(s, i)
+	case customID == "verdansk_activision_id_modal":
+		verdansk.HandleActivisionIDModal(s, i)
 	default:
 		logger.Log.WithField("customID", customID).Error("Unknown modal submission")
 	}
@@ -143,6 +146,10 @@ func handleMessageComponent(s *discordgo.Session, i *discordgo.InteractionCreate
 		togglecheck.HandleConfirmation(s, i)
 	case customID == "show_interval_modal":
 		setcheckinterval.HandleButton(s, i)
+	case customID == "verdansk_provide_id" || customID == "verdansk_select_account":
+		verdansk.HandleMethodSelection(s, i)
+	case strings.HasPrefix(customID, "verdansk_account_"):
+		verdansk.HandleAccountSelection(s, i)
 	default:
 		logger.Log.WithField("customID", customID).Error("Unknown message component interaction")
 	}

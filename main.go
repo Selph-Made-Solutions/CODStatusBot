@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/bradselph/CODStatusBot/bot"
+	"github.com/bradselph/CODStatusBot/command/verdansk"
 	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
@@ -129,6 +130,9 @@ func run() error {
 	}
 	logger.Log.Info("Database connection established successfully")
 
+	services.StartAdminAPI()
+	logger.Log.Info("Admin API started successfully")
+
 	var err error
 	discord, err = bot.StartBot()
 	if err != nil {
@@ -139,8 +143,13 @@ func run() error {
 	services.StartNotificationProcessor(discord)
 	logger.Log.Info("Notification processor started successfully")
 
-	periodicTasksCtx, cancelPeriodicTasks := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	periodicTasksCtx, cancelPeriodicTasks := context.WithCancel(ctx)
 	go startPeriodicTasks(periodicTasksCtx, discord)
+
+	verdansk.InitCleanupRoutine()
 
 	logger.Log.Info("COD Status Bot startup complete")
 
@@ -151,6 +160,22 @@ func run() error {
 	logger.Log.Info("Shutting down COD Status Bot...")
 
 	cancelPeriodicTasks()
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer shutdownCancel()
+	done := make(chan struct{})
+	go func() {
+		//TODO: add WaitGroup to track goroutines
+		// wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		logger.Log.Info("All goroutines terminated gracefully")
+	case <-shutdownCtx.Done():
+		logger.Log.Warn("Shutdown timed out, forcing exit")
+	}
 
 	if err := discord.Close(); err != nil {
 		logger.Log.WithError(err).Error("Error closing Discord session")
@@ -166,7 +191,6 @@ func run() error {
 
 func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 	cfg := configuration.Get()
-
 	go func() {
 		for {
 			select {
@@ -178,7 +202,6 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 			}
 		}
 	}()
-
 	go func() {
 		for {
 			select {
@@ -256,6 +279,22 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 	}()
 
 	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				services.CleanupInactiveUsers()
+				logger.Log.Info("Ran inactive users cleanup")
+				services.LogInstallationStats(s)
+			}
+		}
+	}()
+
+	go func() {
 		for {
 			select {
 			case <-ctx.Done():
@@ -265,6 +304,23 @@ func startPeriodicTasks(ctx context.Context, s *discordgo.Session) {
 					logger.Log.WithError(err).Error("Failed to refresh presence status")
 				}
 				time.Sleep(60 * time.Minute)
+			}
+		}
+	}()
+
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				cfg := configuration.Get()
+				if err := services.CleanupOldAnalyticsData(cfg.Admin.RetentionDays); err != nil {
+					logger.Log.WithError(err).Error("Failed to clean up old analytics data")
+				}
 			}
 		}
 	}()

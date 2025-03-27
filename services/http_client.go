@@ -21,22 +21,24 @@ func InitHTTPClients() {
 		return
 	}
 
+	transport := &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 20,
+		IdleConnTimeout:     90 * time.Second,
+		DisableKeepAlives:   false,
+		ForceAttemptHTTP2:   true,
+		MaxConnsPerHost:     0,
+		TLSHandshakeTimeout: 10 * time.Second,
+	}
+
 	defaultClient = &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			MaxIdleConns:        100,
-			MaxIdleConnsPerHost: 20,
-			IdleConnTimeout:     90 * time.Second,
-		},
+		Timeout:   30 * time.Second,
+		Transport: transport,
 	}
 
 	longTimeoutClient = &http.Client{
-		Timeout: 60 * time.Second,
-		Transport: &http.Transport{
-			MaxIdleConns:        100,
-			MaxIdleConnsPerHost: 20,
-			IdleConnTimeout:     90 * time.Second,
-		},
+		Timeout:   60 * time.Second,
+		Transport: transport,
 	}
 
 	clientsInitialized = true

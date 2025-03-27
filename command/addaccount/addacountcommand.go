@@ -33,7 +33,7 @@ func getMaxAccounts(hasCustomKey bool) int {
 }
 
 func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	userID := getUserID(i)
+	userID, err := services.GetUserID(i)
 	if userID == "" {
 		logger.Log.Error("Failed to get user ID")
 		respondToInteraction(s, i, "An error occurred while processing your request.")
@@ -48,11 +48,6 @@ func CommandAddAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	}
 
 	hasCustomKey := userSettings.CapSolverAPIKey != "" || userSettings.EZCaptchaAPIKey != "" || userSettings.TwoCaptchaAPIKey != ""
-	if !hasCustomKey && !checkRateLimit(userID) {
-		respondToInteraction(s, i, fmt.Sprintf("Please wait %v before adding another account.", rateLimit))
-		return
-	}
-
 	if !hasCustomKey && !checkRateLimit(userID) {
 		respondToInteraction(s, i, fmt.Sprintf("Please wait %v before adding another account.", rateLimit))
 		return
@@ -153,7 +148,8 @@ func showAddAccountModal(s *discordgo.Session, i *discordgo.InteractionCreate) {
 
 func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	data := i.ModalSubmitData()
-	userID := getUserID(i)
+	userID, _ := services.GetUserID(i)
+
 	if userID == "" {
 		logger.Log.Error("Failed to get user ID")
 		respondToInteraction(s, i, "An error occurred while processing your request.")

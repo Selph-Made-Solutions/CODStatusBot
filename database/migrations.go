@@ -19,6 +19,13 @@ func CleanupInvalidTimestamps() {
 		logger.Log.Infof("Fixed %d invalid Ban timestamps", result.RowsAffected)
 	}
 
+	if !DB.Migrator().HasColumn(&models.Account{}, "is_og_verdansk") {
+		logger.Log.Info("Adding IsOGVerdansk column to Account table")
+		if err := DB.Migrator().AddColumn(&models.Account{}, "is_og_verdansk"); err != nil {
+			logger.Log.WithError(err).Error("Failed to add IsOGVerdansk column to Account table")
+		}
+	}
+
 	result = DB.Model(&models.Account{}).
 		Where("created <= 0 OR created IS NULL").
 		Update("created", time.Now().Unix())

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 
+	"time"
+
 	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
@@ -34,7 +36,23 @@ func Databaselogin() error {
 		dbConfig.Name,
 		dbConfig.Var)
 
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	var db *gorm.DB
+	var err error
+	maxRetries := 5
+
+	for retries := 0; retries < maxRetries; retries++ {
+		db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
+		if err == nil {
+			break
+		}
+
+		logger.Log.WithError(err).Warnf("Database connection attempt %d/%d failed, retrying...",
+			retries+1, maxRetries)
+
+		if retries < maxRetries-1 {
+			time.Sleep(time.Duration(2<<retries) * time.Second)
+		}
+	}
 	if err != nil {
 		logger.Log.WithError(err).WithField("Bot Startup ", "MySQL Config ").Error()
 		return err
@@ -47,10 +65,19 @@ func Databaselogin() error {
 		logger.Log.WithError(err).Error("Failed to get database instance")
 		return err
 	}
-	sqlDB.SetMaxIdleConns(10)
-	sqlDB.SetMaxOpenConns(100)
 
-	err = DB.AutoMigrate(&models.Account{}, &models.Ban{}, &models.UserSettings{}, &models.SuppressedNotification{})
+	sqlDB.SetMaxIdleConns(cfg.Performance.DbMaxIdleConns)
+	sqlDB.SetMaxOpenConns(cfg.Performance.DbMaxOpenConns)
+
+	err = DB.AutoMigrate(
+		&models.Account{},
+		&models.Ban{},
+		&models.UserSettings{},
+		&models.SuppressedNotification{},
+		&models.Analytics{},
+		&models.BotStatistics{},
+		&models.CommandStatistics{},
+	)
 	if err != nil {
 		logger.Log.WithError(err).WithField("Bot Startup ", "Database Models Problem ").Error()
 		return err

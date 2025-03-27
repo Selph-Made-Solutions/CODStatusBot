@@ -38,7 +38,6 @@ func CommandRemoveAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 	}
 
 	var (
-		// Create buttons for each account
 		components []discordgo.MessageComponent
 		currentRow []discordgo.MessageComponent
 	)
@@ -56,11 +55,9 @@ func CommandRemoveAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		}
 	}
 
-	// Add the last row if it is not empty
 	if len(currentRow) > 0 {
 		components = append(components, discordgo.ActionsRow{Components: currentRow})
 	}
-	// Send a message with account buttons
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
@@ -91,7 +88,6 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		return
 	}
 
-	// Show confirmation buttons
 	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseUpdateMessage,
 		Data: &discordgo.InteractionResponseData{
@@ -116,7 +112,33 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	})
 	if err != nil {
 		logger.Log.WithError(err).Error("Error showing confirmation buttons")
-		respondToInteraction(s, i, "An error occurred. Please try again.")
+		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: fmt.Sprintf("Are you sure you want to remove the account '%s'? This action is permanent and cannot be undone.", account.Title),
+				Flags:   discordgo.MessageFlagsEphemeral,
+				Components: []discordgo.MessageComponent{
+					discordgo.ActionsRow{
+						Components: []discordgo.MessageComponent{
+							discordgo.Button{
+								Label:    "Delete",
+								Style:    discordgo.DangerButton,
+								CustomID: fmt.Sprintf("confirm_remove_%d", account.ID),
+							},
+							discordgo.Button{
+								Label:    "Cancel",
+								Style:    discordgo.SecondaryButton,
+								CustomID: "cancel_remove",
+							},
+						},
+					},
+				},
+			},
+		})
+		if err != nil {
+			logger.Log.WithError(err).Error("Error sending confirmation message")
+			respondToInteraction(s, i, "An error occurred. Please try again.")
+		}
 	}
 }
 
@@ -143,10 +165,8 @@ func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Start a transaction
 	tx := database.DB.Begin()
 
-	// Delete associated bans
 	if err := tx.Where("account_id = ?", account.ID).Delete(&models.Ban{}).Error; err != nil {
 		tx.Rollback()
 		logger.Log.WithError(err).Error("Error deleting associated bans")
@@ -154,7 +174,6 @@ func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Delete the account
 	if err := tx.Delete(&account).Error; err != nil {
 		tx.Rollback()
 		logger.Log.WithError(err).Error("Error deleting account")
@@ -162,7 +181,6 @@ func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	// Commit the transaction
 	if err := tx.Commit().Error; err != nil {
 		logger.Log.WithError(err).Error("Error committing transaction")
 		respondToInteraction(s, i, "Error removing account. Please try again.")
@@ -177,10 +195,32 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 		Type: discordgo.InteractionResponseUpdateMessage,
 		Data: &discordgo.InteractionResponseData{
 			Content:    message,
-			Components: []discordgo.MessageComponent{}, // Remove all components
+			Components: []discordgo.MessageComponent{},
 		},
 	})
+
 	if err != nil {
-		logger.Log.WithError(err).Error("Error responding to interaction")
+		logger.Log.WithError(err).Error("Error updating message, trying to send new message")
+
+		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: message,
+				Flags:   discordgo.MessageFlagsEphemeral,
+			},
+		})
+
+		if err != nil {
+			logger.Log.WithError(err).Error("Error sending new message, trying followup")
+
+			_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+				Content: message,
+				Flags:   discordgo.MessageFlagsEphemeral,
+			})
+
+			if err != nil {
+				logger.Log.WithError(err).Error("All response methods failed")
+			}
+		}
 	}
 }

@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/bradselph/CODStatusBot/configuration"
@@ -97,11 +98,13 @@ func processUserAccounts(s *discordgo.Session, userID string, accounts []models.
 		logger.Log.WithError(err).Errorf("Failed to get user settings for user %s", userID)
 		return
 	}
-
+	//TODO: Ensure when failed that it only reports on invalid results to the solver and balance for the user
 	if err := validateUserCaptchaService(userID, userSettings); err != nil {
 		logger.Log.WithError(err).Errorf("Captcha service validation failed for user %s", userID)
 		notifyUserOfServiceIssue(s, userID, err)
-		return
+		if strings.Contains(err.Error(), "insufficient balance") {
+			return
+		}
 	}
 
 	notificationInterval := time.Duration(userSettings.NotificationInterval) * time.Hour

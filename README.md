@@ -1,5 +1,6 @@
 # COD Status Bot
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/bradselph/CODStatusBot)](https://goreportcard.com/report/github.com/bradselph/CODStatusBot)
 [![Go](https://github.com/bradselph/CODStatusBot/actions/workflows/go.yml/badge.svg)](https://github.com/bradselph/CODStatusBot/actions/workflows/go.yml)
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fbradselph%2FCODStatusBot.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fbradselph%2FCODStatusBot?ref=badge_shield)
 

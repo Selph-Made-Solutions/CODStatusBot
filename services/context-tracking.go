@@ -3,6 +3,7 @@ package services
 import (
 	"time"
 
+	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/database"
 	"github.com/bradselph/CODStatusBot/logger"
 	"github.com/bradselph/CODStatusBot/models"
@@ -17,6 +18,12 @@ func TrackUserInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) 
 	}
 
 	context := GetInstallContext(i)
+
+	var existingUser models.UserSettings
+	userExists := true
+	if err := database.DB.Where("user_id = ?", userID).First(&existingUser).Error; err != nil {
+		userExists = false
+	}
 
 	var userSettings models.UserSettings
 	result := database.DB.Where("user_id = ?", userID).FirstOrCreate(&userSettings)
@@ -45,10 +52,61 @@ func TrackUserInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		return err
 	}
 
+	if !userExists && s != nil {
+		logger.Log.Infof("Sending notification for new user")
+		NotifyNewInstallation(s, string(context))
+	}
+
 	return nil
 }
 
-func GetUserInstallationStats() (serverCount int64, directCount int64, err error) {
+func NotifyNewInstallation(s *discordgo.Session, context string) {
+	cfg := configuration.Get()
+	developerID := cfg.Discord.DeveloperID
+	if developerID == "" {
+		logger.Log.Error("Developer ID not configured")
+		return
+	}
+
+	channel, err := s.UserChannelCreate(developerID)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to create DM channel with developer")
+		return
+	}
+
+	installType := "Direct Installation"
+	if context == "server" {
+		installType = "Server Installation"
+	}
+
+	embed := &discordgo.MessageEmbed{
+		Title:       "New Bot Installation",
+		Description: "A new user has started using the bot!",
+		Color:       0x00FF00,
+		Fields: []*discordgo.MessageEmbedField{
+			{
+				Name:   "Installation Type",
+				Value:  installType,
+				Inline: true,
+			},
+			{
+				Name:   "Timestamp",
+				Value:  time.Now().Format(time.RFC3339),
+				Inline: true,
+			},
+		},
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+
+	_, err = s.ChannelMessageSendEmbed(channel.ID, embed)
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to send new installation notification to developer")
+	} else {
+		logger.Log.Info("New installation notification sent to developer")
+	}
+}
+
+func GetInstallationStats() (serverCount int64, directCount int64, err error) {
 	if err = database.DB.Model(&models.UserSettings{}).
 		Where("installation_type = ?", "server").
 		Count(&serverCount).Error; err != nil {
@@ -69,7 +127,7 @@ func GetUserInstallationStats() (serverCount int64, directCount int64, err error
 func LogInstallationStats(s *discordgo.Session) {
 	guildCount := len(s.State.Guilds)
 
-	serverUsers, directUsers, err := GetUserInstallationStats()
+	serverUsers, directUsers, err := GetInstallationStats()
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to get installation statistics")
 		return
