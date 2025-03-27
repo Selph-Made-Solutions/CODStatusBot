@@ -1856,7 +1856,7 @@ func loadVerdanskConfiguration() {
 		X_APIKey = cfg.Verdansk.APIKey
 	} else {
 		X_APIKey = "a855a770-cf8a-4ae8-9f30-b787d676e608"
-		logger.Log.Warn("Using default X-API-Key for Verdansk. Consider setting a custom key.")
+		logger.Log.Warn("Using default X-API-Key for Verdansk.")
 	}
 
 	tempDir := cfg.Verdansk.TempDir
