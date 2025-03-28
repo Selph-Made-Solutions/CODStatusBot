@@ -126,24 +126,21 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 func showConfirmationButtons(s *discordgo.Session, i *discordgo.InteractionCreate, accountID uint, message string) {
 	logger.Log.Infof("Showing confirmation buttons for account %d", accountID)
 
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseUpdateMessage,
-		Data: &discordgo.InteractionResponseData{
-			Content: message,
-			Flags:   discordgo.MessageFlagsEphemeral,
-			Components: []discordgo.MessageComponent{
-				discordgo.ActionsRow{
-					Components: []discordgo.MessageComponent{
-						discordgo.Button{
-							Label:    "Confirm Re-enable",
-							Style:    discordgo.SuccessButton,
-							CustomID: fmt.Sprintf("confirm_reenable_%d", accountID),
-						},
-						discordgo.Button{
-							Label:    "Cancel",
-							Style:    discordgo.DangerButton,
-							CustomID: "cancel_reenable",
-						},
+	_, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+		Content: message,
+		Flags:   discordgo.MessageFlagsEphemeral,
+		Components: []discordgo.MessageComponent{
+			discordgo.ActionsRow{
+				Components: []discordgo.MessageComponent{
+					discordgo.Button{
+						Label:    "Confirm Re-enable",
+						Style:    discordgo.SuccessButton,
+						CustomID: fmt.Sprintf("confirm_reenable_%d", accountID),
+					},
+					discordgo.Button{
+						Label:    "Cancel",
+						Style:    discordgo.DangerButton,
+						CustomID: "cancel_reenable",
 					},
 				},
 			},
@@ -152,8 +149,18 @@ func showConfirmationButtons(s *discordgo.Session, i *discordgo.InteractionCreat
 
 	if err != nil {
 		logger.Log.WithError(err).Error("Error showing confirmation buttons")
-		respondToInteraction(s, i, "An error occurred. Please try again.")
+		sendFollowupMessage(s, i, "An error occurred. Please try again.")
 		return
+	}
+}
+
+func sendFollowupMessage(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
+	_, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+		Content: message,
+		Flags:   discordgo.MessageFlagsEphemeral,
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Error sending followup message")
 	}
 }
 
@@ -224,27 +231,6 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	})
 
 	if err != nil {
-		logger.Log.WithError(err).Error("Error updating message, trying to send new message")
-
-		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: message,
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
-
-		if err != nil {
-			logger.Log.WithError(err).Error("Error sending new message, trying followup")
-
-			_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
-				Content: message,
-				Flags:   discordgo.MessageFlagsEphemeral,
-			})
-
-			if err != nil {
-				logger.Log.WithError(err).Error("All response methods failed")
-			}
-		}
+		logger.Log.WithError(err).Error("Error responding to interaction")
 	}
 }
