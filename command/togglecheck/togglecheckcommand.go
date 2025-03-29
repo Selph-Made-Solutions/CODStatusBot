@@ -112,15 +112,6 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	}
 
 	if account.IsCheckDisabled {
-		/*		if !services.VerifySSOCookie(account.SSOCookie) {
-					account.IsExpiredCookie = true
-					if err = database.DB.Save(&account).Error; err != nil {
-						logger.Log.WithError(err).Error("Error saving account after cookie validation")
-					}
-					respondToInteraction(s, i, fmt.Sprintf("Cannot enable checks for account '%s' as the SSO cookie has expired. Please update the cookie using /updateaccount first.", account.Title))
-					return
-				}
-		*/
 		showConfirmationButtons(s, i, accountID, fmt.Sprintf("Are you sure you want to re-enable checks for account '%s'?", account.Title))
 	} else {
 		account.IsCheckDisabled = true
@@ -223,13 +214,12 @@ func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	if !services.VerifySSOCookie(account.SSOCookie) {
+	cookieValid := services.VerifySSOCookie(account.SSOCookie)
+	if !cookieValid {
+		logger.Log.Warnf("Re-enabling account with potentially expired cookie: %s (ID: %d)", account.Title, account.ID)
 		account.IsExpiredCookie = true
-		if err = database.DB.Save(&account).Error; err != nil {
-			logger.Log.WithError(err).Error("Error saving account after cookie validation")
-		}
-		sendFollowupMessage(s, i, fmt.Sprintf("Cannot re-enable checks for account '%s' as the SSO cookie has expired. Please update the cookie using /updateaccount first.", account.Title))
-		return
+	} else {
+		account.IsExpiredCookie = false
 	}
 
 	account.IsCheckDisabled = false
@@ -241,7 +231,12 @@ func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 
-	sendFollowupMessage(s, i, fmt.Sprintf("Checks for account '%s' have been re-enabled.", account.Title))
+	message := fmt.Sprintf("Checks for account '%s' have been re-enabled.", account.Title)
+	if !cookieValid {
+		message += "\n Note: The account's SSO cookie may be expired. If checks fail, please update the cookie using /updateaccount."
+	}
+
+	sendFollowupMessage(s, i, message)
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
