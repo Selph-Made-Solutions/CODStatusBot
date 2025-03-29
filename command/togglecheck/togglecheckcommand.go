@@ -71,10 +71,21 @@ func CommandToggleCheck(s *discordgo.Session, i *discordgo.InteractionCreate) {
 }
 
 func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Flags: discordgo.MessageFlagsEphemeral,
+		},
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Error acknowledging interaction")
+		return
+	}
+
 	userID, err := services.GetUserID(i)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to get user ID")
-		respondToInteraction(s, i, "An error occurred while processing your request.")
+		sendFollowupMessage(s, i, "An error occurred while processing your request.")
 		return
 	}
 
@@ -82,7 +93,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	accountIDParsed, err := strconv.ParseUint(strings.TrimPrefix(customID, "toggle_check_"), 10, 64)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error parsing account ID")
-		respondToInteraction(s, i, "Error processing your selection. Please try again.")
+		sendFollowupMessage(s, i, "Error processing your selection. Please try again.")
 		return
 	}
 	accountID := uint(accountIDParsed)
@@ -91,12 +102,12 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
-		respondToInteraction(s, i, "Error: Account not found or you don't have permission to modify it.")
+		sendFollowupMessage(s, i, "Error: Account not found or you don't have permission to modify it.")
 		return
 	}
 
 	if account.UserID != userID {
-		respondToInteraction(s, i, "You don't have permission to modify this account.")
+		sendFollowupMessage(s, i, "You don't have permission to modify this account.")
 		return
 	}
 
@@ -117,10 +128,10 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		message := fmt.Sprintf("Checks for account '%s' have been disabled.", account.Title)
 		if err = database.DB.Save(&account).Error; err != nil {
 			logger.Log.WithError(err).Error("Failed to update account after toggling check")
-			respondToInteraction(s, i, "Error toggling account checks. Please try again.")
+			sendFollowupMessage(s, i, "Error toggling account checks. Please try again.")
 			return
 		}
-		respondToInteraction(s, i, message)
+		sendFollowupMessage(s, i, message)
 	}
 }
 
