@@ -71,10 +71,21 @@ func CommandToggleCheck(s *discordgo.Session, i *discordgo.InteractionCreate) {
 }
 
 func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Flags: discordgo.MessageFlagsEphemeral,
+		},
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Error acknowledging interaction")
+		return
+	}
+
 	userID, err := services.GetUserID(i)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to get user ID")
-		respondToInteraction(s, i, "An error occurred while processing your request.")
+		sendFollowupMessage(s, i, "An error occurred while processing your request.")
 		return
 	}
 
@@ -82,7 +93,7 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	accountIDParsed, err := strconv.ParseUint(strings.TrimPrefix(customID, "toggle_check_"), 10, 64)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error parsing account ID")
-		respondToInteraction(s, i, "Error processing your selection. Please try again.")
+		sendFollowupMessage(s, i, "Error processing your selection. Please try again.")
 		return
 	}
 	accountID := uint(accountIDParsed)
@@ -91,24 +102,25 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
-		respondToInteraction(s, i, "Error: Account not found or you don't have permission to modify it.")
+		sendFollowupMessage(s, i, "Error: Account not found or you don't have permission to modify it.")
 		return
 	}
 
 	if account.UserID != userID {
-		respondToInteraction(s, i, "You don't have permission to modify this account.")
+		sendFollowupMessage(s, i, "You don't have permission to modify this account.")
 		return
 	}
 
 	if account.IsCheckDisabled {
-		if !services.VerifySSOCookie(account.SSOCookie) {
-			account.IsExpiredCookie = true
-			if err = database.DB.Save(&account).Error; err != nil {
-				logger.Log.WithError(err).Error("Error saving account after cookie validation")
-			}
-			respondToInteraction(s, i, fmt.Sprintf("Cannot enable checks for account '%s' as the SSO cookie has expired. Please update the cookie using /updateaccount first.", account.Title))
-			return
-		}
+		/*		if !services.VerifySSOCookie(account.SSOCookie) {
+					account.IsExpiredCookie = true
+					if err = database.DB.Save(&account).Error; err != nil {
+						logger.Log.WithError(err).Error("Error saving account after cookie validation")
+					}
+					respondToInteraction(s, i, fmt.Sprintf("Cannot enable checks for account '%s' as the SSO cookie has expired. Please update the cookie using /updateaccount first.", account.Title))
+					return
+				}
+		*/
 		showConfirmationButtons(s, i, accountID, fmt.Sprintf("Are you sure you want to re-enable checks for account '%s'?", account.Title))
 	} else {
 		account.IsCheckDisabled = true
@@ -116,34 +128,31 @@ func HandleAccountSelection(s *discordgo.Session, i *discordgo.InteractionCreate
 		message := fmt.Sprintf("Checks for account '%s' have been disabled.", account.Title)
 		if err = database.DB.Save(&account).Error; err != nil {
 			logger.Log.WithError(err).Error("Failed to update account after toggling check")
-			respondToInteraction(s, i, "Error toggling account checks. Please try again.")
+			sendFollowupMessage(s, i, "Error toggling account checks. Please try again.")
 			return
 		}
-		respondToInteraction(s, i, message)
+		sendFollowupMessage(s, i, message)
 	}
 }
 
 func showConfirmationButtons(s *discordgo.Session, i *discordgo.InteractionCreate, accountID uint, message string) {
 	logger.Log.Infof("Showing confirmation buttons for account %d", accountID)
 
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseUpdateMessage,
-		Data: &discordgo.InteractionResponseData{
-			Content: message,
-			Flags:   discordgo.MessageFlagsEphemeral,
-			Components: []discordgo.MessageComponent{
-				discordgo.ActionsRow{
-					Components: []discordgo.MessageComponent{
-						discordgo.Button{
-							Label:    "Confirm Re-enable",
-							Style:    discordgo.SuccessButton,
-							CustomID: fmt.Sprintf("confirm_reenable_%d", accountID),
-						},
-						discordgo.Button{
-							Label:    "Cancel",
-							Style:    discordgo.DangerButton,
-							CustomID: "cancel_reenable",
-						},
+	_, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+		Content: message,
+		Flags:   discordgo.MessageFlagsEphemeral,
+		Components: []discordgo.MessageComponent{
+			discordgo.ActionsRow{
+				Components: []discordgo.MessageComponent{
+					discordgo.Button{
+						Label:    "Confirm Re-enable",
+						Style:    discordgo.SuccessButton,
+						CustomID: fmt.Sprintf("confirm_reenable_%d", accountID),
+					},
+					discordgo.Button{
+						Label:    "Cancel",
+						Style:    discordgo.DangerButton,
+						CustomID: "cancel_reenable",
 					},
 				},
 			},
@@ -152,30 +161,51 @@ func showConfirmationButtons(s *discordgo.Session, i *discordgo.InteractionCreat
 
 	if err != nil {
 		logger.Log.WithError(err).Error("Error showing confirmation buttons")
-		respondToInteraction(s, i, "An error occurred. Please try again.")
+		sendFollowupMessage(s, i, "An error occurred. Please try again.")
 		return
 	}
 }
 
+func sendFollowupMessage(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
+	_, err := s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+		Content: message,
+		Flags:   discordgo.MessageFlagsEphemeral,
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Error sending followup message")
+	}
+}
+
 func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Flags: discordgo.MessageFlagsEphemeral,
+		},
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Failed to defer interaction response")
+		return
+	}
+
 	userID, err := services.GetUserID(i)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to get user ID")
-		respondToInteraction(s, i, "An error occurred while processing your request.")
+		sendFollowupMessage(s, i, "An error occurred while processing your request.")
 		return
 	}
 
 	customID := i.MessageComponentData().CustomID
 
 	if customID == "cancel_reenable" {
-		respondToInteraction(s, i, "Re-enabling cancelled.")
+		sendFollowupMessage(s, i, "Re-enabling cancelled.")
 		return
 	}
 
 	accountIDParsed, err := strconv.ParseUint(strings.TrimPrefix(customID, "confirm_reenable_"), 10, 64)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error parsing account ID")
-		respondToInteraction(s, i, "Error processing your confirmation. Please try again.")
+		sendFollowupMessage(s, i, "Error processing your confirmation. Please try again.")
 		return
 	}
 	accountID := uint(accountIDParsed)
@@ -184,12 +214,12 @@ func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching account")
-		respondToInteraction(s, i, "Error: Account not found or you don't have permission to modify it.")
+		sendFollowupMessage(s, i, "Error: Account not found or you don't have permission to modify it.")
 		return
 	}
 
 	if account.UserID != userID {
-		respondToInteraction(s, i, "You don't have permission to modify this account.")
+		sendFollowupMessage(s, i, "You don't have permission to modify this account.")
 		return
 	}
 
@@ -198,7 +228,7 @@ func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		if err = database.DB.Save(&account).Error; err != nil {
 			logger.Log.WithError(err).Error("Error saving account after cookie validation")
 		}
-		respondToInteraction(s, i, fmt.Sprintf("Cannot re-enable checks for account '%s' as the SSO cookie has expired. Please update the cookie using /updateaccount first.", account.Title))
+		sendFollowupMessage(s, i, fmt.Sprintf("Cannot re-enable checks for account '%s' as the SSO cookie has expired. Please update the cookie using /updateaccount first.", account.Title))
 		return
 	}
 
@@ -207,11 +237,11 @@ func HandleConfirmation(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	account.ConsecutiveErrors = 0
 	if err = database.DB.Save(&account).Error; err != nil {
 		logger.Log.WithError(err).Error("Error saving account changes")
-		respondToInteraction(s, i, "Error re-enabling account checks. Please try again.")
+		sendFollowupMessage(s, i, "Error re-enabling account checks. Please try again.")
 		return
 	}
 
-	respondToInteraction(s, i, fmt.Sprintf("Checks for account '%s' have been re-enabled.", account.Title))
+	sendFollowupMessage(s, i, fmt.Sprintf("Checks for account '%s' have been re-enabled.", account.Title))
 }
 
 func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, message string) {
@@ -224,27 +254,6 @@ func respondToInteraction(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	})
 
 	if err != nil {
-		logger.Log.WithError(err).Error("Error updating message, trying to send new message")
-
-		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionResponseData{
-				Content: message,
-				Flags:   discordgo.MessageFlagsEphemeral,
-			},
-		})
-
-		if err != nil {
-			logger.Log.WithError(err).Error("Error sending new message, trying followup")
-
-			_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
-				Content: message,
-				Flags:   discordgo.MessageFlagsEphemeral,
-			})
-
-			if err != nil {
-				logger.Log.WithError(err).Error("All response methods failed")
-			}
-		}
+		logger.Log.WithError(err).Error("Error responding to interaction")
 	}
 }
