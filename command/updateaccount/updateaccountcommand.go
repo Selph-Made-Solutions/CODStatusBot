@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/bradselph/CODStatusBot/database"
@@ -189,6 +188,7 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			},
 		})
 		if err != nil {
+			logger.Log.WithError(err).Error("Error responding with deferred message")
 			return
 		}
 		sendFollowupMessage(s, i, "Error processing your update. Please try again.")
@@ -225,10 +225,33 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		logger.Log.WithError(err).Error("Error sending processing message")
 	}
 
-	go processAccountUpdate(s, i, accountID, newSSOCookie)
-}
+	var account models.Account
+	if err := database.DB.First(&account, accountID).Error; err != nil {
+		logger.Log.WithError(err).Error("Error fetching account for update")
+		sendFollowupMessage(s, i, "Error: Account not found or you don't have permission to update it.")
+		return
+	}
 
+	userID := ""
+	if i.Member != nil {
+		userID = i.Member.User.ID
+	} else if i.User != nil {
+		userID = i.User.ID
+	}
+
+	if account.UserID != userID {
+		sendFollowupMessage(s, i, "Error: You don't have permission to update this account.")
+		return
+	}
+
+	go func() {
+		time.Sleep(1 * time.Second)
+		processAccountUpdate(s, i, accountID, newSSOCookie)
+	}()
+}
 func processAccountUpdate(s *discordgo.Session, i *discordgo.InteractionCreate, accountID int, newSSOCookie string) {
+	logger.Log.Infof("Processing account update for ID %d", accountID)
+
 	validationResult, err := services.ValidateAndGetAccountInfo(newSSOCookie)
 	if err != nil {
 		logger.Log.WithError(err).Error("Error validating new SSO cookie")
@@ -244,7 +267,7 @@ func processAccountUpdate(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	var account models.Account
 	result := database.DB.First(&account, accountID)
 	if result.Error != nil {
-		logger.Log.WithError(result.Error).Error("Error fetching account")
+		logger.Log.WithError(result.Error).Error("Error fetching account for update")
 		sendFollowupMessage(s, i, "Error: Account not found or you don't have permission to update it.")
 		return
 	}
@@ -279,23 +302,10 @@ func processAccountUpdate(s *discordgo.Session, i *discordgo.InteractionCreate, 
 		return
 	}
 
-	var statusCheck bool
-	var statusErr error
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-		statusCheck = services.VerifySSOCookie(newSSOCookie)
-		if !statusCheck {
-			statusErr = fmt.Errorf("invalid SSO cookie verification")
-		}
-	}()
-
-	wg.Wait()
+	statusCheck := services.VerifySSOCookie(newSSOCookie)
 	if !statusCheck {
-		logger.Log.WithError(statusErr).Error("SSO cookie validation failed")
-		sendFollowupMessage(s, i, "Error: SSO cookie validation failed. Please try again.")
+		logger.Log.Error("SSO cookie validation failed")
+		sendFollowupMessage(s, i, "Error: SSO cookie validation failed. Please check the cookie and try again.")
 		return
 	}
 
@@ -334,8 +344,8 @@ func processAccountUpdate(s *discordgo.Session, i *discordgo.InteractionCreate, 
 		logger.Log.WithError(err).Error("Failed to log cookie update")
 	}
 
-	oldVIP, _ := services.CheckVIPStatus(account.SSOCookie)
-	newVIP, _ := services.CheckVIPStatus(newSSOCookie)
+	oldVIP := account.IsVIP
+	newVIP := validationResult.IsVIP
 
 	var vipStatusChange string
 	if oldVIP != newVIP {
@@ -350,7 +360,7 @@ func processAccountUpdate(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	sendFollowupMessageWithEmbed(s, i, "", embed)
 
 	go func() {
-		time.Sleep(1 * time.Second)
+		time.Sleep(5 * time.Second)
 		status, err := services.CheckAccount(newSSOCookie, userID, "")
 		if err != nil {
 			logger.Log.WithError(err).Error("Error performing status check after update")
