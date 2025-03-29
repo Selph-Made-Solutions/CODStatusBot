@@ -37,38 +37,16 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		sendFollowupMessage(s, i, "An error occurred while processing your request.")
 		return
 	}
-	/*
-		userSettings, err := services.GetUserSettings(userID)
-		if err != nil {
-			logger.Log.WithError(err).Error("Error fetching user settings")
-			respondToInteraction(s, i, "Error fetching user settings. Please try again.")
-			return
-		}
 
-		if !services.IsServiceEnabled(userSettings.PreferredCaptchaProvider) {
-			msg := fmt.Sprintf("Your preferred captcha service (%s) is currently disabled. ", userSettings.PreferredCaptchaProvider)
-			if services.IsServiceEnabled("ezcaptcha") {
-				msg += "Please switch to EZCaptcha using /setcaptchaservice."
-			} else if services.IsServiceEnabled("2captcha") {
-				msg += "Please switch to 2Captcha using /setcaptchaservice."
-			} else {
-				msg += "No captcha services are currently available. Please try again later."
-			}
-			respondToInteraction(s, i, msg)
-			return
-		}
-	*/
 	var accounts []models.Account
 	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
-		//		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
 		sendFollowupMessage(s, i, "Error fetching your accounts. Please try again.")
 		return
 	}
 
 	if len(accounts) == 0 {
-		//		respondToInteraction(s, i, "You don't have any monitored accounts to update.")
 		sendFollowupMessage(s, i, "You don't have any monitored accounts to update.")
 		return
 	}
@@ -80,7 +58,6 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 
 	for _, account := range accounts {
 		label := account.Title
-		//		if isVIP, err := services.CheckVIPStatus(account.SSOCookie); err == nil && isVIP {
 		if account.IsVIP {
 			label += " ⭐"
 		}
@@ -115,16 +92,6 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		Content:    "Select an account to update:",
 		Flags:      discordgo.MessageFlagsEphemeral,
 		Components: components,
-
-		/*
-			err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content:    "Select an account to update:",
-					Flags:      discordgo.MessageFlagsEphemeral,
-					Components: components,
-				},
-		*/
 	})
 	if err != nil {
 		logger.Log.WithError(err).Error("Error sending followup with account selection")
@@ -229,26 +196,6 @@ func HandleModalSubmit(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if err != nil {
 		logger.Log.WithError(err).Error("Error sending processing message")
 	}
-	/*
-		var account models.Account
-		if err := database.DB.First(&account, accountID).Error; err != nil {
-			logger.Log.WithError(err).Error("Error fetching account for update")
-			sendFollowupMessage(s, i, "Error: Account not found or you don't have permission to update it.")
-			return
-		}
-
-		userID := ""
-		if i.Member != nil {
-			userID = i.Member.User.ID
-		} else if i.User != nil {
-			userID = i.User.ID
-		}
-
-		if account.UserID != userID {
-			sendFollowupMessage(s, i, "Error: You don't have permission to update this account.")
-			return
-		}
-	*/
 	go processAccountUpdate(s, i, accountID, newSSOCookie)
 }
 func processAccountUpdate(s *discordgo.Session, i *discordgo.InteractionCreate, accountID int, newSSOCookie string) {
@@ -286,14 +233,6 @@ func processAccountUpdate(s *discordgo.Session, i *discordgo.InteractionCreate, 
 		sendFollowupMessage(s, i, "Error: Account not found or you don't have permission to update it.")
 		return
 	}
-	/*
-		userID := ""
-		if i.Member != nil {
-			userID = i.Member.User.ID
-		} else if i.User != nil {
-			userID = i.User.ID
-		}
-	*/
 	if account.UserID != userID {
 		sendFollowupMessage(s, i, "Error: You don't have permission to update this account.")
 		return
@@ -316,14 +255,6 @@ func processAccountUpdate(s *discordgo.Session, i *discordgo.InteractionCreate, 
 		sendFollowupMessage(s, i, msg)
 		return
 	}
-	/*
-		statusCheck := services.VerifySSOCookie(newSSOCookie)
-		if !statusCheck {
-			logger.Log.Error("SSO cookie validation failed")
-			sendFollowupMessage(s, i, "Error: SSO cookie validation failed. Please check the cookie and try again.")
-			return
-		}
-	*/
 	services.DBMutex.Lock()
 	oldVIP := account.IsVIP
 	wasDisabled := account.IsCheckDisabled
@@ -335,7 +266,6 @@ func processAccountUpdate(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	account.Created = validationResult.Created
 	account.IsVIP = validationResult.IsVIP
 	account.IsExpiredCookie = false
-	//	wasDisabled := account.IsCheckDisabled
 	account.IsCheckDisabled = false
 	account.DisabledReason = ""
 	account.ConsecutiveErrors = 0
@@ -361,9 +291,6 @@ func processAccountUpdate(s *discordgo.Session, i *discordgo.InteractionCreate, 
 	if err := database.DB.Create(&statusLog).Error; err != nil {
 		logger.Log.WithError(err).Error("Failed to log cookie update")
 	}
-
-	//	oldVIP := account.IsVIP
-	//	newVIP := validationResult.IsVIP
 
 	var vipStatusChange string
 	newVIP := validationResult.IsVIP
