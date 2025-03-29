@@ -16,6 +16,17 @@ import (
 )
 
 func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Flags: discordgo.MessageFlagsEphemeral,
+		},
+	})
+	if err != nil {
+		logger.Log.WithError(err).Error("Error sending deferred response")
+		return
+	}
+
 	var userID string
 	if i.Member != nil {
 		userID = i.Member.User.ID
@@ -23,45 +34,42 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 		userID = i.User.ID
 	} else {
 		logger.Log.Error("Interaction doesn't have Member or User")
-		respondToInteraction(s, i, "An error occurred while processing your request.")
+		sendFollowupMessage(s, i, "An error occurred while processing your request.")
 		return
 	}
-
-	if !services.IsServiceEnabled("ezcaptcha") && !services.IsServiceEnabled("2captcha") {
-		respondToInteraction(s, i, "Account updates are currently unavailable as no captcha services are enabled. Please try again later.")
-		return
-	}
-
-	userSettings, err := services.GetUserSettings(userID)
-	if err != nil {
-		logger.Log.WithError(err).Error("Error fetching user settings")
-		respondToInteraction(s, i, "Error fetching user settings. Please try again.")
-		return
-	}
-
-	if !services.IsServiceEnabled(userSettings.PreferredCaptchaProvider) {
-		msg := fmt.Sprintf("Your preferred captcha service (%s) is currently disabled. ", userSettings.PreferredCaptchaProvider)
-		if services.IsServiceEnabled("ezcaptcha") {
-			msg += "Please switch to EZCaptcha using /setcaptchaservice."
-		} else if services.IsServiceEnabled("2captcha") {
-			msg += "Please switch to 2Captcha using /setcaptchaservice."
-		} else {
-			msg += "No captcha services are currently available. Please try again later."
+	/*
+		userSettings, err := services.GetUserSettings(userID)
+		if err != nil {
+			logger.Log.WithError(err).Error("Error fetching user settings")
+			respondToInteraction(s, i, "Error fetching user settings. Please try again.")
+			return
 		}
-		respondToInteraction(s, i, msg)
-		return
-	}
 
+		if !services.IsServiceEnabled(userSettings.PreferredCaptchaProvider) {
+			msg := fmt.Sprintf("Your preferred captcha service (%s) is currently disabled. ", userSettings.PreferredCaptchaProvider)
+			if services.IsServiceEnabled("ezcaptcha") {
+				msg += "Please switch to EZCaptcha using /setcaptchaservice."
+			} else if services.IsServiceEnabled("2captcha") {
+				msg += "Please switch to 2Captcha using /setcaptchaservice."
+			} else {
+				msg += "No captcha services are currently available. Please try again later."
+			}
+			respondToInteraction(s, i, msg)
+			return
+		}
+	*/
 	var accounts []models.Account
 	result := database.DB.Where("user_id = ?", userID).Find(&accounts)
 	if result.Error != nil {
 		logger.Log.WithError(result.Error).Error("Error fetching user accounts")
-		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
+		//		respondToInteraction(s, i, "Error fetching your accounts. Please try again.")
+		sendFollowupMessage(s, i, "Error fetching your accounts. Please try again.")
 		return
 	}
 
 	if len(accounts) == 0 {
-		respondToInteraction(s, i, "You don't have any monitored accounts to update.")
+		//		respondToInteraction(s, i, "You don't have any monitored accounts to update.")
+		sendFollowupMessage(s, i, "You don't have any monitored accounts to update.")
 		return
 	}
 
@@ -72,7 +80,8 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 
 	for _, account := range accounts {
 		label := account.Title
-		if isVIP, err := services.CheckVIPStatus(account.SSOCookie); err == nil && isVIP {
+		//		if isVIP, err := services.CheckVIPStatus(account.SSOCookie); err == nil && isVIP {
+		if account.IsVIP {
 			label += " ⭐"
 		}
 
@@ -102,17 +111,23 @@ func CommandUpdateAccount(s *discordgo.Session, i *discordgo.InteractionCreate) 
 	if len(currentRow) > 0 {
 		components = append(components, discordgo.ActionsRow{Components: currentRow})
 	}
+	_, err = s.FollowupMessageCreate(i.Interaction, true, &discordgo.WebhookParams{
+		Content:    "Select an account to update:",
+		Flags:      discordgo.MessageFlagsEphemeral,
+		Components: components,
 
-	err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content:    "Select an account to update:",
-			Flags:      discordgo.MessageFlagsEphemeral,
-			Components: components,
-		},
+		/*
+			err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content:    "Select an account to update:",
+					Flags:      discordgo.MessageFlagsEphemeral,
+					Components: components,
+				},
+		*/
 	})
 	if err != nil {
-		logger.Log.WithError(err).Error("Error responding with account selection")
+		logger.Log.WithError(err).Error("Error sending followup with account selection")
 	}
 }
 
