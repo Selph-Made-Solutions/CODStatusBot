@@ -31,17 +31,33 @@ func InitHTTPClients() {
 		TLSHandshakeTimeout: 10 * time.Second,
 	}
 
+	defaultRoundTripper := &defaultHeaderTransport{
+		base: transport,
+	}
+
 	defaultClient = &http.Client{
 		Timeout:   30 * time.Second,
-		Transport: transport,
+		Transport: defaultRoundTripper,
 	}
 
 	longTimeoutClient = &http.Client{
 		Timeout:   60 * time.Second,
-		Transport: transport,
+		Transport: defaultRoundTripper,
 	}
 
 	clientsInitialized = true
+}
+
+type defaultHeaderTransport struct {
+	base http.RoundTripper
+}
+
+func (t *defaultHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
+	}
+
+	return t.base.RoundTrip(req)
 }
 
 func GetDefaultHTTPClient() *http.Client {
