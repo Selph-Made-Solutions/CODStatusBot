@@ -66,10 +66,6 @@ func (asm *AppShardManager) Initialize() error {
 		asm.TotalShards = total
 	}
 
-	if err := database.DB.AutoMigrate(&models.ShardInfo{}); err != nil {
-		return fmt.Errorf("failed to create shard_info table: %w", err)
-	}
-
 	shardInfo := models.ShardInfo{
 		ShardID:       asm.ShardID,
 		TotalShards:   asm.TotalShards,

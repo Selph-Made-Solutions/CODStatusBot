@@ -10,15 +10,23 @@ import (
 func RunMigrations() {
 	logger.Log.Info("Running migrations")
 
-	if err := DB.AutoMigrate(
-		&models.Account{},
-		&models.Ban{},
-		&models.UserSettings{},
-		&models.SuppressedNotification{},
-		&models.Analytics{},
-		&models.ShardInfo{},
-	); err != nil {
-		logger.Log.WithError(err).Error("Failed to run auto migrations")
+	if DB.Migrator().HasTable("shard_infos") {
+		logger.Log.Info("Cleaning up shard_infos table before migrations")
+		if err := DB.Exec("DROP TABLE IF EXISTS shard_infos").Error; err != nil {
+			logger.Log.WithError(err).Error("Failed to drop shard_infos table")
+		}
+	}
+
+	if err := DB.AutoMigrate(&models.ShardInfo{}); err != nil {
+		logger.Log.WithError(err).Error("Failed to migrate ShardInfo model")
+	} else {
+		logger.Log.Info("Successfully migrated ShardInfo model")
+	}
+
+	if err := DB.AutoMigrate(&models.ProxyStats{}); err != nil {
+		logger.Log.WithError(err).Error("Failed to migrate ProxyStats model")
+	} else {
+		logger.Log.Info("Successfully migrated ProxyStats model")
 	}
 
 	CleanupInvalidTimestamps()

@@ -69,6 +69,13 @@ func Databaselogin() error {
 	sqlDB.SetMaxIdleConns(cfg.Performance.DbMaxIdleConns)
 	sqlDB.SetMaxOpenConns(cfg.Performance.DbMaxOpenConns)
 
+	if DB.Migrator().HasTable("shard_infos") {
+		logger.Log.Info("Cleaning up shard_infos table before migrations")
+		if err := DB.Exec("DROP TABLE IF EXISTS shard_infos").Error; err != nil {
+			logger.Log.WithError(err).Error("Failed to drop shard_infos table")
+		}
+	}
+
 	err = DB.AutoMigrate(
 		&models.Account{},
 		&models.Ban{},
