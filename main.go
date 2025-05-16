@@ -88,6 +88,7 @@ func run() error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
+	services.InitHTTPClients()
 	services.InitializeServices()
 	cfg := configuration.Get()
 
@@ -129,6 +130,18 @@ func run() error {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 	logger.Log.Info("Database connection established successfully")
+
+	appShardManager := services.GetAppShardManager()
+	if err := appShardManager.Initialize(); err != nil {
+		logger.Log.WithError(err).Error("Failed to initialize app shard manager")
+	}
+
+	shardCtx, shardCancel := context.WithCancel(context.Background())
+	defer shardCancel()
+
+	appShardManager.StartHeartbeat(shardCtx)
+	logger.Log.Infof("Application shard %d of %d initialized successfully",
+		appShardManager.ShardID, appShardManager.TotalShards)
 
 	services.StartAdminAPI()
 	logger.Log.Info("Admin API started successfully")

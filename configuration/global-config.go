@@ -21,7 +21,13 @@ type Config struct {
 		RetentionDays  int
 	}
 
-	// Database Performance
+	Sharding struct {
+		Enabled      bool
+		ShardID      int
+		TotalShards  int
+		HeartbeatSec int
+	}
+
 	Performance struct {
 		DbMaxIdleConns int `json:"db_max_idle_conns"`
 		DbMaxOpenConns int `json:"db_max_open_conns"`
@@ -197,6 +203,7 @@ func Load() error {
 	loadEmojiConfig()
 	loadPerformanceConfig()
 	loadVerdanskConfig()
+	loadShardingConfig()
 
 	if err := validate(); err != nil {
 		return fmt.Errorf("configuration validation failed: %w", err)
@@ -481,4 +488,29 @@ func loadVerdanskConfig() {
 	AppConfig.Verdansk.CleanupTime = time.Duration(getEnvAsInt("VERDANSK_CLEANUP_MINUTES", 30)) * time.Minute
 	AppConfig.Verdansk.CommandCooldown = time.Duration(getEnvAsInt("VERDANSK_COMMAND_COOLDOWN_MINUTES", 60)) * time.Minute
 	AppConfig.Verdansk.MaxRequestsPerDay = getEnvAsInt("VERDANSK_MAX_REQUESTS_PER_DAY", 3)
+}
+
+func loadShardingConfig() {
+	AppConfig.Sharding.Enabled = getEnvAsBool("SHARDING_ENABLED", false)
+	AppConfig.Sharding.ShardID = getEnvAsInt("SHARD_ID", 0)
+	AppConfig.Sharding.TotalShards = getEnvAsInt("TOTAL_SHARDS", 1)
+	AppConfig.Sharding.HeartbeatSec = getEnvAsInt("SHARD_HEARTBEAT_SEC", 30)
+
+	if AppConfig.Sharding.Enabled {
+		if AppConfig.Sharding.TotalShards < 1 {
+			logger.Log.Warn("Invalid TOTAL_SHARDS value, must be at least 1. Setting to 1.")
+			AppConfig.Sharding.TotalShards = 1
+		}
+
+		if AppConfig.Sharding.ShardID < 0 || AppConfig.Sharding.ShardID >= AppConfig.Sharding.TotalShards {
+			logger.Log.Warnf("Invalid SHARD_ID %d for TOTAL_SHARDS %d. Setting to 0.",
+				AppConfig.Sharding.ShardID, AppConfig.Sharding.TotalShards)
+			AppConfig.Sharding.ShardID = 0
+		}
+
+		logger.Log.Infof("Sharding enabled: This is shard %d of %d",
+			AppConfig.Sharding.ShardID, AppConfig.Sharding.TotalShards)
+	} else {
+		logger.Log.Info("Sharding disabled: Running in single instance mode")
+	}
 }

@@ -43,6 +43,14 @@ func InitializeServices() {
 func CheckAccounts(s *discordgo.Session) {
 	logger.Log.Info("Starting periodic account check")
 
+	shardMgr := GetAppShardManager()
+	if !shardMgr.Initialized {
+		if err := shardMgr.Initialize(); err != nil {
+			logger.Log.WithError(err).Error("Failed to initialize app shard manager")
+			return
+		}
+	}
+
 	var accounts []models.Account
 	if err := database.DB.Where("is_check_disabled = ? AND is_expired_cookie = ?", false, false).Find(&accounts).Error; err != nil {
 		logger.Log.WithError(err).Error("Failed to fetch accounts from database")
@@ -54,9 +62,44 @@ func CheckAccounts(s *discordgo.Session) {
 		accountsByUser[account.UserID] = append(accountsByUser[account.UserID], account)
 	}
 
+	processedCount := 0
+	skippedCount := 0
+	start := time.Now()
+
 	for userID, userAccounts := range accountsByUser {
+		if !shardMgr.IsUserAssignedToShard(userID) {
+			skippedCount++
+			continue
+		}
+
 		processUserAccounts(s, userID, userAccounts)
+		processedCount++
 	}
+
+	duration := time.Since(start).Seconds()
+	logger.Log.Infof("Completed periodic account check: processed %d users, skipped %d users in %.2f seconds",
+		processedCount, skippedCount, duration)
+
+	if err := updateShardStats(shardMgr.InstanceID, processedCount, duration); err != nil {
+		logger.Log.WithError(err).Error("Failed to update shard stats")
+	}
+}
+
+func updateShardStats(instanceID string, processedUsers int, durationSec float64) error {
+	stats := map[string]interface{}{
+		"last_check_time": time.Now(),
+		"processed_users": processedUsers,
+		"duration_sec":    durationSec,
+	}
+
+	statJSON, err := json.Marshal(stats)
+	if err != nil {
+		return err
+	}
+
+	return database.DB.Model(&models.ShardInfo{}).
+		Where("instance_id = ?", instanceID).
+		Update("stats", string(statJSON)).Error
 }
 
 func HandleStatusChange(s *discordgo.Session, account models.Account, newStatus models.Status, userSettings models.UserSettings) {
@@ -223,11 +266,7 @@ func getAffectedGames(ssoCookie string) string {
 		req.Header.Set(k, v)
 	}
 
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	resp, err := client.Do(req)
+	resp, err := DoRequest(req)
 	if err != nil {
 		logger.Log.WithError(err).Error("Failed to get affected games")
 		return "All Games"
