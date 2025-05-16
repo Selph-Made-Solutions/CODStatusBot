@@ -21,6 +21,7 @@ import (
 	"github.com/bradselph/CODStatusBot/command/verdansk"
 	"github.com/bradselph/CODStatusBot/configuration"
 	"github.com/bradselph/CODStatusBot/logger"
+	"github.com/bradselph/CODStatusBot/services"
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -38,6 +39,13 @@ func StartBot() (*discordgo.Session, error) {
 	discord, err = discordgo.New("Bot " + cfg.Discord.Token)
 	if err != nil {
 		return nil, err
+	}
+
+	if cfg.Sharding.Enabled {
+		discord.ShardID = cfg.Sharding.ShardID
+		discord.ShardCount = cfg.Sharding.TotalShards
+		logger.Log.Infof("Configured Discord gateway sharding: Shard %d of %d",
+			discord.ShardID, discord.ShardCount)
 	}
 
 	discord.Identify.Intents = discordgo.IntentsGuildMessages |
@@ -58,6 +66,15 @@ func StartBot() (*discordgo.Session, error) {
 	logger.Log.Info("Registering global commands")
 
 	discord.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+		if i.GuildID != "" {
+			appShardManager := services.GetAppShardManager()
+			if !appShardManager.GuildBelongsToInstance(i.GuildID) {
+				logger.Log.Debugf("Skipping interaction in guild %s (assigned to shard %d)",
+					i.GuildID, s.ShardID)
+				return
+			}
+		}
+
 		installationType := getInstallationType(i)
 		logger.Log.Infof("Handling interaction in context: %s", installationType)
 
@@ -74,6 +91,18 @@ func StartBot() (*discordgo.Session, error) {
 	discord.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
 		if m.Author.ID == s.State.User.ID {
 			return
+		}
+
+		if m.GuildID != "" {
+			appShardManager := services.GetAppShardManager()
+			if !appShardManager.GuildBelongsToInstance(m.GuildID) {
+				return
+			}
+		} else {
+			appShardManager := services.GetAppShardManager()
+			if !appShardManager.ShardBelongsToInstance(m.Author.ID) {
+				return
+			}
 		}
 
 		channel, err := s.Channel(m.ChannelID)

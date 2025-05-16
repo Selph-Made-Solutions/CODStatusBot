@@ -201,6 +201,22 @@ func (asm *AppShardManager) healShards() {
 	}
 }
 
+func (asm *AppShardManager) GuildBelongsToInstance(guildID string) bool {
+	asm.RLock()
+	defer asm.RUnlock()
+
+	if asm.TotalShards <= 1 {
+		return true
+	}
+
+	guildIDInt, err := strconv.ParseUint(guildID, 10, 64)
+	if err != nil {
+		logger.Log.WithError(err).Errorf("Failed to parse guildID %s as uint64", guildID)
+		return false
+	}
+
+	targetShard := (guildIDInt >> 22) % uint64(asm.TotalShards)
+	return int(targetShard) == asm.S
 func (asm *AppShardManager) ShardBelongsToInstance(userID string) bool {
 	asm.RLock()
 	defer asm.RUnlock()

@@ -497,6 +497,17 @@ func loadShardingConfig() {
 	AppConfig.Sharding.HeartbeatSec = getEnvAsInt("SHARD_HEARTBEAT_SEC", 30)
 
 	if AppConfig.Sharding.Enabled {
+		if AppConfig.Sharding.TotalShards < 1 {
+			logger.Log.Warn("Invalid TOTAL_SHARDS value, must be at least 1. Setting to 1.")
+			AppConfig.Sharding.TotalShards = 1
+		}
+
+		if AppConfig.Sharding.ShardID < 0 || AppConfig.Sharding.ShardID >= AppConfig.Sharding.TotalShards {
+			logger.Log.Warnf("Invalid SHARD_ID %d for TOTAL_SHARDS %d. Setting to 0.",
+				AppConfig.Sharding.ShardID, AppConfig.Sharding.TotalShards)
+			AppConfig.Sharding.ShardID = 0
+		}
+
 		logger.Log.Infof("Sharding enabled: This is shard %d of %d",
 			AppConfig.Sharding.ShardID, AppConfig.Sharding.TotalShards)
 	} else {
