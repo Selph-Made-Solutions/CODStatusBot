@@ -216,7 +216,9 @@ func (asm *AppShardManager) GuildBelongsToInstance(guildID string) bool {
 	}
 
 	targetShard := (guildIDInt >> 22) % uint64(asm.TotalShards)
-	return int(targetShard) == asm.S
+	return int(targetShard) == asm.ShardID
+}
+
 func (asm *AppShardManager) ShardBelongsToInstance(userID string) bool {
 	asm.RLock()
 	defer asm.RUnlock()
