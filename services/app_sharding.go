@@ -66,6 +66,31 @@ func (asm *AppShardManager) Initialize() error {
 		asm.TotalShards = total
 	}
 
+	if !database.DB.Migrator().HasTable("shard_infos") {
+		logger.Log.Warn("shard_infos table does not exist, creating it manually")
+		shardInfosTableSQL := `CREATE TABLE IF NOT EXISTS shard_infos (
+			id bigint unsigned AUTO_INCREMENT PRIMARY KEY,
+			created_at datetime(3) NULL,
+			updated_at datetime(3) NULL,
+			deleted_at datetime(3) NULL,
+			shard_id bigint,
+			total_shards bigint,
+			instance_id varchar(191),
+			last_heartbeat datetime(3) NULL,
+			status varchar(191) DEFAULT 'active',
+			stats text,
+			INDEX idx_shard_infos_deleted_at (deleted_at),
+			INDEX idx_shard_infos_shard_id (shard_id),
+			UNIQUE INDEX idx_shard_infos_instance_id (instance_id),
+			INDEX idx_shard_infos_last_heartbeat (last_heartbeat)
+		)`
+
+		if err := database.DB.Exec(shardInfosTableSQL).Error; err != nil {
+			return fmt.Errorf("failed to create shard_infos table: %w", err)
+		}
+		logger.Log.Info("Created shard_infos table successfully")
+	}
+
 	shardInfo := models.ShardInfo{
 		ShardID:       asm.ShardID,
 		TotalShards:   asm.TotalShards,
