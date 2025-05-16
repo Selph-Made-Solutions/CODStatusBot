@@ -99,6 +99,29 @@ type SuppressedNotification struct { // The suppressed notifications table
 	Content          string    `gorm:"type:text"` // The content of the suppressed notification.
 	Timestamp        time.Time `gorm:"index"`     // The timestamp of the suppressed notification.
 }
+
+type ShardInfo struct { // Information about application shards
+	gorm.Model
+	ShardID       int       `gorm:"index"` // The shard ID
+	TotalShards   int       // The total number of shards
+	InstanceID    string    `gorm:"index;uniqueIndex"` // Unique identifier for this instance
+	LastHeartbeat time.Time `gorm:"index"`             // Last time this shard reported as alive
+	Status        string    `gorm:"default:'active'"`  // Status of this shard: active, inactive
+	Stats         string    `gorm:"type:text"`         // JSON encoded stats about this shard
+}
+
+type ProxyStats struct { // Statistics about HTTP proxies
+	gorm.Model
+	ProxyURL            string     `gorm:"index;uniqueIndex"` // Masked proxy URL (no credentials)
+	Status              string     `gorm:"default:'active'"`  // Status: active, suspended
+	SuccessCount        int64      // Number of successful requests
+	FailureCount        int64      // Number of failed requests
+	ConsecutiveFailures int        `gorm:"default:0"` // Current consecutive failures
+	LastCheck           time.Time  // Last time this proxy was checked
+	LastError           string     // Last error message
+	RateLimitedUntil    *time.Time // When rate limiting expires (nil if not rate limited)
+	Stats               string     `gorm:"type:text"` // Additional stats as JSON
+}
 type Analytics struct { // The analytics table
 	gorm.Model
 	Type            string    `gorm:"index"` // The type of analytics entry.
@@ -115,6 +138,8 @@ type Analytics struct { // The analytics table
 	ErrorDetails    string    // For storing error information when relevant
 	Timestamp       time.Time `gorm:"index"` // When this log entry was created
 	Day             string    `gorm:"index"` // YYYY-MM-DD format for easy querying
+	ShardID         int       `gorm:"index"` // The shard ID that processed this event
+	InstanceID      string    `gorm:"index"` // The instance ID that processed this event
 }
 type Status string // The status of the account.
 

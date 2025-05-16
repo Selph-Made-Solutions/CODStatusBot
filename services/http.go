@@ -40,7 +40,6 @@ func VerifySSOCookie(ssoCookie string) bool {
 		return false
 	}
 
-	client := GetLongTimeoutHTTPClient()
 	maxRetries := 3
 	var lastError error
 
@@ -58,7 +57,7 @@ func VerifySSOCookie(ssoCookie string) bool {
 		}
 
 		logger.Log.Infof("Sending verification request to: %s (attempt %d/%d)", profileURL, attempt, maxRetries)
-		resp, err := client.Do(req)
+		resp, err := DoRequest(req)
 		if err != nil {
 			lastError = fmt.Errorf("error sending verification request (attempt %d/%d): %w", attempt, maxRetries, err)
 			logger.Log.WithError(err).Error("Error sending verification request")
@@ -194,8 +193,6 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 	checkRequest := fmt.Sprintf("%s?locale=en&g-cc=%s", cfg.API.CheckEndpoint, gRecaptchaResponse)
 	logger.Log.WithField("url", checkRequest).Info("Constructed account check request")
 
-	client := GetLongTimeoutHTTPClient()
-
 	req, err := http.NewRequest("GET", checkRequest, nil)
 	if err != nil {
 		return models.StatusUnknown, fmt.Errorf("failed to create request: %w", err)
@@ -218,7 +215,7 @@ func CheckAccount(ssoCookie string, userID string, captchaAPIKey string) (models
 	backoffDuration := time.Second
 	for i := 0; i < maxRetries; i++ {
 		logger.Log.Infof("Sending request to check account (attempt %d/%d)", i+1, maxRetries)
-		resp, err = client.Do(req)
+		resp, err = DoRequest(req)
 		if err != nil {
 			if i == maxRetries-1 {
 				return models.StatusUnknown, fmt.Errorf("failed to send request after %d attempts: %w", maxRetries, err)
@@ -374,8 +371,6 @@ func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 	logger.Log.Info("Starting CheckAccountAge function")
 	cfg := configuration.Get()
 
-	client := GetDefaultHTTPClient()
-
 	req, err := http.NewRequest("GET", cfg.API.ProfileEndpoint, nil)
 	if err != nil {
 		return 0, 0, 0, 0, errors.New("failed to create HTTP request to check account age")
@@ -385,7 +380,7 @@ func CheckAccountAge(ssoCookie string) (int, int, int, int64, error) {
 		req.Header.Set(k, v)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := DoRequest(req)
 	if err != nil {
 		return 0, 0, 0, 0, errors.New("failed to send HTTP request to check account age")
 	}
@@ -428,8 +423,6 @@ func CheckVIPStatus(ssoCookie string) (bool, error) {
 	cfg := configuration.Get()
 	logger.Log.Info("Checking VIP status")
 
-	client := GetDefaultHTTPClient()
-
 	req, err := http.NewRequest("GET", cfg.API.CheckVIPEndpoint+ssoCookie, nil)
 	if err != nil {
 		return false, fmt.Errorf("failed to create HTTP request to check VIP status: %w", err)
@@ -439,7 +432,7 @@ func CheckVIPStatus(ssoCookie string) (bool, error) {
 		req.Header.Set(k, v)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := DoRequest(req)
 	if err != nil {
 		return false, fmt.Errorf("failed to send HTTP request to check VIP status: %w", err)
 	}
@@ -476,8 +469,6 @@ func CheckVIPStatus(ssoCookie string) (bool, error) {
 func ValidateAndGetAccountInfo(ssoCookie string) (*AccountValidationResult, error) {
 	cfg := configuration.Get()
 
-	client := GetDefaultHTTPClient()
-
 	req, err := http.NewRequest("GET", cfg.API.ProfileEndpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create profile request: %w", err)
@@ -488,7 +479,7 @@ func ValidateAndGetAccountInfo(ssoCookie string) (*AccountValidationResult, erro
 		req.Header.Set(k, v)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := DoRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send profile request: %w", err)
 	}

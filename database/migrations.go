@@ -7,6 +7,37 @@ import (
 	"github.com/bradselph/CODStatusBot/models"
 )
 
+func RunMigrations() {
+	logger.Log.Info("Running migrations")
+
+	if err := DB.AutoMigrate(
+		&models.Account{},
+		&models.Ban{},
+		&models.UserSettings{},
+		&models.SuppressedNotification{},
+		&models.Analytics{},
+		&models.ShardInfo{},
+	); err != nil {
+		logger.Log.WithError(err).Error("Failed to run auto migrations")
+	}
+
+	CleanupInvalidTimestamps()
+
+	if !DB.Migrator().HasColumn(&models.Analytics{}, "shard_id") {
+		logger.Log.Info("Adding shard_id column to Analytics table")
+		if err := DB.Exec("ALTER TABLE analytics ADD COLUMN shard_id INT DEFAULT 0").Error; err != nil {
+			logger.Log.WithError(err).Error("Failed to add shard_id column to Analytics table")
+		}
+	}
+
+	if !DB.Migrator().HasColumn(&models.Analytics{}, "instance_id") {
+		logger.Log.Info("Adding instance_id column to Analytics table")
+		if err := DB.Exec("ALTER TABLE analytics ADD COLUMN instance_id VARCHAR(255) DEFAULT ''").Error; err != nil {
+			logger.Log.WithError(err).Error("Failed to add instance_id column to Analytics table")
+		}
+	}
+}
+
 func CleanupInvalidTimestamps() {
 	logger.Log.Info("Running timestamp cleanup migration")
 

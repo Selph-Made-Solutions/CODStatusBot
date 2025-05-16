@@ -84,6 +84,7 @@ func Databaselogin() error {
 	}
 
 	CleanupInvalidTimestamps()
+	RunMigrations()
 
 	return nil
 }
